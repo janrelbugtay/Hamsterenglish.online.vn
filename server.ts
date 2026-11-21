@@ -5193,11 +5193,14 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
     }
   }
 
-  function serializePaintballRoom(entry: {
-    room: Record<string, any>;
-    players: Map<string, Record<string, any>>;
-    events: Array<Record<string, any>>;
-  }) {
+  function serializePaintballRoom(
+    entry: {
+      room: Record<string, any>;
+      players: Map<string, Record<string, any>>;
+      events: Array<Record<string, any>>;
+    },
+    sinceEventTs: number = 0
+  ) {
     const now = Date.now();
     entry.events = entry.events.filter(ev => now - (ev.serverTs || now) < 8000);
     // Prune stale disconnected players who haven't updated in > 120 seconds
@@ -5219,6 +5222,10 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
         immuneRemainingMs: immuneRemMs
       };
     });
+    const filteredEvents =
+      sinceEventTs > 0
+        ? entry.events.filter(ev => (ev.serverTs || ev.ts || 0) >= sinceEventTs - 200)
+        : entry.events;
     return {
       serverNow: now,
       room: {
@@ -5226,7 +5233,7 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
         serverNow: now
       },
       players: serializedPlayers,
-      events: entry.events
+      events: filteredEvents
     };
   }
 
@@ -5234,6 +5241,7 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
   app.get("/api/paintball/room/:code", (req, res) => {
     const cleanCode = normalizeRoomCodeParam(req.params.code);
     if (!cleanCode) return res.status(400).json({ error: "Invalid room code", exists: false });
+    const sinceEventTs = Number(req.query.sinceEventTs) || 0;
     const entry = getExistingPaintballRoom(cleanCode);
     if (!entry) {
       return res.json({
@@ -5244,7 +5252,7 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
         events: []
       });
     }
-    res.json({ exists: true, ...serializePaintballRoom(entry) });
+    res.json({ exists: true, ...serializePaintballRoom(entry, sinceEventTs) });
   });
 
   // POST /api/paintball/room/:code/room -> Host updates room settings, status, timer, or bulk player spawn positions
@@ -5556,7 +5564,8 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
       entry.room.latestEvent = body.latestEvent;
     }
 
-    res.json(serializePaintballRoom(entry));
+    const sinceEventTs = typeof body.sinceEventTs === "number" ? body.sinceEventTs : 0;
+    res.json(serializePaintballRoom(entry, sinceEventTs));
   });
 
   // DELETE /api/paintball/room/:code/player/:playerId -> Student leaves or Host deletes player

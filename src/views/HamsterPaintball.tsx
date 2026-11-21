@@ -2380,15 +2380,50 @@ export default function HamsterPaintball({
   const joystickOriginRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
 
-  const [graphicsQuality, setGraphicsQuality] = useState<'low' | 'medium' | 'high' | 'ultra'>(() => {
-    if (typeof window === 'undefined') return 'medium';
-    const saved = localStorage.getItem('pb_graphics_quality');
-    if (saved === 'low' || saved === 'medium' || saved === 'high' || saved === 'ultra') {
-      return saved;
+  const [graphicsQuality, setGraphicsQuality] = useState<
+    'auto' | 'low' | 'medium' | 'high' | 'ultra'
+  >(() => {
+    if (typeof window === 'undefined') return 'auto';
+    const savedV2 = localStorage.getItem('pb_graphics_quality_v2');
+    if (
+      savedV2 === 'auto' ||
+      savedV2 === 'low' ||
+      savedV2 === 'medium' ||
+      savedV2 === 'high' ||
+      savedV2 === 'ultra'
+    ) {
+      return savedV2;
     }
-    return 'medium';
+    const savedLegacy = localStorage.getItem('pb_graphics_quality');
+    if (
+      savedLegacy === 'low' ||
+      savedLegacy === 'medium' ||
+      savedLegacy === 'high' ||
+      savedLegacy === 'ultra'
+    ) {
+      return savedLegacy;
+    }
+    return 'auto';
   });
-  const graphicsQualityRef = useRef<'low' | 'medium' | 'high' | 'ultra'>(graphicsQuality);
+  const graphicsQualityRef = useRef<'auto' | 'low' | 'medium' | 'high' | 'ultra'>(graphicsQuality);
+
+  // Live Adaptive FPS Tier & Join-Screen 3D Preloader Readiness
+  const [effectiveGraphicsTier, setEffectiveGraphicsTier] = useState<
+    'low' | 'medium' | 'high' | 'ultra'
+  >(() => {
+    if (typeof window === 'undefined') return 'medium';
+    const isSmallOrTouch =
+      window.innerWidth <= 900 ||
+      (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0);
+    return isSmallOrTouch ? 'low' : 'medium';
+  });
+  const effectiveGraphicsTierRef = useRef<'low' | 'medium' | 'high' | 'ultra'>(
+    effectiveGraphicsTier
+  );
+  const [liveFpsDisplay, setLiveFpsDisplay] = useState<number>(60);
+  const [arenaPreloadStage, setArenaPreloadStage] = useState<'warming' | 'ready'>('warming');
+  const lastReceivedEventServerTsRef = useRef<number>(0);
+  const lastHealthyExpressApiAtRef = useRef<number>(0);
 
   const [cameraSensitivity, setCameraSensitivity] = useState<number>(() => {
     if (typeof window === 'undefined') return 1.0;
@@ -3079,61 +3114,81 @@ export default function HamsterPaintball({
     lastScoreboardSyncAt?: number;
   } | null>(null);
 
+  const resolveActiveQualityTier = (
+    qualityMode: 'auto' | 'low' | 'medium' | 'high' | 'ultra'
+  ): 'low' | 'medium' | 'high' | 'ultra' => {
+    return qualityMode === 'auto' ? effectiveGraphicsTierRef.current : qualityMode;
+  };
+
   const getGraphicsQualitySettings = (
-    quality: 'low' | 'medium' | 'high' | 'ultra',
+    qualityMode: 'auto' | 'low' | 'medium' | 'high' | 'ultra',
     isSoftwareGl: boolean
   ) => {
+    const quality = resolveActiveQualityTier(qualityMode);
     const deviceDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
     if (quality === 'low') {
       return {
-        pixelRatio: isSoftwareGl ? 0.72 : Math.min(deviceDpr, 0.75),
+        tier: 'low' as const,
+        pixelRatio: isSoftwareGl ? 0.72 : Math.min(deviceDpr, 0.8),
         shadowsEnabled: false,
-        shadowMapSize: 512
+        shadowMapSize: 512,
+        maxParticles: 45,
+        trailChance: 0.12
       };
     }
     if (quality === 'high') {
       return {
-        pixelRatio: isSoftwareGl ? 1.0 : Math.min(deviceDpr, 1.5),
+        tier: 'high' as const,
+        pixelRatio: isSoftwareGl ? 1.0 : Math.min(deviceDpr, 1.45),
         shadowsEnabled: !isSoftwareGl,
-        shadowMapSize: 1536
+        shadowMapSize: 1536,
+        maxParticles: 110,
+        trailChance: 0.28
       };
     }
     if (quality === 'ultra') {
       return {
-        pixelRatio: isSoftwareGl ? 1.0 : Math.min(deviceDpr, 2.25),
+        tier: 'ultra' as const,
+        pixelRatio: isSoftwareGl ? 1.0 : Math.min(deviceDpr, 2.0),
         shadowsEnabled: !isSoftwareGl,
-        shadowMapSize: 2048
+        shadowMapSize: 2048,
+        maxParticles: 140,
+        trailChance: 0.35
       };
     }
     // Preset: Medium (balanced resolution + crisp FPS across mobile, tablet, and laptop)
     return {
-      pixelRatio: isSoftwareGl ? 0.9 : Math.min(deviceDpr, 1.0),
+      tier: 'medium' as const,
+      pixelRatio: isSoftwareGl ? 0.88 : Math.min(deviceDpr, 1.0),
       shadowsEnabled: !isSoftwareGl,
-      shadowMapSize: 1024
+      shadowMapSize: 1024,
+      maxParticles: 75,
+      trailChance: 0.2
     };
   };
 
-  useEffect(() => {
-    graphicsQualityRef.current = graphicsQuality;
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('pb_graphics_quality', graphicsQuality);
-    }
+  const applyRendererQualityConfig = (
+    qualityMode: 'auto' | 'low' | 'medium' | 'high' | 'ultra'
+  ) => {
     const g = gameRef.current;
     const container = canvasContainerRef.current;
     if (!g || !container) return;
     const isSoftwareGl = Boolean(g.isSoftwareGl);
-    const cfg = getGraphicsQualitySettings(graphicsQuality, isSoftwareGl);
+    const cfg = getGraphicsQualitySettings(qualityMode, isSoftwareGl);
     const w = container.clientWidth || window.innerWidth;
     const h = container.clientHeight || window.innerHeight;
     g.renderer.setPixelRatio(cfg.pixelRatio);
     g.renderer.setSize(w, h);
-    g.renderer.shadowMap.enabled = cfg.shadowsEnabled;
-    g.renderer.shadowMap.needsUpdate = true;
+    if (g.renderer.shadowMap.enabled !== cfg.shadowsEnabled) {
+      g.renderer.shadowMap.enabled = cfg.shadowsEnabled;
+      g.renderer.shadowMap.needsUpdate = true;
+    }
     if (g.sunLight) {
       g.sunLight.castShadow = cfg.shadowsEnabled;
       if (
-        g.sunLight.shadow.mapSize.width !== cfg.shadowMapSize ||
-        g.sunLight.shadow.mapSize.height !== cfg.shadowMapSize
+        cfg.shadowsEnabled &&
+        (g.sunLight.shadow.mapSize.width !== cfg.shadowMapSize ||
+          g.sunLight.shadow.mapSize.height !== cfg.shadowMapSize)
       ) {
         g.sunLight.shadow.mapSize.width = cfg.shadowMapSize;
         g.sunLight.shadow.mapSize.height = cfg.shadowMapSize;
@@ -3143,7 +3198,29 @@ export default function HamsterPaintball({
         }
       }
     }
+  };
+
+  useEffect(() => {
+    graphicsQualityRef.current = graphicsQuality;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pb_graphics_quality_v2', graphicsQuality);
+      if (graphicsQuality !== 'auto') {
+        localStorage.setItem('pb_graphics_quality', graphicsQuality);
+      }
+    }
+    if (graphicsQuality !== 'auto') {
+      effectiveGraphicsTierRef.current = graphicsQuality;
+      setEffectiveGraphicsTier(graphicsQuality);
+    }
+    applyRendererQualityConfig(graphicsQuality);
   }, [graphicsQuality]);
+
+  useEffect(() => {
+    effectiveGraphicsTierRef.current = effectiveGraphicsTier;
+    if (graphicsQualityRef.current === 'auto') {
+      applyRendererQualityConfig('auto');
+    }
+  }, [effectiveGraphicsTier]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && role === 'host') {
@@ -3785,7 +3862,17 @@ export default function HamsterPaintball({
       calibrateServerClock(json.serverNow);
     }
     if (Array.isArray(json.events) && json.events.length > 0) {
+      let maxEvTs = lastReceivedEventServerTsRef.current;
+      for (let i = 0; i < json.events.length; i++) {
+        const evTs = Number(json.events[i]?.serverTs || json.events[i]?.ts || 0);
+        if (evTs > maxEvTs) maxEvTs = evTs;
+      }
+      if (maxEvTs > lastReceivedEventServerTsRef.current) {
+        lastReceivedEventServerTsRef.current = maxEvTs;
+      }
       processCombatEventsRef.current(json.events);
+    } else if (typeof json.serverNow === 'number' && lastReceivedEventServerTsRef.current === 0) {
+      lastReceivedEventServerTsRef.current = json.serverNow - 2500;
     }
   };
 
@@ -3909,12 +3996,14 @@ export default function HamsterPaintball({
               roomState: roomStatePatch,
               latestEvent: options?.latestEvent,
               events: queuedEvents,
-              combatEvents: queuedEvents
+              combatEvents: queuedEvents,
+              sinceEventTs: lastReceivedEventServerTsRef.current
             })
           }
         );
         if (res.ok) {
           const json = await res.json();
+          lastHealthyExpressApiAtRef.current = Date.now();
           ingestApiSnapshotMeta(json);
           if (!primaryResult) primaryResult = json;
           if (!json?.room?.isUninitialized) break;
@@ -4040,13 +4129,20 @@ export default function HamsterPaintball({
     const clean = normalizeCode(code);
     if (!clean) return null;
     let bestData: any = null;
+    const sinceParam =
+      lastReceivedEventServerTsRef.current > 0
+        ? `?sinceEventTs=${encodeURIComponent(String(lastReceivedEventServerTsRef.current))}`
+        : '';
     for (const base of getCandidateApiBases()) {
       try {
         const res = await fetchWithTimeout(
-          `${base}/api/paintball/room/${encodeURIComponent(clean)}`
+          `${base}/api/paintball/room/${encodeURIComponent(clean)}${sinceParam}`
         );
         if (res.ok) {
           const json = await res.json();
+          if (!json?.room?.isUninitialized) {
+            lastHealthyExpressApiAtRef.current = Date.now();
+          }
           ingestApiSnapshotMeta(json);
           if (!bestData || (!json?.room?.isUninitialized && bestData?.room?.isUninitialized)) {
             bestData = json;
@@ -5072,11 +5168,12 @@ export default function HamsterPaintball({
     forceResyncCallbackRef.current = runImmediateRoomPull;
     runImmediateRoomPull(cleanCode);
 
-    // Real-time Firestore room listener
+    // Real-time Firestore room listener (skips redundant processing when fast Express API is actively synced)
     const unsubRoom = onSnapshot(
       roomDocRef,
       snap => {
         if (!snap.exists()) return;
+        if (Date.now() - lastHealthyExpressApiAtRef.current < 3500) return;
         processRoomData(snap.data());
       },
       err => {
@@ -5285,10 +5382,11 @@ export default function HamsterPaintball({
       };
     } catch {}
 
-    // Real-time Firestore players subcollection listener
+    // Real-time Firestore players subcollection listener (automatically yields to fast 7Hz Express API when healthy)
     const unsubPlayers = onSnapshot(
       playersCol,
       snap => {
+        if (Date.now() - lastHealthyExpressApiAtRef.current < 3500) return;
         const list = snap.docs.map(d => ({
           ...(d.data() as Record<string, any>),
           id: (d.data() as any).id || d.id.replace(/^player_/, '')
@@ -8036,16 +8134,23 @@ export default function HamsterPaintball({
     scene.add(outerMeadow);
 
     // Expanded Championship Speedball Turf (240m x 240m canvas, 116m x 96m playable field: x = ±58, z = ±48)
+    // Uses 1024x1024 on mobile/touch/software-WebGL for 4x lower GPU texture memory and 0ms upload lag
     const createProArenaTurfTexture = () => {
+      const isCompactDevice =
+        isSoftwareGl ||
+        (typeof window !== 'undefined' &&
+          (window.innerWidth <= 960 ||
+            (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0)));
+      const texRes = isCompactDevice ? 1024 : 2048;
       const c = document.createElement('canvas');
-      c.width = 2048;
-      c.height = 2048;
+      c.width = texRes;
+      c.height = texRes;
       const ctx = c.getContext('2d')!;
 
       const planeSpan = 240;
-      const toPxX = (wx: number) => (wx / planeSpan + 0.5) * 2048;
-      const toPxY = (wz: number) => (wz / planeSpan + 0.5) * 2048;
-      const toPxLen = (wLen: number) => (wLen / planeSpan) * 2048;
+      const toPxX = (wx: number) => (wx / planeSpan + 0.5) * texRes;
+      const toPxY = (wz: number) => (wz / planeSpan + 0.5) * texRes;
+      const toPxLen = (wLen: number) => (wLen / planeSpan) * texRes;
 
       // 1. Alternating Bright Mowed Championship Turf Stripes
       const stripeCount = 28;
@@ -8056,7 +8161,8 @@ export default function HamsterPaintball({
       }
 
       // Cross-hatch subtle grass blade texture
-      for (let i = 0; i < 20000; i++) {
+      const bladeIterations = isCompactDevice ? 6500 : 16000;
+      for (let i = 0; i < bladeIterations; i++) {
         const gx = Math.random() * c.width;
         const gy = Math.random() * c.height;
         ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.06)' : 'rgba(15,40,10,0.07)';
@@ -10995,12 +11101,33 @@ export default function HamsterPaintball({
       speedBoostUntil: 0
     };
 
-    // Pre-compile scene shaders once on hardware GPU to avoid first-frame stutter
-    if (!isSoftwareGl) {
-      try {
-        renderer.compile(scene, camera);
-      } catch {}
-    }
+    // Join-Screen 3D Preloader: Pre-warm 3D team outfit textures & compile scene shaders across idle frames
+    let preloadTimerId = 0;
+    const runJoinScreen3DPreload = () => {
+      const teamsToWarm: TeamId[] = ['red', 'blue', 'green', 'gold'];
+      let stepIdx = 0;
+      const warmNextStep = () => {
+        if (!gameRef.current) return;
+        if (stepIdx < HAMSTER_SKINS.length) {
+          const skin = HAMSTER_SKINS[stepIdx];
+          const team = teamsToWarm[stepIdx % teamsToWarm.length];
+          try {
+            createOutfitTexture(skin, team);
+          } catch {}
+          stepIdx++;
+          preloadTimerId = window.setTimeout(warmNextStep, 18);
+          return;
+        }
+        if (!isSoftwareGl) {
+          try {
+            renderer.compile(scene, camera);
+          } catch {}
+        }
+        setArenaPreloadStage('ready');
+      };
+      preloadTimerId = window.setTimeout(warmNextStep, 24);
+    };
+    runJoinScreen3DPreload();
 
     // Re-populate any already-connected remote players into the freshly created scene
     stateSnapRef.current.roomPlayers.forEach(rp => {
@@ -11595,14 +11722,51 @@ export default function HamsterPaintball({
       window.setTimeout(poll, 16);
     };
 
+    // Rolling 1.5s Live Adaptive FPS Governor (Auto-adjusts quality tier on phones, tablets & Chromebooks)
+    let fpsFrameCount = 0;
+    let fpsWindowStart = performance.now();
+    let lastAutoTierChangeAt = 0;
+
     const animate = (now: number) => {
       if (isContextLost) return;
-      const dt = Math.min((now - lastTime) / 1000, 0.05);
+      const rawDtMs = now - lastTime;
+      const dt = Math.min(rawDtMs / 1000, 0.05);
       lastTime = now;
 
       const g = gameRef.current;
       if (!g) return;
       const snapState = stateSnapRef.current;
+
+      // Measure rolling FPS while 3D rendering is active
+      if (!snapState.isQuestionModalOpen && rawDtMs < 450) {
+        fpsFrameCount++;
+        const elapsedFpsWindow = now - fpsWindowStart;
+        if (elapsedFpsWindow >= 1500) {
+          const measuredFps = Math.min(60, Math.max(12, Math.round((fpsFrameCount * 1000) / elapsedFpsWindow)));
+          fpsFrameCount = 0;
+          fpsWindowStart = now;
+          setLiveFpsDisplay(measuredFps);
+
+          if (
+            graphicsQualityRef.current === 'auto' &&
+            !isSoftwareGl &&
+            now - lastAutoTierChangeAt >= 3200
+          ) {
+            const curTier = effectiveGraphicsTierRef.current;
+            if (measuredFps < 38 && curTier !== 'low') {
+              const nextDown: 'low' | 'medium' | 'high' =
+                curTier === 'ultra' ? 'high' : curTier === 'high' ? 'medium' : 'low';
+              effectiveGraphicsTierRef.current = nextDown;
+              lastAutoTierChangeAt = now;
+              setEffectiveGraphicsTier(nextDown);
+            } else if (measuredFps >= 57 && curTier === 'low' && window.innerWidth > 960) {
+              effectiveGraphicsTierRef.current = 'medium';
+              lastAutoTierChangeAt = now;
+              setEffectiveGraphicsTier('medium');
+            }
+          }
+        }
+      }
 
       // Teacher Jan NPC is visible to students in the Lobby
       if (g.teacherJanNpc) {
@@ -12415,7 +12579,14 @@ export default function HamsterPaintball({
         const segDz = nextZ - prevZ;
         const segHorizSq = segDx * segDx + segDz * segDz;
 
-        if (Math.random() < 0.35 && g.particles.length < 120) {
+        const activeQualityCfg = getGraphicsQualitySettings(
+          graphicsQualityRef.current,
+          isSoftwareGl
+        );
+        if (
+          Math.random() < activeQualityCfg.trailChance &&
+          g.particles.length < activeQualityCfg.maxParticles
+        ) {
           const trailDrop = new THREE.Mesh(
             sharedTrailSphereGeom,
             getBasicColorMaterial(p.color)
@@ -12901,6 +13072,9 @@ export default function HamsterPaintball({
       window.visualViewport?.removeEventListener('resize', handleResize);
       renderer.domElement.removeEventListener('webglcontextlost', handleContextLost);
       renderer.domElement.removeEventListener('webglcontextrestored', handleContextRestored);
+      if (preloadTimerId) {
+        window.clearTimeout(preloadTimerId);
+      }
       if (resizeObserver) resizeObserver.disconnect();
       if (animFrameRef.current) {
         cancelAnimationFrame(animFrameRef.current);
@@ -14281,23 +14455,26 @@ export default function HamsterPaintball({
               </button>
             </div>
 
-            {/* Resolution & Graphics Quality (All Users — Preset: Medium) */}
+            {/* Resolution & Graphics Quality (All Users — Default: Auto Adaptive FPS) */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-xs font-bold text-slate-700">Resolution &amp; Quality</span>
-                <span className="text-[11px] font-medium text-slate-500">
-                  {graphicsQuality === 'low'
-                    ? 'Fastest FPS (No Shadows)'
+                <span className="text-[11px] font-medium text-slate-500 font-mono tabular-nums">
+                  {graphicsQuality === 'auto'
+                    ? `Auto (${effectiveGraphicsTier.toUpperCase()} · ${liveFpsDisplay} FPS)`
+                    : graphicsQuality === 'low'
+                    ? `Fastest FPS (No Shadows · ${liveFpsDisplay} FPS)`
                     : graphicsQuality === 'medium'
-                    ? 'Balanced (Default Preset)'
+                    ? `Balanced (${liveFpsDisplay} FPS)`
                     : graphicsQuality === 'high'
-                    ? 'Crisp HD'
-                    : 'Maximum Detail'}
+                    ? `Crisp HD (${liveFpsDisplay} FPS)`
+                    : `Maximum Detail (${liveFpsDisplay} FPS)`}
                 </span>
               </div>
-              <div className="grid grid-cols-4 gap-1 p-1 bg-slate-100 rounded-xl">
+              <div className="grid grid-cols-5 gap-1 p-1 bg-slate-100 rounded-xl">
                 {(
                   [
+                    { id: 'auto', label: 'Auto' },
                     { id: 'low', label: 'Low' },
                     { id: 'medium', label: 'Medium' },
                     { id: 'high', label: 'High' },
@@ -14322,7 +14499,7 @@ export default function HamsterPaintball({
                 })}
               </div>
               <p className="text-[11px] text-slate-500 mt-1">
-                Lower resolution reduces lag on phones, tablets, and laptops.
+                Auto dynamically adjusts 3D quality based on your device&apos;s live FPS to prevent lag.
               </p>
             </div>
 
@@ -14750,6 +14927,19 @@ export default function HamsterPaintball({
                         </span>
                       </>
                     )}
+
+                    <span className="text-slate-300" aria-hidden="true">
+                      ·
+                    </span>
+                    <span
+                      className={`whitespace-nowrap ${
+                        arenaPreloadStage === 'ready'
+                          ? 'text-slate-500 font-medium'
+                          : 'text-amber-600 font-semibold'
+                      }`}
+                    >
+                      {arenaPreloadStage === 'ready' ? '3D Arena Ready' : 'Preloading 3D Arena...'}
+                    </span>
                   </div>
                 </div>
               </div>

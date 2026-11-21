@@ -3,40 +3,43 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, Suspense, lazy } from "react";
 import { ViewState } from "./types";
 import { Navigation, Header } from "./components/Navigation";
 import { Footer } from "./components/Footer";
 import { Home } from "./views/Home";
 import { recordRecentGame } from "./data/studioGames";
-import { AIGenerator } from "./views/AIGenerator";
-import { AdminDashboard } from "./views/AdminDashboard";
-import { UserDashboard } from "./views/UserDashboard";
-import { GamesLibrary } from "./views/GamesLibrary";
-import { PublicDashboard } from "./views/PublicDashboard";
-import { MysteryBox } from "./views/MysteryBox";
-import { MediaStudio } from "./views/MediaStudio";
-import { NeonChain } from "./views/NeonChain";
-import { BubblePop } from "./views/BubblePop";
-import { RollerCoasterQuiz } from "./views/RollerCoasterQuiz";
-import { SlapAndChop } from "./views/SlapAndChop";
-import { SharkAttack } from "./views/SharkAttack";
-import { FlashcardsMatch } from "./views/FlashcardsMatch";
-import { YogaQuiz } from "./views/YogaQuiz";
-import { BubbleSentencePro } from "./views/BubbleSentencePro";
-import { FamilyFeud } from "./views/FamilyFeud";
-import { Sumo } from "./views/Sumo";
-import { HamsterPopQuiz } from "./views/HamsterPopQuiz";
-import { StudentRace } from "./views/StudentRace";
-import { LetterLock } from "./views/LetterLock";
-import { TicTacToe } from "./views/TicTacToe";
-import { Homework } from "./views/Homework";
-import { ClassRecord, isDefaultMockClasses, sortClassesByName } from "./views/ClassRecord";
-import { PhonemicMaster } from "./views/PhonemicMaster";
-import SquidGamePicker from "./views/SquidGamePicker";
 import { HamsterPaintball } from "./views/HamsterPaintball";
-import { SleepingHamster } from "./views/SleepingHamster";
-import { MySlides } from "./views/MySlides";
+import { ClassRecord, isDefaultMockClasses, sortClassesByName } from "./views/ClassRecord";
+
+// Lazy-load secondary views & games so students joining Hamster Paintball via QR/Room Code
+// download and parse only Hamster Paintball instead of all 28 games at once
+const AIGenerator = lazy(() => import("./views/AIGenerator").then(m => ({ default: m.AIGenerator })));
+const AdminDashboard = lazy(() => import("./views/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
+const UserDashboard = lazy(() => import("./views/UserDashboard").then(m => ({ default: m.UserDashboard })));
+const GamesLibrary = lazy(() => import("./views/GamesLibrary").then(m => ({ default: m.GamesLibrary })));
+const PublicDashboard = lazy(() => import("./views/PublicDashboard").then(m => ({ default: m.PublicDashboard })));
+const MysteryBox = lazy(() => import("./views/MysteryBox").then(m => ({ default: m.MysteryBox })));
+const MediaStudio = lazy(() => import("./views/MediaStudio").then(m => ({ default: m.MediaStudio })));
+const NeonChain = lazy(() => import("./views/NeonChain").then(m => ({ default: m.NeonChain })));
+const BubblePop = lazy(() => import("./views/BubblePop").then(m => ({ default: m.BubblePop })));
+const RollerCoasterQuiz = lazy(() => import("./views/RollerCoasterQuiz").then(m => ({ default: m.RollerCoasterQuiz })));
+const SlapAndChop = lazy(() => import("./views/SlapAndChop").then(m => ({ default: m.SlapAndChop })));
+const SharkAttack = lazy(() => import("./views/SharkAttack").then(m => ({ default: m.SharkAttack })));
+const FlashcardsMatch = lazy(() => import("./views/FlashcardsMatch").then(m => ({ default: m.FlashcardsMatch })));
+const YogaQuiz = lazy(() => import("./views/YogaQuiz").then(m => ({ default: m.YogaQuiz })));
+const BubbleSentencePro = lazy(() => import("./views/BubbleSentencePro").then(m => ({ default: m.BubbleSentencePro })));
+const FamilyFeud = lazy(() => import("./views/FamilyFeud").then(m => ({ default: m.FamilyFeud })));
+const Sumo = lazy(() => import("./views/Sumo").then(m => ({ default: m.Sumo })));
+const HamsterPopQuiz = lazy(() => import("./views/HamsterPopQuiz").then(m => ({ default: m.HamsterPopQuiz })));
+const StudentRace = lazy(() => import("./views/StudentRace").then(m => ({ default: m.StudentRace })));
+const LetterLock = lazy(() => import("./views/LetterLock").then(m => ({ default: m.LetterLock })));
+const TicTacToe = lazy(() => import("./views/TicTacToe").then(m => ({ default: m.TicTacToe })));
+const Homework = lazy(() => import("./views/Homework").then(m => ({ default: m.Homework })));
+const PhonemicMaster = lazy(() => import("./views/PhonemicMaster").then(m => ({ default: m.PhonemicMaster })));
+const SquidGamePicker = lazy(() => import("./views/SquidGamePicker"));
+const SleepingHamster = lazy(() => import("./views/SleepingHamster").then(m => ({ default: m.SleepingHamster })));
+const MySlides = lazy(() => import("./views/MySlides").then(m => ({ default: m.MySlides })));
 import { useAuth } from "./contexts/AuthContext";
 import { useLanguage } from "./contexts/LanguageContext";
 import { doc, onSnapshot } from "firebase/firestore";
@@ -160,8 +163,11 @@ export default function App() {
   
   const isAdmin = Boolean(user && !user.isAnonymous && user.email?.toLowerCase().trim() === "janrelbugtay03@gmail.com");
 
-  // Listen to publishedGamesV2 from settings/general
+  // Listen to publishedGamesV2 from settings/general (skip while student is directly inside Hamster Paintball to avoid extra Firestore listener overhead)
   useEffect(() => {
+    if (currentView === "hamster-paintball" && Boolean(initialPaintball)) {
+      return;
+    }
     const unsub = onSnapshot(
       doc(db, 'settings', 'general'),
       (snap) => {
@@ -178,7 +184,7 @@ export default function App() {
       }
     );
     return () => unsub();
-  }, []);
+  }, [currentView]);
 
   const openGoogleAuthModal = (feature: string = "Account Area") => {
     setGoogleAuthFeature(feature);
@@ -891,7 +897,15 @@ export default function App() {
               : "p-4 md:p-8 space-y-6 overflow-y-auto"
           }`}
         >
-          {renderView()}
+          <Suspense
+            fallback={
+              <div className="min-h-[60vh] flex items-center justify-center">
+                <Loader2 className="w-7 h-7 animate-spin text-emerald-600" />
+              </div>
+            }
+          >
+            {renderView()}
+          </Suspense>
           {!isLockedHomeworkLink && !isGame && !isClass && !isAdminView && (
             <Footer onViewChange={handleViewChange} />
           )}
