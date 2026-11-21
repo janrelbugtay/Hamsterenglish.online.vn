@@ -1434,10 +1434,18 @@ function Coaster3DGameplay({
           let lastSend = 0;
           const loopFrames = async (t: number) => {
             if (!active) return;
-            if (webcamVideoRef.current && webcamVideoRef.current.readyState >= 2 && t - lastSend > 50) {
+            const vid = webcamVideoRef.current;
+            if (
+              vid &&
+              vid.readyState >= 2 &&
+              vid.videoWidth > 0 &&
+              vid.videoHeight > 0 &&
+              !(window as any).__mpWebGLContextUnavailable &&
+              t - lastSend > 50
+            ) {
               lastSend = t;
               try {
-                await faceMesh.send({ image: webcamVideoRef.current });
+                await faceMesh.send({ image: vid });
               } catch {}
             }
             if (active) animId = requestAnimationFrame(loopFrames);

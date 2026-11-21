@@ -701,7 +701,15 @@ export function BodyHeadToFeetSetupScanner({
           const processFrame = async () => {
             if (!active) return;
             const v = videoRef.current;
-            if (v && v.readyState >= 2 && !busy && poseDetector) {
+            if (
+              v &&
+              v.readyState >= 2 &&
+              v.videoWidth > 0 &&
+              v.videoHeight > 0 &&
+              !busy &&
+              poseDetector &&
+              !(window as any).__mpWebGLContextUnavailable
+            ) {
               busy = true;
               try {
                 await poseDetector.send({ image: v });
@@ -1238,7 +1246,15 @@ export function CityPoseChase3DGameplay({
         const loop = async () => {
           if (!active) return;
           const v = videoRef.current;
-          if (v && v.readyState >= 2 && !busy && poseDetector) {
+          if (
+            v &&
+            v.readyState >= 2 &&
+            v.videoWidth > 0 &&
+            v.videoHeight > 0 &&
+            !busy &&
+            poseDetector &&
+            !(window as any).__mpWebGLContextUnavailable
+          ) {
             busy = true;
             try {
               await poseDetector.send({ image: v });

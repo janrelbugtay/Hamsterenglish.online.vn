@@ -1831,12 +1831,16 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
             if (!active || !videoRef.current || setupSeq !== cameraSetupSeqRef.current) return;
 
             const vid = videoRef.current;
+            const curScreen = screenRef.current;
+            const shouldProcessOnScreen = curScreen === 'game' || curScreen === 'setup';
             if (
+                shouldProcessOnScreen &&
                 vid.readyState >= 2 &&
                 vid.videoWidth > 0 &&
                 vid.videoHeight > 0 &&
                 !vid.paused &&
                 !isProcessing &&
+                !(window as any).__mpWebGLContextUnavailable &&
                 (time - lastFrameTime >= TARGET_INTERVAL_MS)
             ) {
                 isProcessing = true;
@@ -1845,7 +1849,7 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                     const currentMode = trackerModeRef.current;
                     if (currentMode === 'nose') {
                         const fm = ensureFaceMeshInitialized();
-                        if (fm) {
+                        if (fm && !(window as any).__mpWebGLContextUnavailable) {
                             await fm.send({ image: vid });
                         }
                     } else if (handsSessionTokenRef.current) {

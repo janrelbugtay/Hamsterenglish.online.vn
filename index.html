@@ -88,6 +88,124 @@
             } catch (e) {}
           };
         } catch (e) {}
+
+        // Prevent MediaPipe from popping up blocking native window.alert("Failed to create WebGL canvas context when passing video frame.")
+        // and automatically recover/fallback WebGL contexts when browser context slots are full or WebGL2 is restricted.
+        try {
+          if (typeof window !== "undefined") {
+            var nativeAlert = window.alert ? window.alert.bind(window) : function () {};
+            window.alert = function (msg) {
+              var text = String(msg || "");
+              if (
+                text.indexOf("Failed to create WebGL canvas context") !== -1 ||
+                text.indexOf("passing video frame") !== -1 ||
+                text.indexOf("WebGL") !== -1
+              ) {
+                window.__mpWebGLContextUnavailable = true;
+                window.__mpWebGLAlertSuppressedAt = Date.now();
+                console.warn("[WebGL Guard] Suppressed blocking WebGL alert:", text);
+                return;
+              }
+              return nativeAlert(msg);
+            };
+
+            if (typeof HTMLCanvasElement !== "undefined" && HTMLCanvasElement.prototype.getContext) {
+              var nativeGetContext = HTMLCanvasElement.prototype.getContext;
+              var trackedContexts = [];
+
+              var pruneAndFreeOldestContext = function (excludeCanvas) {
+                for (var i = trackedContexts.length - 1; i >= 0; i--) {
+                  var item = trackedContexts[i];
+                  if (!item || !item.gl || (typeof item.gl.isContextLost === "function" && item.gl.isContextLost())) {
+                    trackedContexts.splice(i, 1);
+                  }
+                }
+                // Evict oldest detached canvas first
+                for (var j = 0; j < trackedContexts.length - 2; j++) {
+                  var rec = trackedContexts[j];
+                  if (rec && rec.canvas !== excludeCanvas && (!document.body || !document.body.contains(rec.canvas))) {
+                    try {
+                      var ext = rec.gl.getExtension("WEBGL_lose_context");
+                      if (ext) ext.loseContext();
+                    } catch (e) {}
+                    trackedContexts.splice(j, 1);
+                    return true;
+                  }
+                }
+                // If all are attached and we still exceeded 12 contexts, evict the very oldest one
+                if (trackedContexts.length >= 12) {
+                  var oldest = trackedContexts.shift();
+                  if (oldest && oldest.canvas !== excludeCanvas && oldest.gl) {
+                    try {
+                      var ext2 = oldest.gl.getExtension("WEBGL_lose_context");
+                      if (ext2) ext2.loseContext();
+                    } catch (e) {}
+                    return true;
+                  }
+                }
+                return false;
+              };
+
+              HTMLCanvasElement.prototype.getContext = function (type, attrs) {
+                var isWebGL =
+                  type === "webgl" ||
+                  type === "webgl2" ||
+                  type === "experimental-webgl";
+
+                if (!isWebGL) {
+                  return nativeGetContext.call(this, type, attrs);
+                }
+
+                if (trackedContexts.length >= 10) {
+                  pruneAndFreeOldestContext(this);
+                }
+
+                var ctx = null;
+                try {
+                  ctx = nativeGetContext.call(this, type, attrs);
+                } catch (e) {}
+
+                if (!ctx) {
+                  pruneAndFreeOldestContext(this);
+                  var fallbackAttrs = Object.assign({}, attrs || {}, {
+                    failIfMajorPerformanceCaveat: false,
+                    powerPreference: "default"
+                  });
+                  try {
+                    ctx = nativeGetContext.call(this, type, fallbackAttrs);
+                  } catch (e) {}
+
+                  if (!ctx && type === "webgl2") {
+                    try {
+                      ctx =
+                        nativeGetContext.call(this, "webgl", fallbackAttrs) ||
+                        nativeGetContext.call(this, "experimental-webgl", fallbackAttrs);
+                    } catch (e) {}
+                  } else if (!ctx && type === "webgl") {
+                    try {
+                      ctx = nativeGetContext.call(this, "experimental-webgl", fallbackAttrs);
+                    } catch (e) {}
+                  }
+                }
+
+                if (ctx) {
+                  var alreadyTracked = false;
+                  for (var k = 0; k < trackedContexts.length; k++) {
+                    if (trackedContexts[k].canvas === this) {
+                      alreadyTracked = true;
+                      break;
+                    }
+                  }
+                  if (!alreadyTracked) {
+                    trackedContexts.push({ canvas: this, gl: ctx });
+                  }
+                }
+
+                return ctx;
+              };
+            }
+          }
+        } catch (e) {}
       })();
     </script>
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />

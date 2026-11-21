@@ -159,9 +159,14 @@ async function createOrGetHandsInstance(initialOptions?: SharedHandsOptions): Pr
   }
 }
 
-export function prewarmSharedHands(options?: SharedHandsOptions): Promise<any> {
-  return createOrGetHandsInstance(options).catch(() => null);
+export function prewarmSharedHands(_options?: SharedHandsOptions): Promise<any> {
+  // Only pre-load the script tag on mount; defer WebGL context & WASM allocation until camera is actually acquired
+  return ensureHandsScriptLoaded().catch(() => null);
 }
+
+// Circuit-breaker state to avoid 60fps WebGL re-creation loops on devices with restricted WebGL
+let webglCircuitBrokenUntil = 0;
+let rebuildAttemptsThisSession = 0;
 
 /**
  * Acquire exclusive ownership of the shared MediaPipe Hands tracker for a game view.
@@ -173,6 +178,11 @@ export async function acquireSharedHands(
 ): Promise<{ sessionToken: number; hands: any }> {
   const sessionToken = ++activeSessionToken;
   activeResultsListener = onResults;
+  webglCircuitBrokenUntil = 0;
+  rebuildAttemptsThisSession = 0;
+  if (typeof window !== 'undefined') {
+    (window as any).__mpWebGLContextUnavailable = false;
+  }
 
   const hands = await createOrGetHandsInstance(options);
 
@@ -266,7 +276,7 @@ function getCanvasImageFromVideo(videoEl: HTMLVideoElement): HTMLCanvasElement |
 /**
  * Send one video frame to the shared MediaPipe Hands singleton safely.
  * Serializes frames, skips 0x0/unready video frames, falls back to 2D canvas upload on WebGL errors,
- * and self-heals by rebuilding with the lite model if WASM throws repeated errors.
+ * and circuit-breaks cleanly if the device cannot allocate a WebGL context.
  */
 export async function sendHandsFrameSafe(
   videoEl: HTMLVideoElement | null,
@@ -275,6 +285,7 @@ export async function sendHandsFrameSafe(
 ): Promise<boolean> {
   if (sessionToken !== activeSessionToken) return false;
   if (!sharedHandsInstance || isSendingFrame) return false;
+  if (Date.now() < webglCircuitBrokenUntil) return false;
   if (
     !videoEl ||
     videoEl.readyState < 2 ||
@@ -283,6 +294,12 @@ export async function sendHandsFrameSafe(
     videoEl.paused ||
     videoEl.ended
   ) {
+    return false;
+  }
+
+  const win = typeof window !== 'undefined' ? (window as any) : null;
+  if (win?.__mpWebGLContextUnavailable) {
+    webglCircuitBrokenUntil = Date.now() + 10000;
     return false;
   }
 
@@ -295,17 +312,34 @@ export async function sendHandsFrameSafe(
     }
 
     await sharedHandsInstance.send({ image: imageSource });
+
+    if (win?.__mpWebGLContextUnavailable) {
+      webglCircuitBrokenUntil = Date.now() + 10000;
+      return false;
+    }
+
     consecutiveSendErrors = 0;
     return true;
-  } catch (err) {
+  } catch (err: any) {
     consecutiveSendErrors++;
+    const errText = String(err?.message || err || '');
+    const isWebGLContextError =
+      Boolean(win?.__mpWebGLContextUnavailable) ||
+      errText.includes('WebGL') ||
+      errText.includes('canvas context') ||
+      errText.includes('passing video frame');
 
-    // First failure: switch to 2D offscreen canvas upload to bypass browser WebGL HTMLVideoElement quirks
-    if (!useCanvasUploadFallback && consecutiveSendErrors >= 1) {
+    if (isWebGLContextError) {
+      webglCircuitBrokenUntil = Date.now() + 10000;
+      return false;
+    }
+
+    // First non-WebGL failure: switch to 2D offscreen canvas upload to bypass browser HTMLVideoElement texture quirks
+    if (!useCanvasUploadFallback && consecutiveSendErrors === 1) {
       useCanvasUploadFallback = true;
       try {
         const canvasImg = getCanvasImageFromVideo(videoEl);
-        if (canvasImg && sharedHandsInstance && sessionToken === activeSessionToken) {
+        if (canvasImg && sharedHandsInstance && sessionToken === activeSessionToken && !win?.__mpWebGLContextUnavailable) {
           await sharedHandsInstance.send({ image: canvasImg });
           consecutiveSendErrors = 0;
           return true;
@@ -315,8 +349,9 @@ export async function sendHandsFrameSafe(
       }
     }
 
-    // Repeated failures: rebuild MediaPipe Hands with ultra-compatible lite model (modelComplexity: 0)
-    if (consecutiveSendErrors >= 4) {
+    // At most 1 rebuild per session with lite model (modelComplexity: 0)
+    if (consecutiveSendErrors >= 4 && rebuildAttemptsThisSession < 1 && !win?.__mpWebGLContextUnavailable) {
+      rebuildAttemptsThisSession++;
       console.warn('Recovering MediaPipe Hands after frame errors:', err);
       const broken = sharedHandsInstance;
       sharedHandsInstance = null;
@@ -337,8 +372,10 @@ export async function sendHandsFrameSafe(
           });
         }
       } catch {
-        // Will retry cleanly on next acquisition
+        webglCircuitBrokenUntil = Date.now() + 10000;
       }
+    } else if (consecutiveSendErrors >= 4) {
+      webglCircuitBrokenUntil = Date.now() + 10000;
     }
     return false;
   } finally {

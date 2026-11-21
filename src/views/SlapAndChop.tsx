@@ -14,6 +14,7 @@ import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput, convertQue
 import { OptionContentMode, parseOptionContent, formatOptionContent, getInstantCartoonPng } from "../utils/mediaAndPresets";
 import { UnifiedGameSetup } from "../components/UnifiedGameSetup";
 import { persistUserGameToCloudAndCache } from "../utils/platformCache";
+import { acquireSharedHands, releaseSharedHands, sendHandsFrameSafe } from "../utils/mediapipeHandsManager";
 
 const slapChopImgCache: Record<string, HTMLImageElement> = {};
 function getCachedSlapChopImage(url: string): HTMLImageElement | null {
@@ -2642,41 +2643,23 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         setCameraError(null);
       }
 
-      // 2. Initialize or update MediaPipe Hands with modelComplexity: 1 (accurate 21-point model with minimal ghosting)
-      const ensureHandsInitialized = () => {
-        if (!handsRef.current && win.Hands) {
-          try {
-            const hands = new win.Hands({
-              locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-            });
-            hands.setOptions({
-              maxNumHands: targetPlayers === 2 ? 4 : 2,
-              modelComplexity: 1,
-              minDetectionConfidence: 0.52,
-              minTrackingConfidence: 0.44
-            });
-            hands.onResults((res: any) => {
-              if (onHandsResultsRef.current) {
-                onHandsResultsRef.current(res);
-              }
-            });
-            handsRef.current = hands;
-          } catch (handsErr) {
-            console.warn("MediaPipe Hands init warning:", handsErr);
-          }
-        } else if (handsRef.current) {
-          try {
-            handsRef.current.setOptions({
-              maxNumHands: (engineRef.current.numPlayers || targetPlayers) === 2 ? 4 : 2,
-              modelComplexity: 1,
-              minDetectionConfidence: 0.52,
-              minTrackingConfidence: 0.44
-            });
-          } catch (e) {}
-        }
+      // 2. Acquire shared MediaPipe Hands singleton (prevents duplicate WebGL contexts and WASM collisions)
+      const slapHandsOptions = {
+        maxNumHands: targetPlayers === 2 ? 4 : 2,
+        modelComplexity: 1 as const,
+        minDetectionConfidence: 0.52,
+        minTrackingConfidence: 0.44
       };
-
-      ensureHandsInitialized();
+      const acquired = await acquireSharedHands(slapHandsOptions, (res: any) => {
+        if (onHandsResultsRef.current) {
+          onHandsResultsRef.current(res);
+        }
+      }).catch((handsErr) => {
+        console.warn("MediaPipe Hands init warning:", handsErr);
+        return null;
+      });
+      const handsSessionToken = acquired?.sessionToken || 0;
+      handsRef.current = acquired?.hands || null;
 
       // 3. Resilient 60fps Hand Tracking Loop with 900ms Watchdog so WASM can never stall hand detection
       cameraLoopActiveRef.current = true;
@@ -2696,16 +2679,18 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
         const curVideoTime = videoRef.current.currentTime;
         if (
           videoRef.current.readyState >= 2 &&
+          videoRef.current.videoWidth > 0 &&
+          videoRef.current.videoHeight > 0 &&
           !cameraProcessingRef.current &&
+          !(window as any).__mpWebGLContextUnavailable &&
           curVideoTime !== lastVideoTime
         ) {
           cameraProcessingRef.current = true;
           cameraLastSendMsRef.current = nowMs;
           lastVideoTime = curVideoTime;
           try {
-            ensureHandsInitialized();
-            if (handsRef.current) {
-              await handsRef.current.send({ image: videoRef.current });
+            if (handsSessionToken) {
+              await sendHandsFrameSafe(videoRef.current, handsSessionToken, slapHandsOptions);
             }
           } catch (e) {
             // Ignore dropped frame
