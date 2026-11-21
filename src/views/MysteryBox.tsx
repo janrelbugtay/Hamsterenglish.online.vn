@@ -359,7 +359,7 @@ export function MysteryBox({
         ? initialGame.customQuestions
         : (initialGame.questions && initialGame.questions.length > 0 ? initialGame.questions : [BLANK_MYSTERY_QUESTION]);
 
-      const sanitized = raw.slice(0, 30).map((q: any, i: number) => ({
+      const sanitized = raw.map((q: any, i: number) => ({
         id: q.id || (i + 1),
         text: q.text || q.question || "",
         options: q.options && q.options.length >= 2 ? q.options : ["", "", "", ""],
@@ -392,7 +392,7 @@ export function MysteryBox({
         ? initialGame.customQuestions
         : (initialGame.questions && initialGame.questions.length > 0 ? initialGame.questions : [BLANK_MYSTERY_QUESTION]);
 
-      const sanitized = raw.slice(0, 30).map((q: any, i: number) => ({
+      const sanitized = raw.map((q: any, i: number) => ({
         id: q.id || (i + 1),
         text: q.text || q.question || "",
         options: q.options && q.options.length >= 2 ? q.options : ["", "", "", ""],
@@ -432,7 +432,7 @@ export function MysteryBox({
     if (savingQuizRef.current) return;
     savingQuizRef.current = true;
     try {
-      const sanitizedQuestions = quiz.questions.slice(0, 30);
+      const sanitizedQuestions = quiz.questions;
       const isPublicBool = Boolean(quiz.isPublic);
       const now = new Date().toISOString();
 
@@ -2736,7 +2736,7 @@ function QuizEditor({
   const [localFolders, setLocalFolders] = useState<{ id: string; name: string }[]>(folders || []);
   const [contentMode, setContentMode] = useState<OptionContentMode>("words");
   const [autoRecommendPhoto, setAutoRecommendPhoto] = useState<boolean>(false);
-  const [questions, setQuestions] = useState<Question[]>(() => (quiz.questions && quiz.questions.length > 0 ? quiz.questions.slice(0, 30) : [{ id: Date.now(), text: "", options: ["", "", "", ""], answerIndex: 0, optionImages: [null, null, null, null] }]));
+  const [questions, setQuestions] = useState<Question[]>(() => (quiz.questions && quiz.questions.length > 0 ? quiz.questions : [{ id: Date.now(), text: "", options: ["", "", "", ""], answerIndex: 0, optionImages: [null, null, null, null] }]));
   const [errorMsg, setErrorMsg] = useState("");
   const [activeGiphyInput, setActiveGiphyInput] = useState<{ qId: number | string, optIndex: number | 'question', initialQuery?: string } | null>(null);
 
@@ -2780,7 +2780,7 @@ function QuizEditor({
       return;
     }
 
-    const newItems: Question[] = parsed.slice(0, 30).map((item, i) => ({
+    const newItems: Question[] = parsed.map((item, i) => ({
       id: Date.now() + i + Math.random(),
       text: item.text || "",
       options: item.options || ["", "", "", ""],
@@ -2789,17 +2789,17 @@ function QuizEditor({
     }));
 
     if (action === 'replace') {
-      setQuestions(newItems.slice(0, 30));
+      setQuestions(newItems);
     } else {
       setQuestions(prev => {
         const isOnlyInitialBlank = prev.length === 1 && !prev[0].text.trim() && prev[0].options.every(o => !o.trim());
         const base = isOnlyInitialBlank ? [] : prev;
-        const combined = [...base, ...newItems].slice(0, 30);
+        const combined = [...base, ...newItems];
         return combined;
       });
     }
 
-    setToastMsg(`✨ Added ${parsed.length} questions (capped at 30 max)!`);
+    setToastMsg(`✨ Added ${parsed.length} questions!`);
     setTimeout(() => setToastMsg(""), 3500);
     setShowBulkPasteModal(false);
     setBulkText("");
@@ -2832,20 +2832,15 @@ function QuizEditor({
         } else {
           updated.splice(index + 1, 0, ...newItems);
         }
-        return updated.slice(0, 30);
+        return updated;
       });
 
-      setToastMsg(`✨ Automatically divided into ${parsedItems.length} questions! (Limit: 30)`);
+      setToastMsg(`✨ Automatically divided into ${parsedItems.length} questions!`);
       setTimeout(() => setToastMsg(""), 3500);
     }
   };
 
   const addQuestion = () => {
-    if (questions.length >= 30) {
-      setErrorMsg("Maximum limit of 30 questions reached!");
-      setTimeout(() => setErrorMsg(""), 3000);
-      return;
-    }
     setQuestions([...questions, { id: Date.now() + Math.random(), text: '', options: ['', '', '', ''], answerIndex: 0, optionImages: [null, null, null, null] }]);
   };
 
@@ -2895,11 +2890,6 @@ function QuizEditor({
   };
 
   const duplicateQuestion = (index: number) => {
-    if (questions.length >= 30) {
-      setErrorMsg("Maximum limit of 30 questions reached!");
-      setTimeout(() => setErrorMsg(""), 3000);
-      return;
-    }
     setQuestions(prev => {
       const newQuestions = [...prev];
       const qToCopy = prev[index];
@@ -2909,7 +2899,7 @@ function QuizEditor({
         options: [...qToCopy.options]
       };
       newQuestions.splice(index + 1, 0, duplicatedQ);
-      return newQuestions.slice(0, 30);
+      return newQuestions;
     });
   };
 
@@ -2917,16 +2907,11 @@ function QuizEditor({
     if (e.key === 'Enter') {
       e.preventDefault();
       if (index === questions.length - 1) {
-        if (questions.length < 30) {
-          addQuestion();
-          setTimeout(() => {
-            const nextInput = document.getElementById(`question-input-${index + 1}`);
-            nextInput?.focus();
-          }, 50);
-        } else {
-          setErrorMsg("Maximum limit of 30 questions reached!");
-          setTimeout(() => setErrorMsg(""), 3000);
-        }
+        addQuestion();
+        setTimeout(() => {
+          const nextInput = document.getElementById(`question-input-${index + 1}`);
+          nextInput?.focus();
+        }, 50);
       } else {
         const nextInput = document.getElementById(`question-input-${index + 1}`);
         nextInput?.focus();
@@ -2945,7 +2930,7 @@ function QuizEditor({
   };
 
   const confirmSave = (isPublic: boolean) => {
-    const validQuestions = questions.filter(q => q.text.trim()).slice(0, 30);
+    const validQuestions = questions.filter(q => q.text.trim());
     onSave({
       ...quiz,
       title: topic || "Mystery Box",
@@ -3026,7 +3011,7 @@ function QuizEditor({
             {/* Action Bar */}
             <div className="bg-blue-500/10 dark:bg-blue-950/30 border border-blue-500/20 rounded-2xl px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <span className="font-bold text-sm text-blue-900 dark:text-blue-200 uppercase tracking-wider">
-                QUESTIONS ({questions.length} / 30)
+                QUESTIONS ({questions.length})
               </span>
               <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
                 <button
@@ -3057,8 +3042,7 @@ function QuizEditor({
                 <button 
                   onClick={() => duplicateQuestion(index)}
                   title="Duplicate Question"
-                  disabled={questions.length >= 30}
-                  className="absolute right-6 -top-3 w-8 h-8 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500 hover:text-white border-2 border-white dark:border-slate-800 cursor-pointer z-10 disabled:opacity-30"
+                  className="absolute right-6 -top-3 w-8 h-8 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500 hover:text-white border-2 border-white dark:border-slate-800 cursor-pointer z-10"
                 >
                   <Copy size={14} />
                 </button>
@@ -3114,10 +3098,9 @@ function QuizEditor({
 
             <button 
               onClick={addQuestion}
-              disabled={questions.length >= 30}
-              className="w-full py-4 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl text-slate-500 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full py-4 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl text-slate-500 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors flex items-center justify-center gap-2 cursor-pointer"
             >
-              <Plus size={20} /> {questions.length >= 30 ? 'Maximum 30 Questions Reached' : 'Add Another Question'}
+              <Plus size={20} /> Add Another Question
             </button>
           </div>
         </div>
@@ -3194,7 +3177,7 @@ function QuizEditor({
                     </h3>
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Paste multiple questions, numbered lists with options & answer (e.g. Answer: B), or tabular TSV data. (Max 30)
+                    Paste multiple questions, numbered lists with options & answer (e.g. Answer: B), or tabular TSV data.
                   </p>
                 </div>
               </div>
@@ -3391,7 +3374,7 @@ function parsePastedQuiz(rawText: string): Partial<Question>[] {
           }
         }
       });
-      return items.slice(0, 30);
+      return items;
     }
   }
 
@@ -3543,5 +3526,5 @@ function parsePastedQuiz(rawText: string): Partial<Question>[] {
     }
   }
 
-  return items.slice(0, 30);
+  return items;
 }

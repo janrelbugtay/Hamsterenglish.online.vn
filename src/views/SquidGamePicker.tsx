@@ -5,12 +5,13 @@ import gsap from 'gsap';
 import {
     Users, Play, Check, MousePointerClick, Skull, UserRound, VolumeX,
     Volume2, Volume1, Power, Crown, RotateCcw, Square, Circle, Triangle, Gamepad2, ClipboardList,
-    Maximize, Minimize, Tag, Clock, GraduationCap, X, Sparkles, Plus, Trash2, Shuffle, CheckSquare, Menu, ArrowLeft, Eye, Crosshair, Camera, AlertCircle
+    Maximize, Minimize, Tag, Clock, GraduationCap, X, Sparkles, Plus, Trash2, Shuffle, CheckSquare, Menu, ArrowLeft, Eye, Crosshair, Camera, AlertCircle, Anchor
 } from 'lucide-react';
 import { ViewState } from '../types';
 import { getSavedClasses, DojoClass } from './ClassRecord';
 import { SquidHamsterSprite } from '../components/SquidHamsterSprite';
 import { RedLightCameraMode } from '../components/RedLightCameraMode';
+import { CoconutBoatStage, CoconutBoatStageHandle } from '../components/CoconutBoatStage';
 
 const generateSeed = (str: string) => {
     let hash = 0;
@@ -8126,7 +8127,7 @@ interface SquidGamePickerProps {
 export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) {
     const [view, setView] = useState('home'); 
     const [showMobileDrawer, setShowMobileDrawer] = useState(false);
-    const [activeGame, setActiveGame] = useState<'mingle' | 'tag' | 'redlight'>('mingle');
+    const [activeGame, setActiveGame] = useState<'mingle' | 'tag' | 'redlight' | 'coconut'>('mingle');
     const [students, setStudents] = useState<string[]>(getSavedRoster());
     const [gameState, setGameState] = useState<any>({ phase: 'IDLE', msg: '', eliminatedThisRound: [], isMusicPlaying: false }); 
     const [chosenOnes, setChosenOnes] = useState<string[]>([]);
@@ -8135,6 +8136,9 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
     const [pickCount, setPickCount] = useState(1);
     const [tagTimer, setTagTimer] = useState<number>(15);
     const [redLightDuration, setRedLightDuration] = useState<number>(30);
+    const [coconutDuration, setCoconutDuration] = useState<number>(10);
+    const [coconutCameraMode, setCoconutCameraMode] = useState<'side' | 'dynamic' | 'high'>('side');
+    const coconutStageRef = useRef<CoconutBoatStageHandle | null>(null);
     const [contestantCount, setContestantCount] = useState<number>(() => Math.min(20, Math.max(5, getSavedRoster().length)));
     
     // All 3 games (Mingle, Tag, Red Light) use picker mode
@@ -8245,9 +8249,13 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
             isFirstMountRef.current = false;
             return;
         }
-        if(view === 'home' && threeManagerRef.current && gameState.phase === 'IDLE') {
-            threeManagerRef.current.setGameType(activeGame);
-            threeManagerRef.current.spawnPlayers(students);
+        if (view === 'home' && gameState.phase === 'IDLE') {
+            if (activeGame === 'coconut') {
+                coconutStageRef.current?.resetToIdle(students);
+            } else if (threeManagerRef.current) {
+                threeManagerRef.current.setGameType(activeGame);
+                threeManagerRef.current.spawnPlayers(students);
+            }
         }
     }, [students, view, gameState.phase, activeGame]);
     
@@ -8350,7 +8358,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
 
     const startGameWith = async (roster: string[]) => {
         stopAnnounce();
-        const currentMode = (activeGame === 'mingle' || activeGame === 'tag') ? 'picker' : gameMode;
+        const currentMode = (activeGame === 'mingle' || activeGame === 'tag' || activeGame === 'coconut') ? 'picker' : gameMode;
         if (roster.length < 1) {
             setRosterNotice('Please add at least 1 player to the roster first.');
             setView('home');
@@ -8364,6 +8372,21 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
         setView('game');
         setChosenOnes([]);
         setTotalEliminated(0);
+
+        if (activeGame === 'coconut') {
+            const targetsToPick = selectUnpredictableTargets(roster, effectivePickCount);
+            setGameState({
+                phase: 'SLOW_SPIN',
+                msg: '🚣 NICE AND EASY… EVERYONE IS SAFE! 🐹',
+                eliminatedThisRound: [],
+                isMusicPlaying: true,
+                activeCount: roster.length,
+                chaseSecondsLeft: coconutDuration
+            });
+            coconutStageRef.current?.startRound(roster, targetsToPick, coconutDuration);
+            return;
+        }
+
         setGameState({ phase: 'SETUP', msg: activeGame === 'redlight' ? '' : 'GET READY', eliminatedThisRound: [], isMusicPlaying: false });
         
         const tm = threeManagerRef.current;
@@ -8442,7 +8465,9 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
             setView('home');
             setChosenOnes([]);
             setTotalEliminated(0);
-            if (threeManagerRef.current) {
+            if (activeGame === 'coconut') {
+                coconutStageRef.current?.resetToIdle(remainingStudents);
+            } else if (threeManagerRef.current) {
                 threeManagerRef.current.lastCaughtPlayer = null;
                 threeManagerRef.current.tagRoundCount = 0;
                 threeManagerRef.current.setGameType(activeGame);
@@ -8462,7 +8487,9 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
         setView('home');
         setChosenOnes([]);
         setTotalEliminated(0);
-        if (threeManagerRef.current) {
+        if (activeGame === 'coconut') {
+            coconutStageRef.current?.resetToIdle(students);
+        } else if (threeManagerRef.current) {
             threeManagerRef.current.cancelChase();
             threeManagerRef.current.lastCaughtPlayer = null;
             threeManagerRef.current.tagRoundCount = 0;
@@ -8482,13 +8509,15 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                         <Square className="w-6 h-6 sm:w-9 sm:h-9 animate-pulse" style={{animationDelay: '0.6s'}} />
                     </div>
                     <h1 className="text-2xl sm:text-4xl text-white font-bold mb-1 tracking-wide text-transparent bg-clip-text bg-gradient-to-b from-white to-slate-400 relative z-10" style={{fontFamily: "'Fredoka', sans-serif"}}>
-                        {activeGame === 'tag' ? 'TAG' : activeGame === 'redlight' ? 'RED LIGHT' : 'MINGLE'}{' '}
-                        <span className={activeGame === 'redlight' ? 'text-emerald-400' : 'text-rose-500'}>
-                            {activeGame === 'redlight' ? 'GREEN LIGHT' : 'GAME'}
+                        {activeGame === 'coconut' ? 'COCONUT' : activeGame === 'tag' ? 'TAG' : activeGame === 'redlight' ? 'RED LIGHT' : 'MINGLE'}{' '}
+                        <span className={activeGame === 'redlight' || activeGame === 'coconut' ? 'text-emerald-400' : 'text-rose-500'}>
+                            {activeGame === 'coconut' ? 'BOAT' : activeGame === 'redlight' ? 'GREEN LIGHT' : 'GAME'}
                         </span>
                     </h1>
                     <p className="text-xs sm:text-sm text-emerald-400 mb-3 sm:mb-4 font-medium tracking-wider uppercase relative z-10">
-                        {activeGame === 'tag' 
+                        {activeGame === 'coconut'
+                            ? 'Coconut Boat • Will you stay aboard the basket boat?'
+                            : activeGame === 'tag' 
                             ? 'Tag • Will your number be called?' 
                             : activeGame === 'redlight'
                             ? 'Red Light, Green Light • Will you survive the doll?'
@@ -8557,6 +8586,36 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                 <span>2m</span>
                             </div>
                         </div>
+                    ) : activeGame === 'coconut' ? (
+                        <div className="flex flex-col gap-2 bg-slate-900 p-3 sm:p-3.5 rounded-xl border border-slate-700/50">
+                            <div className="flex justify-between items-center">
+                                <span className="text-slate-300 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
+                                    <Clock className="w-3.5 h-3.5 text-amber-400" />
+                                    Match Duration:
+                                </span>
+                                <span className="text-amber-400 font-bold text-sm sm:text-base bg-slate-800 px-2.5 py-0.5 rounded-lg border border-slate-700 shadow-inner">
+                                    {coconutDuration}s
+                                </span>
+                            </div>
+                            <input
+                                type="range"
+                                min="5"
+                                max="30"
+                                step="1"
+                                value={coconutDuration}
+                                onChange={(e) => {
+                                    const rawVal = parseInt(e.target.value, 10);
+                                    setCoconutDuration(Number.isNaN(rawVal) ? 10 : Math.max(5, Math.min(30, rawVal)));
+                                }}
+                                className="w-full mt-1.5 accent-amber-500 cursor-pointer"
+                            />
+                            <div className="flex justify-between text-[10px] text-slate-400 font-bold px-1 mt-0.5">
+                                <span>5s</span>
+                                <span>10s</span>
+                                <span>20s</span>
+                                <span>30s</span>
+                            </div>
+                        </div>
                     ) : activeGame === 'tag' ? (
                         <div className="flex flex-col gap-2 bg-slate-900 p-3 rounded-xl border border-slate-700/50">
                             <div className="flex justify-between items-center">
@@ -8612,8 +8671,11 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                         <div className="text-center">
                             <div className="text-emerald-400 text-[10px] sm:text-xs font-bold tracking-widest mb-0.5 sm:mb-1 uppercase">Players Alive</div>
                             <div className="text-2xl sm:text-4xl font-bold text-white leading-none" style={{fontFamily: "'Fredoka', sans-serif"}}>
-                                {gameState.phase === 'WINNER' ? (gameMode === 'survival' ? 1 : (threeManagerRef.current?.currentRoundData?.activePlayers.length || students.length) - pickCount) : 
-                                 threeManagerRef.current?.currentRoundData?.activePlayers.length || students.length}
+                                {activeGame === 'coconut'
+                                    ? (gameState.phase === 'WINNER' ? Math.max(0, (gameState.activeCount || students.length) - chosenOnes.length) : (gameState.activeCount || students.length))
+                                    : gameState.phase === 'WINNER'
+                                    ? (gameMode === 'survival' ? 1 : (threeManagerRef.current?.currentRoundData?.activePlayers.length || students.length) - pickCount)
+                                    : (threeManagerRef.current?.currentRoundData?.activePlayers.length || students.length)}
                             </div>
                         </div>
                     </div>
@@ -8639,12 +8701,12 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                             </div>
                         </div>
                     )}
-                    {(activeGame === 'tag' || activeGame === 'redlight') && gameState.chaseSecondsLeft !== undefined && (
+                    {(activeGame === 'tag' || activeGame === 'redlight' || activeGame === 'coconut') && gameState.chaseSecondsLeft !== undefined && (
                         <div className="bg-slate-900/90 backdrop-blur text-white px-3 sm:px-6 py-1.5 sm:py-3 rounded-xl sm:rounded-2xl border-2 border-amber-500/70 shadow-[0_0_25px_rgba(245,158,11,0.35)] flex items-center gap-2 sm:gap-4">
                             <div className="text-center">
                                 <div className="text-amber-400 text-[10px] sm:text-xs font-bold tracking-widest mb-0.5 sm:mb-1 uppercase flex items-center justify-center gap-1">
                                     <Clock className={`w-3 h-3 sm:w-3.5 sm:h-3.5 ${gameState.chaseSecondsLeft <= 5 ? 'text-rose-500 animate-pulse' : 'text-amber-400'}`} />
-                                    {activeGame === 'redlight' ? 'Match Timer' : 'Chase Timer'}
+                                    {activeGame === 'redlight' || activeGame === 'coconut' ? 'Match Timer' : 'Chase Timer'}
                                 </div>
                                 <div className={`text-2xl sm:text-4xl font-bold leading-none ${gameState.chaseSecondsLeft <= 5 ? 'text-rose-500 animate-pulse' : 'text-amber-300'}`} style={{fontFamily: "'Fredoka', sans-serif"}}>
                                     {gameState.chaseSecondsLeft >= 60 
@@ -8653,6 +8715,24 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                 </div>
                             </div>
                         </div>
+                    )}
+                    {activeGame === 'coconut' && (
+                        <button
+                            onClick={() => {
+                                const next = coconutStageRef.current?.cycleCameraMode();
+                                if (next) setCoconutCameraMode(next);
+                            }}
+                            className="bg-slate-900/90 hover:bg-slate-800 backdrop-blur text-white px-3 sm:px-4 py-1.5 sm:py-3 rounded-xl sm:rounded-2xl border-2 border-emerald-500/70 shadow-lg flex items-center gap-2 cursor-pointer transition"
+                            title="Switch Camera Perspective"
+                        >
+                            <Camera className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" />
+                            <div className="text-left">
+                                <div className="text-emerald-400 text-[9px] sm:text-[10px] font-bold tracking-widest uppercase">Camera Angle</div>
+                                <div className="text-xs sm:text-sm font-bold text-white uppercase" style={{fontFamily: "'Fredoka', sans-serif"}}>
+                                    {coconutCameraMode === 'side' ? 'Side Tilt' : coconutCameraMode === 'dynamic' ? 'Dynamic Cam' : 'High Angle'}
+                                </div>
+                            </div>
+                        </button>
                     )}
                     {activeGame === 'redlight' && (gameState.phase === 'GREEN_LIGHT' || gameState.phase === 'TURNING' || gameState.phase === 'RED_LIGHT') && (
                         <div className={`bg-slate-900/95 text-white px-3 sm:px-5 py-1.5 sm:py-3 rounded-xl sm:rounded-2xl border-2 flex items-center gap-2.5 transition-all duration-300 ${
@@ -8936,8 +9016,9 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                         }`}>
                             {chosenOnes.map((name, i) => {
                                 const playerNum = getPlayerNumber(name);
-                                const playerAvatar = threeManagerRef.current?.getPlayerAvatar(name, playerNum) || 
-                                                     generateStaticPlayerAvatar(name, playerNum);
+                                const playerAvatar = activeGame === 'coconut'
+                                    ? (coconutStageRef.current?.getHamsterAvatar(name) || generateStaticPlayerAvatar(name, playerNum))
+                                    : (threeManagerRef.current?.getPlayerAvatar(name, playerNum) || generateStaticPlayerAvatar(name, playerNum));
                                 return (
                                     <div key={i} className={`flex items-center gap-3.5 bg-slate-950/85 rounded-2xl border-2 border-slate-700/80 shadow-lg backdrop-blur-md transition-all hover:border-rose-500/60 ${
                                         chosenOnes.length <= 2 ? 'p-5 sm:p-6' : chosenOnes.length <= 6 ? 'p-3.5 sm:p-4' : 'p-2.5 sm:p-3'
@@ -8996,7 +9077,36 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
             }`}
         >
             {/* Absolute positioning for the Three.js canvas so it stays under the UI layer and takes full space */}
-            <div id="canvas-container" className="absolute inset-0 z-10" />
+            <div id="canvas-container" className={`absolute inset-0 z-10 ${activeGame === 'coconut' ? 'hidden' : ''}`} />
+            {activeGame === 'coconut' && (
+                <div className="absolute inset-0 z-10">
+                    <CoconutBoatStage
+                        ref={coconutStageRef}
+                        students={students}
+                        isMuted={muteUI || volume === 0}
+                        volume={volume}
+                        onStateChange={(st) => {
+                            setGameState((prev: any) => ({
+                                ...prev,
+                                phase: st.phase,
+                                msg: st.msg,
+                                activeCount: st.activeCount,
+                                chaseSecondsLeft: st.chaseSecondsLeft
+                            }));
+                        }}
+                        onRoundComplete={(eliminatedNames) => {
+                            setChosenOnes(eliminatedNames);
+                            setGameState((prev: any) => ({
+                                ...prev,
+                                phase: 'WINNER',
+                                msg: '',
+                                eliminatedThisRound: eliminatedNames,
+                                isMusicPlaying: false
+                            }));
+                        }}
+                    />
+                </div>
+            )}
 
             {rosterNotice && (
                 <div
@@ -9052,14 +9162,14 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                         <div className="hidden md:flex w-72 bg-slate-900/95 backdrop-blur border-r border-slate-700 flex-col pointer-events-auto shadow-2xl z-30">
                             <div className="p-8 border-b border-slate-800 flex items-center gap-4">
                                 <div className="w-12 h-12 bg-rose-600 rounded-xl flex items-center justify-center text-2xl shadow-[0_0_15px_rgba(244,63,94,0.5)]">
-                                    {activeGame === 'tag' ? <Tag className="text-white w-6 h-6" /> : activeGame === 'redlight' ? <Eye className="text-white w-6 h-6" /> : <Square className="text-white w-6 h-6" />}
+                                    {activeGame === 'coconut' ? <Anchor className="text-white w-6 h-6" /> : activeGame === 'tag' ? <Tag className="text-white w-6 h-6" /> : activeGame === 'redlight' ? <Eye className="text-white w-6 h-6" /> : <Square className="text-white w-6 h-6" />}
                                 </div>
                                 <div>
                                     <h2 className="font-bold text-2xl leading-none text-white tracking-wide" style={{fontFamily: "'Fredoka', sans-serif"}}>
-                                        {activeGame === 'tag' ? 'TAG' : activeGame === 'redlight' ? 'RED LIGHT' : 'MINGLE'}<br/><span className={activeGame === 'redlight' ? 'text-emerald-400' : 'text-rose-500'}>{activeGame === 'redlight' ? 'GREEN LIGHT' : 'GAME'}</span>
+                                        {activeGame === 'coconut' ? 'COCONUT' : activeGame === 'tag' ? 'TAG' : activeGame === 'redlight' ? 'RED LIGHT' : 'MINGLE'}<br/><span className={activeGame === 'redlight' || activeGame === 'coconut' ? 'text-emerald-400' : 'text-rose-500'}>{activeGame === 'coconut' ? 'BOAT' : activeGame === 'redlight' ? 'GREEN LIGHT' : 'GAME'}</span>
                                     </h2>
                                     <span className="text-[10px] text-emerald-400 font-mono tracking-wider uppercase block mt-1">
-                                        {activeGame === 'tag' ? 'Tag Active' : activeGame === 'redlight' ? 'Red Light Active' : 'Mingle Active'}
+                                        {activeGame === 'coconut' ? 'Coconut Boat Active' : activeGame === 'tag' ? 'Tag Active' : activeGame === 'redlight' ? 'Red Light Active' : 'Mingle Active'}
                                     </span>
                                 </div>
                             </div>
@@ -9123,12 +9233,27 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                     <Eye className="w-6 h-6 text-center text-rose-400" /> 
                                     <span className="font-semibold text-white">Red Light, Green Light</span>
                                 </button>
+
+                                <button 
+                                    onClick={() => {
+                                        setActiveGame('coconut');
+                                        setGameMode('picker');
+                                        setView('home');
+                                    }} 
+                                    className={`flex items-center gap-4 p-4 rounded-xl transition font-medium ${view === 'home' && activeGame === 'coconut' ? 'bg-rose-600/20 text-rose-400 border border-rose-500/30' : 'hover:bg-slate-800 text-slate-400 hover:text-white'}`}
+                                    title="Coconut Boat"
+                                >
+                                    <Anchor className="w-6 h-6 text-center text-rose-400" /> 
+                                    <span className="font-semibold text-white">Coconut Boat</span>
+                                </button>
                             </nav>
                             
                             <div className="p-6 border-t border-slate-800 text-xs text-slate-600 text-center uppercase tracking-widest font-bold flex flex-col gap-1">
                                 <span>Version 3.0</span>
-                                <span className={activeGame === 'mingle' || activeGame === 'tag' || gameMode === 'picker' ? 'text-rose-500' : 'text-emerald-500'}>
-                                    {activeGame === 'tag' 
+                                <span className={activeGame === 'mingle' || activeGame === 'tag' || activeGame === 'coconut' || gameMode === 'picker' ? 'text-rose-500' : 'text-emerald-500'}>
+                                    {activeGame === 'coconut'
+                                        ? 'Coconut Boat • Picker Active'
+                                        : activeGame === 'tag' 
                                         ? 'Tag • Picker Active' 
                                         : activeGame === 'redlight'
                                         ? `Red Light • ${gameMode === 'picker' ? 'Picker Active' : 'Camera Mode Active'}`
@@ -9144,11 +9269,11 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                     <div className="flex items-center justify-between border-b pb-4 border-slate-800">
                                         <div className="flex items-center gap-3">
                                             <div className="w-10 h-10 bg-rose-600 rounded-xl flex items-center justify-center text-xl shadow-[0_0_15px_rgba(244,63,94,0.5)]">
-                                                {activeGame === 'tag' ? <Tag className="text-white w-5 h-5" /> : activeGame === 'redlight' ? <Eye className="text-white w-5 h-5" /> : <Square className="text-white w-5 h-5" />}
+                                                {activeGame === 'coconut' ? <Anchor className="text-white w-5 h-5" /> : activeGame === 'tag' ? <Tag className="text-white w-5 h-5" /> : activeGame === 'redlight' ? <Eye className="text-white w-5 h-5" /> : <Square className="text-white w-5 h-5" />}
                                             </div>
                                             <div>
                                                 <h2 className="font-bold text-lg leading-none text-white tracking-wide" style={{fontFamily: "'Fredoka', sans-serif"}}>
-                                                    {activeGame === 'tag' ? 'TAG' : activeGame === 'redlight' ? 'RED LIGHT' : 'MINGLE'} <span className={activeGame === 'redlight' ? 'text-emerald-400' : 'text-rose-500'}>{activeGame === 'redlight' ? 'GREEN LIGHT' : 'GAME'}</span>
+                                                    {activeGame === 'coconut' ? 'COCONUT' : activeGame === 'tag' ? 'TAG' : activeGame === 'redlight' ? 'RED LIGHT' : 'MINGLE'} <span className={activeGame === 'redlight' || activeGame === 'coconut' ? 'text-emerald-400' : 'text-rose-500'}>{activeGame === 'coconut' ? 'BOAT' : activeGame === 'redlight' ? 'GREEN LIGHT' : 'GAME'}</span>
                                                 </h2>
                                             </div>
                                         </div>
@@ -9210,6 +9335,18 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                         >
                                             <Eye className="w-5 h-5 text-rose-400" /> 
                                             <span className="font-semibold text-white">Red Light, Green Light</span>
+                                        </button>
+                                        <button 
+                                            onClick={() => {
+                                                setActiveGame('coconut');
+                                                setGameMode('picker');
+                                                setView('home');
+                                                setShowMobileDrawer(false);
+                                            }} 
+                                            className={`flex items-center gap-3 p-3.5 rounded-xl transition font-medium ${view === 'home' && activeGame === 'coconut' ? 'bg-rose-600/20 text-rose-400 border border-rose-500/30' : 'hover:bg-slate-800 text-slate-400'}`}
+                                        >
+                                            <Anchor className="w-5 h-5 text-rose-400" /> 
+                                            <span className="font-semibold text-white">Coconut Boat</span>
                                         </button>
                                     </nav>
                                 </div>

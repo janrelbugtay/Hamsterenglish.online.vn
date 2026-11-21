@@ -1,0 +1,2668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🥥 COCONUT CHAOS: THE HAMSTER BOAT</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Quicksand:wght@600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --coconut-dark: #5C3A21;
+            --coconut-mid: #8B5A2B;
+            --coconut-cream: #FFF8E7;
+            --water-light: #72EFDD;
+            --water-deep: #48CAE4;
+        }
+        body {
+            font-family: 'Quicksand', sans-serif;
+            overflow: hidden;
+            user-select: none;
+            background-color: #48CAE4;
+        }
+        h1, h2, h3, .cartoon-font {
+            font-family: 'Fredoka', sans-serif;
+            letter-spacing: 0.02em;
+        }
+        .text-outline {
+            text-shadow: 
+                -2px -2px 0 #4A2C11,  
+                 2px -2px 0 #4A2C11,
+                -2px  2px 0 #4A2C11,
+                 2px  2px 0 #4A2C11,
+                 0px  4px 0 #4A2C11;
+        }
+        .text-outline-sm {
+            text-shadow: 
+                -1.5px -1.5px 0 #4A2C11,  
+                 1.5px -1.5px 0 #4A2C11,
+                -1.5px  1.5px 0 #4A2C11,
+                 1.5px  1.5px 0 #4A2C11,
+                 0px  2.5px 0 #4A2C11;
+        }
+        .btn-cartoon {
+            transition: all 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 6px 0 #4A2C11, 0 10px 15px rgba(0,0,0,0.2);
+            border: 3px solid #4A2C11;
+        }
+        .btn-cartoon:hover:not(:disabled) {
+            transform: translateY(-3px) scale(1.03);
+            box-shadow: 0 9px 0 #4A2C11, 0 14px 20px rgba(0,0,0,0.25);
+        }
+        .btn-cartoon:active:not(:disabled) {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #4A2C11, 0 4px 6px rgba(0,0,0,0.15);
+        }
+        .btn-cartoon:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            transform: translateY(2px);
+            box-shadow: 0 3px 0 #4A2C11;
+        }
+        .wood-panel {
+            background: linear-gradient(180deg, #FFFDF7 0%, #FDF0D5 100%);
+            border: 4px solid #5C3A21;
+            box-shadow: 0 8px 0 #4A2C11, 0 14px 28px rgba(0,0,0,0.28), inset 0 2px 0 rgba(255,255,255,0.9);
+        }
+        .coconut-badge {
+            background: linear-gradient(135deg, #9C6644 0%, #5C3A21 100%);
+            border: 3px solid #FFF8E7;
+            box-shadow: 0 5px 0 #3A2210, 0 8px 16px rgba(0,0,0,0.25);
+        }
+        @keyframes floatSlow {
+            0%, 100% { transform: translateY(0px) rotate(-1deg); }
+            50% { transform: translateY(-10px) rotate(1deg); }
+        }
+        .animate-float {
+            animation: floatSlow 3.5s ease-in-out infinite;
+        }
+        @keyframes popIn {
+            0% { transform: scale(0.4); opacity: 0; }
+            70% { transform: scale(1.08); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-pop {
+            animation: popIn 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #F3E5AB;
+            border-radius: 8px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #8B5A2B;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen relative select-none overflow-hidden">
+
+    <!-- MAIN GAME CANVAS -->
+    <canvas id="gameCanvas" class="w-full h-full block"></canvas>
+
+    <!-- TOP HUD BAR -->
+    <div class="fixed top-3 left-3 right-3 flex flex-wrap items-center justify-between gap-2 pointer-events-none z-20">
+        <!-- Game Title & Stats -->
+        <div class="flex flex-wrap items-center gap-2 pointer-events-auto">
+            <button id="btnHome" class="wood-panel px-3.5 py-2 rounded-2xl flex items-center gap-2 hover:bg-amber-100 transition">
+                <span class="text-2xl">🥥</span>
+                <span class="cartoon-font font-bold text-amber-900 text-lg hidden sm:inline">COCONUT CHAOS</span>
+            </button>
+
+            <div class="wood-panel px-3.5 py-1.5 rounded-2xl flex items-center gap-4 text-sm sm:text-base font-bold text-amber-950">
+                <div class="flex items-center gap-1.5" title="Hamsters Aboard">
+                    <span class="text-lg">🐹</span>
+                    <span>Aboard: <strong id="hudAboard" class="text-emerald-600 text-lg">12</strong></span>
+                </div>
+                <div class="h-4 w-0.5 bg-amber-900/20"></div>
+                <div class="flex items-center gap-1.5" title="Hamsters Eliminated">
+                    <span class="text-lg">💦</span>
+                    <span>Out: <strong id="hudEliminated" class="text-rose-500 text-lg">0</strong></span>
+                </div>
+                <div class="h-4 w-0.5 bg-amber-900/20 hidden md:block"></div>
+                <div class="hidden md:flex items-center gap-1.5" title="Current Round">
+                    <span class="text-lg">🔄</span>
+                    <span>Round: <strong id="hudRound" class="text-amber-700 text-lg">1</strong></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Pill -->
+        <div id="hudStatusPill" class="coconut-badge text-amber-50 px-5 py-2 rounded-full cartoon-font text-base sm:text-lg tracking-wide shadow-lg animate-pulse">
+            WAITING TO BOARD! 🥥
+        </div>
+
+        <!-- Right Teacher & Audio Controls -->
+        <div class="flex items-center gap-2 pointer-events-auto">
+            <button id="btnCameraToggle" class="btn-cartoon bg-purple-400 hover:bg-purple-300 text-white cartoon-font px-3.5 py-2 rounded-2xl flex items-center gap-1.5 text-sm sm:text-base" title="Switch Camera Perspective">
+                <span>🎥</span>
+                <span id="cameraBtnText" class="hidden md:inline">SIDE TILT</span>
+            </button>
+            <button id="btnMusicToggle" class="btn-cartoon bg-teal-400 hover:bg-teal-300 text-amber-950 w-11 h-11 rounded-2xl flex items-center justify-center text-xl" title="Toggle Tropical Music">
+                🎵
+            </button>
+            <button id="btnSoundToggle" class="btn-cartoon bg-amber-300 hover:bg-amber-200 text-amber-950 w-11 h-11 rounded-2xl flex items-center justify-center text-xl" title="Toggle Sound Effects">
+                🔊
+            </button>
+            <button id="btnToggleDrawer" class="btn-cartoon bg-pink-400 hover:bg-pink-300 text-white cartoon-font px-4 py-2 rounded-2xl flex items-center gap-2 text-base sm:text-lg">
+                <span>📋</span>
+                <span class="hidden sm:inline">TEACHER PANEL</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- DYNAMIC CENTER BANNERS (Announcements & Chaos Dialogue) -->
+    <div id="centerBannerContainer" class="fixed inset-x-0 top-20 flex flex-col items-center justify-center pointer-events-none z-10 px-4">
+        <div id="phaseBanner" class="hidden transform transition-all duration-300 bg-white/95 border-4 border-amber-900 rounded-3xl px-6 py-3 shadow-xl text-center">
+            <p id="phaseBannerText" class="cartoon-font text-2xl sm:text-4xl text-amber-900 font-bold"></p>
+        </div>
+    </div>
+
+    <!-- BOTTOM ACTION DOCK -->
+    <div class="fixed bottom-4 inset-x-0 flex justify-center items-center gap-3 px-4 pointer-events-none z-20">
+        <div class="wood-panel px-4 py-2.5 rounded-3xl flex flex-wrap items-center justify-center gap-2.5 pointer-events-auto">
+            <button id="btnStartGame" class="btn-cartoon bg-emerald-400 hover:bg-emerald-300 text-amber-950 cartoon-font font-bold px-6 py-2.5 rounded-2xl text-lg sm:text-xl flex items-center gap-2">
+                <span>🚣</span> <span>SPIN THE BOAT!</span>
+            </button>
+            <button id="btnPauseResume" disabled class="btn-cartoon bg-amber-300 hover:bg-amber-200 text-amber-950 cartoon-font font-bold px-4 py-2.5 rounded-2xl text-base sm:text-lg flex items-center gap-1.5">
+                <span>⏸️</span> <span id="pauseBtnText">PAUSE</span>
+            </button>
+            <button id="btnShuffle" class="btn-cartoon bg-sky-300 hover:bg-sky-200 text-amber-950 cartoon-font font-bold px-4 py-2.5 rounded-2xl text-base sm:text-lg flex items-center gap-1.5" title="Shuffle Seat Positions">
+                <span>🔀</span> <span class="hidden sm:inline">SHUFFLE</span>
+            </button>
+            <button id="btnReset" class="btn-cartoon bg-rose-400 hover:bg-rose-300 text-white cartoon-font font-bold px-4 py-2.5 rounded-2xl text-base sm:text-lg flex items-center gap-1.5" title="Reset All Students Back to Boat">
+                <span>🔄</span> <span class="hidden sm:inline">RESET</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- ELIMINATION / WINNER MODAL OVERLAY -->
+    <div id="resultModal" class="fixed inset-0 bg-black/50 backdrop-blur-xs hidden items-center justify-center p-4 z-30">
+        <div class="wood-panel max-w-lg w-full rounded-3xl p-6 sm:p-8 text-center relative animate-pop border-8 border-amber-900">
+            <!-- Top Badge -->
+            <div id="modalBadge" class="inline-block bg-rose-500 text-white cartoon-font text-xl px-5 py-1.5 rounded-full border-4 border-amber-950 -mt-12 shadow-md mb-3">
+                OH NOOOOO! 💦 OUT YOU GO!
+            </div>
+
+            <!-- Portrait Canvas of Selected Hamster -->
+            <div class="w-36 h-36 mx-auto my-2 bg-sky-100 rounded-full border-4 border-amber-900 shadow-inner flex items-center justify-center relative overflow-hidden">
+                <canvas id="portraitCanvas" width="144" height="144" class="w-full h-full"></canvas>
+            </div>
+
+            <h3 id="modalStudentName" class="cartoon-font text-3xl sm:text-5xl text-amber-950 my-2 break-words">
+                BARNABY
+            </h3>
+            <p id="modalSubtext" class="cartoon-font text-xl sm:text-2xl text-rose-600 mb-6">
+                HAS BEEN COCONUT-ED! 🥥
+            </p>
+
+            <!-- Action Buttons -->
+            <div id="modalButtonsElimination" class="flex flex-wrap justify-center gap-4">
+                <button id="btnModalSpinAgain" class="btn-cartoon bg-emerald-400 hover:bg-emerald-300 text-amber-950 cartoon-font text-xl px-6 py-3 rounded-2xl flex items-center gap-2">
+                    <span>SPIN AGAIN! 🥥</span>
+                </button>
+                <button id="btnModalStop" class="btn-cartoon bg-amber-200 hover:bg-amber-100 text-amber-950 cartoon-font text-xl px-6 py-3 rounded-2xl">
+                    STOP GAME
+                </button>
+            </div>
+
+            <div id="modalButtonsChampion" class="hidden flex-wrap justify-center gap-4">
+                <button id="btnModalPlayAgain" class="btn-cartoon bg-amber-400 hover:bg-amber-300 text-amber-950 cartoon-font text-xl px-8 py-3 rounded-2xl flex items-center gap-2">
+                    <span>🎉 PLAY NEW GAME! 🥥</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TEACHER CONTROL PANEL DRAWER -->
+    <div id="teacherDrawer" class="fixed inset-y-0 right-0 w-full max-w-md bg-amber-50 border-l-8 border-amber-900 shadow-2xl transform translate-x-full transition-transform duration-300 ease-in-out z-40 flex flex-col">
+        <!-- Drawer Header -->
+        <div class="bg-amber-800 text-amber-50 p-4 flex items-center justify-between border-b-4 border-amber-950">
+            <div class="flex items-center gap-2">
+                <span class="text-2xl">🎓</span>
+                <h2 class="cartoon-font text-2xl">TEACHER CONTROL PANEL</h2>
+            </div>
+            <button id="btnCloseDrawer" class="bg-rose-500 hover:bg-rose-400 text-white font-bold w-9 h-9 rounded-xl border-2 border-amber-950 flex items-center justify-center text-lg">
+                ✕
+            </button>
+        </div>
+
+        <!-- Drawer Content -->
+        <div class="p-5 overflow-y-auto flex-1 space-y-6">
+            <!-- Student List Section -->
+            <div class="bg-white p-4 rounded-2xl border-3 border-amber-900 shadow-sm">
+                <div class="flex justify-between items-center mb-2">
+                    <label class="cartoon-font text-lg text-amber-950 flex items-center gap-1.5">
+                        <span>🐹</span> <span>STUDENT ROSTER (One per line)</span>
+                    </label>
+                    <span id="drawerCountBadge" class="bg-amber-200 text-amber-900 font-bold px-2.5 py-0.5 rounded-full text-xs">
+                        12 Students
+                    </span>
+                </div>
+                <textarea id="studentTextarea" rows="7" class="w-full p-3 rounded-xl border-2 border-amber-800/40 focus:border-amber-800 focus:outline-none font-semibold text-amber-950 bg-amber-50/40 text-sm leading-relaxed" placeholder="Enter student names, one per line..."></textarea>
+                
+                <!-- Quick Add Input -->
+                <div class="flex gap-2 mt-2.5">
+                    <input id="quickAddInput" type="text" placeholder="Quick add a student..." class="flex-1 px-3 py-2 rounded-xl border-2 border-amber-800/40 text-sm font-semibold focus:outline-none focus:border-amber-800">
+                    <button id="btnQuickAdd" class="btn-cartoon bg-emerald-400 text-amber-950 font-bold px-4 py-1.5 rounded-xl text-sm">
+                        + ADD
+                    </button>
+                </div>
+
+                <div class="flex flex-wrap gap-2 mt-3 pt-3 border-t border-amber-900/10">
+                    <button id="btnApplyRoster" class="btn-cartoon bg-amber-400 hover:bg-amber-300 text-amber-950 cartoon-font text-sm px-4 py-2 rounded-xl flex-1">
+                        💾 UPDATE BOAT ROSTER
+                    </button>
+                    <button id="btnSampleClass" class="btn-cartoon bg-sky-200 hover:bg-sky-100 text-amber-950 cartoon-font text-sm px-3 py-2 rounded-xl" title="Load Sample Class">
+                        ✨ DEMO LIST
+                    </button>
+                </div>
+            </div>
+
+            <!-- Game Settings Section -->
+            <div class="bg-white p-4 rounded-2xl border-3 border-amber-900 shadow-sm space-y-4">
+                <h3 class="cartoon-font text-lg text-amber-950 flex items-center gap-1.5">
+                    <span>⚙️</span> <span>CHAOS SETTINGS</span>
+                </h3>
+
+                <!-- Boat Speed -->
+                <div>
+                    <label class="block text-xs font-bold uppercase text-amber-800 mb-1.5">Captain Paddling Speed</label>
+                    <div class="grid grid-cols-3 gap-2" id="speedSelector">
+                        <button data-speed="slow" class="speed-btn py-2 rounded-xl font-bold text-sm border-2 border-amber-900 bg-amber-100 text-amber-900">🐢 Slow</button>
+                        <button data-speed="normal" class="speed-btn py-2 rounded-xl font-bold text-sm border-2 border-amber-900 bg-amber-400 text-amber-950 shadow-inner">🚣 Normal</button>
+                        <button data-speed="crazy" class="speed-btn py-2 rounded-xl font-bold text-sm border-2 border-amber-900 bg-amber-100 text-amber-900">🌪️ Crazy</button>
+                    </div>
+                </div>
+
+                <!-- Spin Duration -->
+                <div>
+                    <label class="block text-xs font-bold uppercase text-amber-800 mb-1.5">Round Suspense Duration</label>
+                    <div class="grid grid-cols-3 gap-2" id="durationSelector">
+                        <button data-duration="short" class="dur-btn py-2 rounded-xl font-bold text-sm border-2 border-amber-900 bg-amber-100 text-amber-900">⚡ Short (4s)</button>
+                        <button data-duration="normal" class="dur-btn py-2 rounded-xl font-bold text-sm border-2 border-amber-900 bg-amber-400 text-amber-950 shadow-inner">⏱️ Normal (7s)</button>
+                        <button data-duration="long" class="dur-btn py-2 rounded-xl font-bold text-sm border-2 border-amber-900 bg-amber-100 text-amber-900">🎭 Long (11s)</button>
+                    </div>
+                </div>
+
+                <!-- Auto Mode Toggle -->
+                <div class="flex items-center justify-between pt-2 border-t border-amber-900/10">
+                    <div>
+                        <div class="font-bold text-amber-950 text-sm">Auto-Continue Mode</div>
+                        <div class="text-xs text-amber-700">Automatically spin next round after 3.5s</div>
+                    </div>
+                    <input id="toggleAutoMode" type="checkbox" class="w-6 h-6 accent-emerald-500 rounded cursor-pointer">
+                </div>
+            </div>
+
+            <!-- Active vs Eliminated Roster View -->
+            <div class="bg-white p-4 rounded-2xl border-3 border-amber-900 shadow-sm">
+                <h3 class="cartoon-font text-lg text-amber-950 mb-2">🌊 LAGOON TRACKER</h3>
+                <div class="text-xs font-bold text-rose-600 mb-1">SPLASHED OUT (ELIMINATED ORDER):</div>
+                <div id="eliminatedListContainer" class="flex flex-wrap gap-1.5 min-h-[38px] p-2 bg-rose-50 rounded-xl border border-rose-200 text-xs font-bold text-rose-900">
+                    <span class="text-rose-400 italic">No hamsters splashed out yet!</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- OPENING WELCOME & HOW TO PLAY SCREEN OVERLAY -->
+    <div id="welcomeOverlay" class="fixed inset-0 bg-sky-500/40 backdrop-blur-md flex items-center justify-center p-4 z-50">
+        <div class="wood-panel max-w-xl w-full rounded-3xl p-6 sm:p-8 text-center relative animate-float">
+            <div class="inline-flex items-center gap-2 bg-amber-200 border-2 border-amber-900 px-4 py-1 rounded-full text-amber-950 font-bold text-xs sm:text-sm mb-3">
+                <span>🐹 CLASSROOM ELIMINATION NAME PICKER</span>
+            </div>
+
+            <h1 class="cartoon-font text-4xl sm:text-6xl text-amber-400 text-outline tracking-wide mb-2">
+                🥥 COCONUT CHAOS
+            </h1>
+            <p class="cartoon-font text-lg sm:text-xl text-amber-900 mb-5">
+                “One Boat. Too Many Hamsters. Zero Survivors… Well, Almost!”
+            </p>
+
+            <!-- Hero Preview Illustration Badge -->
+            <div class="bg-gradient-to-b from-sky-200 to-teal-200 border-4 border-amber-900 rounded-2xl p-4 mb-6 shadow-inner text-left space-y-2 text-sm sm:text-base text-amber-950 font-semibold">
+                <div class="flex items-center gap-3">
+                    <span class="text-2xl">🛶</span>
+                    <span><strong>Authentic 2.5D Coconut Basket Boat:</strong> Colorful woven rim, bamboo ribs, and acrobatic side-to-side tilting!</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-2xl">💫</span>
+                    <span><strong>Captain Coconut</strong> rocks and spins the boat in the palm river while hamsters cling to the rim!</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-2xl">💦</span>
+                    <span>One random hamster flies out in <strong>3D Slow-Motion</strong> with a huge splash!</span>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap justify-center gap-3 sm:gap-4">
+                <button id="btnWelcomePlay" class="btn-cartoon bg-emerald-400 hover:bg-emerald-300 text-amber-950 cartoon-font text-xl sm:text-2xl px-8 py-3.5 rounded-2xl">
+                    LET’S PLAY! 🥥
+                </button>
+                <button id="btnWelcomeEdit" class="btn-cartoon bg-amber-300 hover:bg-amber-200 text-amber-950 cartoon-font text-lg sm:text-xl px-5 py-3.5 rounded-2xl">
+                    ✏️ EDIT STUDENTS
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /********************************************************************
+         * 1. SOUND & TROPICAL MUSIC SYNTHESIZER (Web Audio API - Zero External Assets)
+         ********************************************************************/
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.sfxEnabled = true;
+                this.musicEnabled = false;
+                this.musicTimer = null;
+                this.melodyStep = 0;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            playPop(freq = 520) {
+                if (!this.sfxEnabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now);
+                osc.frequency.exponentialRampToValueAtTime(freq * 1.7, now + 0.09);
+                gain.gain.setValueAtTime(0.22, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.1);
+            }
+
+            playSqueak() {
+                if (!this.sfxEnabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                const base = 900 + Math.random() * 400;
+                osc.frequency.setValueAtTime(base, now);
+                osc.frequency.exponentialRampToValueAtTime(base * 1.45, now + 0.06);
+                osc.frequency.exponentialRampToValueAtTime(base * 0.9, now + 0.13);
+                gain.gain.setValueAtTime(0.16, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.14);
+            }
+
+            playPaddleSplash(intensity = 1) {
+                if (!this.sfxEnabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const bufferSize = this.ctx.sampleRate * 0.09;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.4));
+                }
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.value = 650 + intensity * 350;
+                filter.Q.value = 1.8;
+
+                const gain = this.ctx.createGain();
+                gain.gain.value = Math.min(0.18, 0.07 + intensity * 0.05);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                noise.start(now);
+            }
+
+            playFallWhistle() {
+                if (!this.sfxEnabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(1250, now);
+                osc.frequency.exponentialRampToValueAtTime(280, now + 0.85);
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.88);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.9);
+            }
+
+            playBigSplash() {
+                if (!this.sfxEnabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const bufferSize = this.ctx.sampleRate * 0.55;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.35));
+                }
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(1400, now);
+                filter.frequency.exponentialRampToValueAtTime(280, now + 0.55);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.45, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.55);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                noise.start(now);
+            }
+
+            playFanfare() {
+                if (!this.sfxEnabled) return;
+                this.init();
+                const notes = [523.25, 659.25, 783.99, 1046.5];
+                notes.forEach((freq, idx) => {
+                    const now = this.ctx.currentTime + idx * 0.12;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now);
+                    gain.gain.setValueAtTime(0.25, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.4);
+                });
+            }
+
+            toggleMusic() {
+                this.init();
+                this.musicEnabled = !this.musicEnabled;
+                if (this.musicEnabled) {
+                    const scale = [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5];
+                    const pattern = [0, 2, 3, 2, 4, 3, 1, 0, 2, 4, 5, 4, 3, 2, 1, 0];
+                    this.musicTimer = setInterval(() => {
+                        if (!this.musicEnabled || !this.ctx) return;
+                        const freq = scale[pattern[this.melodyStep % pattern.length]];
+                        this.melodyStep++;
+                        const now = this.ctx.currentTime;
+                        const osc = this.ctx.createOscillator();
+                        const gain = this.ctx.createGain();
+                        osc.type = 'sine';
+                        osc.frequency.setValueAtTime(freq, now);
+                        gain.gain.setValueAtTime(0.06, now);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+                        osc.connect(gain);
+                        gain.connect(this.ctx.destination);
+                        osc.start(now);
+                        osc.stop(now + 0.24);
+                    }, 240);
+                } else if (this.musicTimer) {
+                    clearInterval(this.musicTimer);
+                    this.musicTimer = null;
+                }
+                return this.musicEnabled;
+            }
+        }
+
+        const sound = new SoundEngine();
+
+        /********************************************************************
+         * 2. HAMSTER APPEARANCE & CUSTOMIZATION DATA
+         ********************************************************************/
+        const FUR_PALETTES = [
+            { body: '#FFE5B4', belly: '#FFFDF9', ear: '#F4A261', name: 'Cream' },
+            { body: '#E09F67', belly: '#FFF8EB', ear: '#B5651D', name: 'Golden' },
+            { body: '#D4A373', belly: '#FEFAE0', ear: '#9C6644', name: 'Cinnamon' },
+            { body: '#FFFDF7', belly: '#FFFFFF', ear: '#FFB5A7', name: 'Snowy' },
+            { body: '#B7B7A4', belly: '#F0EFEB', ear: '#6B705C', name: 'Silver' },
+            { body: '#F6BD60', belly: '#FFF8E7', ear: '#E07A5F', name: 'Butterscotch' },
+            { body: '#E5989B', belly: '#FFF0F3', ear: '#B5838D', name: 'Strawberry' },
+            { body: '#C8B6FF', belly: '#F8F7FF', ear: '#9D4EDD', name: 'Lavender' },
+            { body: '#A8DADC', belly: '#F1FAEE', ear: '#457B9D', name: 'Minty' }
+        ];
+
+        const ACCESSORIES = [
+            'pink_bow',
+            'sunglasses',
+            'sailor_hat',
+            'headband',
+            'flower',
+            'propeller_cap',
+            'straw_hat',
+            'leaf_sprout'
+        ];
+
+        const CHAOS_QUOTES = [
+            "WHY IS IT GETTING FASTER?!",
+            "CAPTAIN, SLOW DOWN!",
+            "MY TAIL!!!",
+            "THIS WAS NOT IN THE AGREEMENT!",
+            "EVERY HAMSTER FOR THEMSELVES!",
+            "I DROPPED MY SUNFLOWER SEED!",
+            "HOLD ONTO YOUR WHISKERS!",
+            "I'M GETTING DIZZY!! 🌀"
+        ];
+
+        const DEFAULT_STUDENTS = [
+            "Oliver", "Mia", "Leo", "Chloe",
+            "Lucas", "Zoe", "Charlie", "Lily",
+            "Max", "Ruby", "Milo", "Sophie"
+        ];
+
+        /********************************************************************
+         * 3. GAME STATE & CONFIGURATION
+         ********************************************************************/
+        const STATE = {
+            IDLE: 'IDLE',
+            BOARDING: 'BOARDING',
+            SLOW_SPIN: 'SLOW_SPIN',
+            CHAOS_SPIN: 'CHAOS_SPIN',
+            LAUNCHING: 'LAUNCHING',
+            PAUSED_RESULT: 'PAUSED_RESULT',
+            CHAMPION: 'CHAMPION'
+        };
+
+        const game = {
+            state: STATE.IDLE,
+            paused: false,
+            round: 1,
+            boatAngle: 0,
+            boatSpeed: 0,
+            boatRockPhase: 0,
+            boatTiltRoll: 0,     // Dramatic side-to-side acrobatic tilt (radians)
+            boatTiltPitch: 0,    // Front-to-back rocking tilt (radians)
+            cameraMode: 'side',  // 'side' (~34 deg), 'dynamic' (auto-sweeping), 'high' (~55 deg)
+            cameraPitch: 0.60,   // Viewing elevation angle in radians
+            captainPaddlePhase: 0,
+            phaseTimer: 0,
+            slowMoFactor: 1.0,
+            settings: {
+                speedPreset: 'normal',    // slow, normal, crazy
+                durationPreset: 'normal', // short, normal, long
+                autoMode: false
+            },
+            students: [],        // All student hamster objects
+            eliminatedOrder: [], // Names in order of elimination
+            selectedVictim: null,
+            flyingHamster: null, // Animation tracking for currently launched hamster
+            particles: [],       // Water splashes, bubbles, confetti
+            wakeRipples: [],     // Circular water ripples under coconut
+            lotusPads: [         // Floating tropical lily pads & hibiscus blossoms
+                { xRatio: 0.11, yRatio: 0.44, r: 24, rot: 0.4, flower: '#FF758F' },
+                { xRatio: 0.89, yRatio: 0.48, r: 28, rot: 2.1, flower: '#FFD166' },
+                { xRatio: 0.08, yRatio: 0.78, r: 34, rot: 1.2, flower: '#FF4D6D' },
+                { xRatio: 0.91, yRatio: 0.81, r: 30, rot: 3.8, flower: null },
+                { xRatio: 0.21, yRatio: 0.88, r: 26, rot: 5.1, flower: '#FFF8E7' }
+            ],
+            koiShadows: [        // Subtle underwater swimming fish silhouettes
+                { angle: 0.5, dist: 0.36, speed: 0.22, size: 16 },
+                { angle: 2.8, dist: 0.42, speed: -0.18, size: 14 },
+                { angle: 4.5, dist: 0.31, speed: 0.26, size: 18 }
+            ],
+            bgBoats: [           // Distant ambient coconut basket boats near the palm shore
+                { xRatio: 0.14, yOffset: 18, phase: 0.5, color: '#3A86FF', umbrella: '#4CC9F0' },
+                { xRatio: 0.85, yOffset: 26, phase: 2.4, color: '#FFBE0B', umbrella: '#FF006E' }
+            ],
+            activeQuote: null,   // Floating speech bubble during chaos
+            quoteTimer: 0
+        };
+
+        /********************************************************************
+         * 4. STUDENT HAMSTER FACTORY & SEAT ARRANGEMENT
+         ********************************************************************/
+        function createHamsterFromName(name, index) {
+            const palette = FUR_PALETTES[index % FUR_PALETTES.length];
+            const accessory = ACCESSORIES[index % ACCESSORIES.length];
+            return {
+                id: 'ham_' + index + '_' + Date.now() + Math.random().toString(36).slice(2, 6),
+                name: name.trim(),
+                palette,
+                accessory,
+                eliminated: false,
+                // Local coordinates inside the boat (normalized -1..1 radius)
+                seatX: 0,
+                seatY: 0,
+                seatType: 'floor', // 'bench', 'rim', or 'floor'
+                curX: 0,
+                curY: 0,
+                // Boarding jump animation
+                boardDelay: index * 0.08,
+                boardProgress: 1,
+                // Idle & physics traits
+                bobOffset: Math.random() * Math.PI * 2,
+                eatingSeed: index % 4 === 0,
+                wobbleAngle: 0,
+                expression: 'happy', // happy, excited, dizzy, shocked, scream, crown
+                floatAngle: Math.random() * Math.PI * 2,
+                floatDist: 1.48 + (index % 3) * 0.14,
+                tubeColor: ['#FF595E', '#FFCA3A', '#8AC926', '#1982C4', '#F72585', '#FF924C'][index % 6]
+            };
+        }
+
+        function arrangeHamstersInBoat() {
+            const active = game.students.filter(s => !s.eliminated);
+            const count = active.length;
+            if (count === 0) return;
+
+            if (count === 1) {
+                active[0].seatX = 0;
+                active[0].seatY = 0;
+                active[0].seatType = 'bench';
+                active[0].curX = 0;
+                active[0].curY = 0;
+                return;
+            }
+
+            // Distribute hamsters across the central wooden cross-bench and clutching the inner rim/ribs
+            active.forEach((h, i) => {
+                if (count <= 6) {
+                    const ang = (i / count) * Math.PI * 2 + 0.3;
+                    const r = i % 2 === 0 ? 0.42 : 0.64;
+                    h.seatX = Math.cos(ang) * r;
+                    h.seatY = Math.sin(ang) * r;
+                    h.seatType = r > 0.5 ? 'rim' : 'bench';
+                } else if (count <= 16) {
+                    const innerCount = Math.min(5, Math.floor(count * 0.35));
+                    if (i < innerCount) {
+                        // Seated along the wooden cross-plank bench
+                        const spread = (i / Math.max(1, innerCount - 1)) - 0.5;
+                        h.seatX = spread * 0.72;
+                        h.seatY = (i % 2 === 0 ? 0.08 : -0.08);
+                        h.seatType = 'bench';
+                    } else {
+                        // Bracing along the colorful rim and bamboo ribs
+                        const outerCount = count - innerCount;
+                        const j = i - innerCount;
+                        const ang = (j / outerCount) * Math.PI * 2 + 0.25;
+                        h.seatX = Math.cos(ang) * 0.66;
+                        h.seatY = Math.sin(ang) * 0.66;
+                        h.seatType = 'rim';
+                    }
+                } else {
+                    // Up to 30+ students: bench + middle rib ring + outer rim ring
+                    const ring1 = 5;
+                    const ring2 = 10;
+                    const ring3 = count - ring1 - ring2;
+                    if (i < ring1) {
+                        const ang = (i / ring1) * Math.PI * 2;
+                        h.seatX = Math.cos(ang) * 0.25;
+                        h.seatY = Math.sin(ang) * 0.25;
+                        h.seatType = 'bench';
+                    } else if (i < ring1 + ring2) {
+                        const j = i - ring1;
+                        const ang = (j / ring2) * Math.PI * 2 + 0.2;
+                        h.seatX = Math.cos(ang) * 0.48;
+                        h.seatY = Math.sin(ang) * 0.48;
+                        h.seatType = 'floor';
+                    } else {
+                        const k = i - ring1 - ring2;
+                        const ang = (k / ring3) * Math.PI * 2 + 0.1;
+                        h.seatX = Math.cos(ang) * 0.70;
+                        h.seatY = Math.sin(ang) * 0.70;
+                        h.seatType = 'rim';
+                    }
+                }
+                h.curX = h.seatX;
+                h.curY = h.seatY;
+            });
+
+            // Space eliminated hamsters evenly in the surrounding lagoon water (foreground & sides)
+            const eliminated = game.students.filter(s => s.eliminated);
+            eliminated.forEach((h, idx) => {
+                const baseAngle = (idx / Math.max(1, eliminated.length)) * Math.PI * 2 + 0.35;
+                h.floatAngle = baseAngle;
+            });
+        }
+
+        function triggerBoardingAnimation(namesList) {
+            game.students = namesList.map((n, i) => createHamsterFromName(n, i));
+            game.eliminatedOrder = [];
+            game.round = 1;
+            game.boatSpeed = 0.005;
+            arrangeHamstersInBoat();
+
+            game.students.forEach((h, idx) => {
+                h.boardProgress = 0;
+                h.boardDelay = idx * 0.06;
+                h.expression = 'happy';
+            });
+
+            game.state = STATE.BOARDING;
+            game.phaseTimer = 0;
+            showPhaseBanner("ALL ABOARD THE COCONUT BASKET BOAT! 🥥", 2200);
+            sound.playPop(480);
+            updateHUD();
+        }
+
+        /********************************************************************
+         * 5. 2.5D / 3D CAMERA PROJECTION & VIETNAMESE PALM RIVER SCENE
+         ********************************************************************/
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const portraitCanvas = document.getElementById('portraitCanvas');
+        const pCtx = portraitCanvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth * window.devicePixelRatio;
+            canvas.height = window.innerHeight * window.devicePixelRatio;
+            ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        /**
+         * Transform local 3D coordinates inside the Coconut Basket Boat (lx, ly, lz)
+         * into Tilted & Rotated World 3D coordinates, and then project onto the 2D screen
+         * with side-camera elevation (`game.cameraPitch`).
+         * - lx, ly: position across the circular opening of the boat (-R .. +R)
+         * - lz: height relative to the top rim (0 = rim level, negative = down inside the bowl, positive = above rim)
+         */
+        function projectBoatPoint(lx, ly, lz, boatCenterX, boatCenterY) {
+            // 1. Spin around boat's vertical axis (yaw = game.boatAngle)
+            const cosA = Math.cos(game.boatAngle);
+            const sinA = Math.sin(game.boatAngle);
+            const rx = lx * cosA - ly * sinA;
+            const ry = lx * sinA + ly * cosA;
+            const rz = lz;
+
+            // 2. Apply acrobatic boat Roll (side-to-side tilt) & Pitch (front-back rock)
+            const cosRoll = Math.cos(game.boatTiltRoll);
+            const sinRoll = Math.sin(game.boatTiltRoll);
+            const x1 = rx * cosRoll - rz * sinRoll;
+            const z1 = rx * sinRoll + rz * cosRoll;
+            const y1 = ry;
+
+            const cosPitch = Math.cos(game.boatTiltPitch);
+            const sinPitch = Math.sin(game.boatTiltPitch);
+            const y2 = y1 * cosPitch - z1 * sinPitch;
+            const z2 = y1 * sinPitch + z1 * cosPitch;
+            const x2 = x1;
+
+            // 3. Project onto 2.5D side-angled camera plane
+            const sinCam = Math.sin(game.cameraPitch); // Vertical foreshortening of horizontal plane (~0.55)
+            const cosCam = Math.cos(game.cameraPitch); // Vertical height scale (~0.83)
+
+            return {
+                x: boatCenterX + x2,
+                y: boatCenterY + y2 * sinCam - z2 * cosCam,
+                depth: y2 * cosCam + z2 * sinCam, // Larger depth = closer to the viewer in front
+                worldX: x2,
+                worldY: y2,
+                worldZ: z2
+            };
+        }
+
+        // Draw lush Vietnamese Nipa Palm (Dừa Nước) river shoreline & sunlit emerald water
+        function drawTropicalLagoon(w, h, time) {
+            const horizonY = Math.max(125, h * 0.24);
+
+            // 1. Golden Tropical Sky & Sunburst Rays
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, horizonY);
+            skyGrad.addColorStop(0, '#48CAE4');
+            skyGrad.addColorStop(0.45, '#ADE8F4');
+            skyGrad.addColorStop(1, '#FFF3B0');
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, w, horizonY);
+
+            // Glowing tropical sun & rotating sunbeams
+            const sunX = w * 0.82;
+            const sunY = horizonY * 0.42;
+            ctx.save();
+            ctx.translate(sunX, sunY);
+            const sunGlow = ctx.createRadialGradient(0, 0, 10, 0, 0, 110);
+            sunGlow.addColorStop(0, 'rgba(255, 243, 176, 0.95)');
+            sunGlow.addColorStop(0.4, 'rgba(255, 209, 102, 0.45)');
+            sunGlow.addColorStop(1, 'rgba(255, 209, 102, 0)');
+            ctx.fillStyle = sunGlow;
+            ctx.beginPath();
+            ctx.arc(0, 0, 110, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#FFF8E7';
+            ctx.beginPath();
+            ctx.arc(0, 0, 28, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            // Distant misty karst mountains on the horizon
+            ctx.fillStyle = 'rgba(82, 183, 136, 0.35)';
+            ctx.beginPath();
+            ctx.moveTo(0, horizonY);
+            for (let mx = 0; mx <= w; mx += w / 6) {
+                const mh = 35 + Math.sin(mx * 0.015) * 24;
+                ctx.quadraticCurveTo(mx - w / 12, horizonY - mh, mx, horizonY);
+            }
+            ctx.closePath();
+            ctx.fill();
+
+            // Fluffy cartoon clouds with warm bottom shading
+            for (let c = 0; c < 4; c++) {
+                const cx = ((c * w * 0.28 + time * 12) % (w + 180)) - 90;
+                const cy = 36 + (c % 2) * 22;
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+                ctx.beginPath();
+                ctx.arc(cx, cy, 24, 0, Math.PI * 2);
+                ctx.arc(cx + 22, cy - 7, 31, 0, Math.PI * 2);
+                ctx.arc(cx + 46, cy, 23, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // 2. Dense Vietnamese Water Coconut (Nipa Palm) Forest along the river bank
+            drawNipaPalmForest(w, horizonY, time);
+
+            // 3. Perspective Tropical River Water (Emerald green near palms -> Crystal Turquoise in foreground)
+            const waterGrad = ctx.createLinearGradient(0, horizonY, 0, h);
+            waterGrad.addColorStop(0, '#2D6A4F');
+            waterGrad.addColorStop(0.12, '#40916C');
+            waterGrad.addColorStop(0.32, '#2EC4B6');
+            waterGrad.addColorStop(0.68, '#00B4D8');
+            waterGrad.addColorStop(1, '#0077B6');
+            ctx.fillStyle = waterGrad;
+            ctx.fillRect(0, horizonY, w, h - horizonY);
+
+            // Subtle underwater koi shadows swimming in the lagoon
+            ctx.save();
+            game.koiShadows.forEach((koi, idx) => {
+                const a = koi.angle + time * koi.speed;
+                const kx = w * 0.5 + Math.cos(a) * (w * koi.dist);
+                const ky = h * 0.6 + Math.sin(a) * (h * 0.22);
+                const heading = a + (koi.speed > 0 ? Math.PI / 2 : -Math.PI / 2);
+                ctx.save();
+                ctx.translate(kx, ky);
+                ctx.rotate(heading);
+                ctx.fillStyle = 'rgba(7, 59, 76, 0.16)';
+                ctx.beginPath();
+                ctx.ellipse(0, 0, koi.size, koi.size * 0.42, 0, 0, Math.PI * 2);
+                ctx.fill();
+                // Tail fin wiggle
+                const tailWiggle = Math.sin(time * 8 + idx) * 4;
+                ctx.beginPath();
+                ctx.moveTo(-koi.size * 0.85, 0);
+                ctx.lineTo(-koi.size * 1.45, -6 + tailWiggle);
+                ctx.lineTo(-koi.size * 1.45, 6 + tailWiggle);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            });
+            ctx.restore();
+
+            // Shimmering palm reflections near the upper bank
+            ctx.fillStyle = 'rgba(27, 67, 50, 0.28)';
+            for (let i = 0; i < 18; i++) {
+                const rx = (i / 18) * w + Math.sin(time * 2 + i) * 10;
+                const rw = 40 + (i % 3) * 25;
+                ctx.fillRect(rx, horizonY + 4 + (i % 4) * 7, rw, 4);
+            }
+
+            // Perspective horizontal water wave bands & sunlit caustic sparkles
+            ctx.save();
+            for (let i = 1; i <= 14; i++) {
+                const p = Math.pow(i / 14, 1.65);
+                const wy = horizonY + p * (h - horizonY);
+                const waveLen = 35 + p * 110;
+                const alpha = 0.14 + p * 0.24;
+                ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+                ctx.lineWidth = 1.5 + p * 3;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                for (let x = -50; x < w + 50; x += waveLen * 1.9) {
+                    const offset = Math.sin(time * (1.5 + p) + i * 1.7) * 22 * (i % 2 === 0 ? 1 : -1);
+                    ctx.moveTo(x + offset, wy);
+                    ctx.quadraticCurveTo(x + offset + waveLen * 0.5, wy - 4 * p, x + offset + waveLen, wy);
+                }
+                ctx.stroke();
+            }
+
+            // Floating Lotus Lily Pads & Tropical Flowers around the river edges
+            game.lotusPads.forEach((pad, idx) => {
+                const px = pad.xRatio * w + Math.sin(time * 1.2 + idx) * 6;
+                const py = pad.yRatio * h + Math.cos(time * 1.5 + idx) * 4;
+                const pr = pad.r * (w < 640 ? 0.75 : 1);
+                ctx.save();
+                ctx.translate(px, py);
+                ctx.scale(1, 0.58); // Perspective foreshortening on water
+                ctx.rotate(pad.rot + Math.sin(time * 0.8 + idx) * 0.08);
+
+                // Pad shadow
+                ctx.fillStyle = 'rgba(10, 50, 60, 0.25)';
+                ctx.beginPath();
+                ctx.arc(2, 5, pr, 0.25, Math.PI * 2 - 0.25);
+                ctx.lineTo(2, 5);
+                ctx.closePath();
+                ctx.fill();
+
+                // Green lily pad with notch
+                ctx.fillStyle = '#52B788';
+                ctx.strokeStyle = '#1B4332';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.arc(0, 0, pr, 0.25, Math.PI * 2 - 0.25);
+                ctx.lineTo(0, 0);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                // Vein lines
+                ctx.strokeStyle = '#74C69D';
+                ctx.lineWidth = 1.5;
+                for (let v = 1; v <= 5; v++) {
+                    const va = (v / 6) * Math.PI * 2;
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.lineTo(Math.cos(va) * pr * 0.75, Math.sin(va) * pr * 0.75);
+                    ctx.stroke();
+                }
+
+                // Blooming lotus flower
+                if (pad.flower) {
+                    ctx.fillStyle = pad.flower;
+                    ctx.strokeStyle = '#4A2C11';
+                    ctx.lineWidth = 1.8;
+                    for (let p = 0; p < 6; p++) {
+                        const pa = (p / 6) * Math.PI * 2;
+                        ctx.beginPath();
+                        ctx.ellipse(Math.cos(pa) * pr * 0.28, Math.sin(pa) * pr * 0.28, pr * 0.24, pr * 0.14, pa, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.stroke();
+                    }
+                    ctx.fillStyle = '#FFD166';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, pr * 0.14, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.restore();
+            });
+            ctx.restore();
+
+            // 4. Distant Ambient Coconut Basket Boats in the background river
+            drawBackgroundBasketBoats(w, horizonY, time);
+        }
+
+        function drawNipaPalmForest(w, horizonY, time) {
+            // Back layer dark tropical foliage silhouettes
+            const clumpCount = Math.ceil(w / 70) + 2;
+            for (let i = 0; i < clumpCount; i++) {
+                const bx = i * 70 - 20;
+                const sway = Math.sin(time * 1.4 + i * 0.7) * 4;
+                drawPalmFrondCluster(bx + sway, horizonY + 6, 82, '#1B4332', '#2D6A4F', false);
+            }
+            // Front sunlit nipa palm fronds with feathery leaflets & mudbank roots
+            for (let i = 0; i < clumpCount; i++) {
+                const fx = i * 72 + 12;
+                const sway = Math.cos(time * 1.8 + i * 0.9) * 5;
+                drawPalmFrondCluster(fx + sway, horizonY + 10, 68, '#40916C', '#74C69D', true);
+            }
+            // Riverbank edge & coconut clusters
+            ctx.fillStyle = '#3A2210';
+            ctx.fillRect(0, horizonY + 4, w, 5);
+        }
+
+        function drawPalmFrondCluster(x, baseY, size, stemColor, leafColor, detailed) {
+            ctx.save();
+            ctx.translate(x, baseY);
+            const angles = [-0.95, -0.5, -0.1, 0.35, 0.8];
+            angles.forEach((ang, idx) => {
+                ctx.save();
+                ctx.rotate(ang);
+                const len = size * (0.85 + (idx % 2) * 0.25);
+
+                // Frond spine
+                ctx.strokeStyle = stemColor;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.quadraticCurveTo(len * 0.15, -len * 0.55, len * 0.35, -len);
+                ctx.stroke();
+
+                // Feathery palm leaflets
+                ctx.fillStyle = idx % 2 === 0 ? leafColor : stemColor;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.quadraticCurveTo(-len * 0.22, -len * 0.5, len * 0.35, -len);
+                ctx.quadraticCurveTo(len * 0.48, -len * 0.45, 0, 0);
+                ctx.fill();
+
+                if (detailed) {
+                    ctx.strokeStyle = '#95D5B2';
+                    ctx.lineWidth = 1.2;
+                    for (let k = 1; k <= 5; k++) {
+                        const fy = -len * (k / 6);
+                        ctx.beginPath();
+                        ctx.moveTo(len * 0.08 * (k / 6), fy);
+                        ctx.lineTo(len * 0.08 * (k / 6) - 12, fy - 6);
+                        ctx.moveTo(len * 0.08 * (k / 6), fy);
+                        ctx.lineTo(len * 0.08 * (k / 6) + 14, fy - 4);
+                        ctx.stroke();
+                    }
+                }
+                ctx.restore();
+            });
+            ctx.restore();
+        }
+
+        function drawBackgroundBasketBoats(w, horizonY, time) {
+            game.bgBoats.forEach((b, idx) => {
+                const bx = w * b.xRatio + Math.sin(time * 0.5 + b.phase) * 18;
+                const by = horizonY + b.yOffset + Math.cos(time * 2 + b.phase) * 2.5;
+                ctx.save();
+                ctx.translate(bx, by);
+                const scale = 0.42;
+                ctx.scale(scale, scale);
+
+                // Water ripple
+                ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.ellipse(0, 18, 68, 14, 0, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // Mini basket boat hull
+                ctx.fillStyle = '#5C3A21';
+                ctx.strokeStyle = '#2B180A';
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.arc(0, 0, 52, 0, Math.PI);
+                ctx.fill();
+                ctx.stroke();
+
+                // Colorful rim
+                ctx.fillStyle = b.color;
+                ctx.beginPath();
+                ctx.ellipse(0, 0, 55, 16, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                // Cute sun umbrella
+                ctx.strokeStyle = '#4A2C11';
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.moveTo(-10, 0);
+                ctx.lineTo(-15, -55);
+                ctx.stroke();
+
+                ctx.fillStyle = b.umbrella;
+                ctx.beginPath();
+                ctx.arc(-15, -45, 38, Math.PI, 0);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.restore();
+            });
+        }
+
+        /********************************************************************
+         * 5B. 3D-PROJECTED VIETNAMESE COCONUT BASKET BOAT (THUYỀN THÚNG)
+         ********************************************************************/
+        const RIM_COLORS = ['#EF233C', '#FFD166', '#00BBF9', '#06D6A0']; // Vibrant Red, Yellow, Sky Blue, Mint Green
+
+        function drawTiltedCoconutBasketBoat(cx, cy, boatRadius, time, renderCallbackInside) {
+            const bowlDepth = boatRadius * 0.66; // Deep concave basket hull
+
+            // Sample 3D points along the top circular rim and bottom hull base
+            const SEGMENTS = 24;
+            const rimPoints = [];
+            const hullMidPoints = [];
+            const floorPoints = [];
+
+            for (let i = 0; i < SEGMENTS; i++) {
+                const ang = (i / SEGMENTS) * Math.PI * 2;
+                const nextAng = ((i + 1) / SEGMENTS) * Math.PI * 2;
+                const cos0 = Math.cos(ang), sin0 = Math.sin(ang);
+                const cos1 = Math.cos(nextAng), sin1 = Math.sin(nextAng);
+
+                const pRim0 = projectBoatPoint(cos0 * boatRadius, sin0 * boatRadius, 0, cx, cy);
+                const pRim1 = projectBoatPoint(cos1 * boatRadius, sin1 * boatRadius, 0, cx, cy);
+
+                const pMid0 = projectBoatPoint(cos0 * boatRadius * 0.86, sin0 * boatRadius * 0.86, -bowlDepth * 0.58, cx, cy);
+                const pMid1 = projectBoatPoint(cos1 * boatRadius * 0.86, sin1 * boatRadius * 0.86, -bowlDepth * 0.58, cx, cy);
+
+                const pBot0 = projectBoatPoint(cos0 * boatRadius * 0.48, sin0 * boatRadius * 0.48, -bowlDepth, cx, cy);
+                const pBot1 = projectBoatPoint(cos1 * boatRadius * 0.48, sin1 * boatRadius * 0.48, -bowlDepth, cx, cy);
+
+                rimPoints.push({ i, ang, nextAng, pRim0, pRim1, pMid0, pMid1, pBot0, pBot1, avgDepth: (pRim0.depth + pRim1.depth) * 0.5 });
+                hullMidPoints.push(pMid0);
+                floorPoints.push(pBot0);
+            }
+
+            // 1. Draw Churning White Water Foam & Wake Underneath the Boat
+            ctx.save();
+            const wakeRx = boatRadius * 1.18;
+            const wakeRy = boatRadius * Math.sin(game.cameraPitch) * 1.05;
+            ctx.translate(cx, cy + bowlDepth * 0.36);
+
+            // Outer water shadow
+            ctx.fillStyle = 'rgba(12, 74, 96, 0.32)';
+            ctx.beginPath();
+            ctx.ellipse(0, 8, wakeRx * 0.96, wakeRy * 0.92, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Animated whitewater foam rings
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.78)';
+            ctx.lineWidth = 5 + Math.min(8, game.boatSpeed * 1.3);
+            ctx.setLineDash([22, 14]);
+            ctx.lineDashOffset = -time * 75;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, wakeRx, wakeRy, 0, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([12, 18]);
+            ctx.lineDashOffset = time * 55;
+            ctx.beginPath();
+            ctx.ellipse(0, 4, wakeRx * 1.12, wakeRy * 1.12, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+
+            // 2. Draw Interior Concave Basket Bowl (Visible through the tilted opening)
+            ctx.save();
+            ctx.beginPath();
+            rimPoints.forEach((seg, idx) => {
+                if (idx === 0) ctx.moveTo(seg.pRim0.x, seg.pRim0.y);
+                else ctx.lineTo(seg.pRim0.x, seg.pRim0.y);
+            });
+            ctx.closePath();
+
+            // Warm woven bamboo & coconut interior gradient
+            const centerFloor = projectBoatPoint(0, 0, -bowlDepth, cx, cy);
+            const intGrad = ctx.createRadialGradient(
+                centerFloor.x, centerFloor.y, boatRadius * 0.08,
+                cx, cy, boatRadius * 1.05
+            );
+            intGrad.addColorStop(0, '#B07D4F');
+            intGrad.addColorStop(0.48, '#E6CCB2');
+            intGrad.addColorStop(0.82, '#DDB892');
+            intGrad.addColorStop(1, '#6C462B');
+            ctx.fillStyle = intGrad;
+            ctx.fill();
+
+            // Clip interior details to the rim opening
+            ctx.clip();
+
+            // Diagonal woven herring-bone rattan mat texture inside the bowl
+            ctx.strokeStyle = 'rgba(127, 85, 57, 0.22)';
+            ctx.lineWidth = 2;
+            for (let wv = -6; wv <= 6; wv++) {
+                const offset = wv * (boatRadius * 0.16);
+                const pStart = projectBoatPoint(-boatRadius * 0.85, offset, -bowlDepth * 0.55, cx, cy);
+                const pEnd = projectBoatPoint(boatRadius * 0.85, offset, -bowlDepth * 0.55, cx, cy);
+                ctx.beginPath();
+                ctx.moveTo(pStart.x, pStart.y);
+                ctx.lineTo(pEnd.x, pEnd.y);
+                ctx.stroke();
+            }
+
+            // Woven bamboo lattice floor rings inside the bowl
+            [0.25, 0.45, 0.65, 0.84].forEach(rRatio => {
+                const zLevel = -bowlDepth * (1 - rRatio * rRatio * 0.75);
+                ctx.strokeStyle = 'rgba(92, 58, 33, 0.48)';
+                ctx.lineWidth = 3.2;
+                ctx.beginPath();
+                for (let i = 0; i <= SEGMENTS; i++) {
+                    const a = (i / SEGMENTS) * Math.PI * 2;
+                    const pt = projectBoatPoint(Math.cos(a) * boatRadius * rRatio, Math.sin(a) * boatRadius * rRatio, zLevel, cx, cy);
+                    if (i === 0) ctx.moveTo(pt.x, pt.y);
+                    else ctx.lineTo(pt.x, pt.y);
+                }
+                ctx.stroke();
+            });
+
+            // Radial wooden/bamboo structural ribs curving down the interior walls (like the reference photos!)
+            for (let i = 0; i < 16; i++) {
+                const a = (i / 16) * Math.PI * 2;
+                const pTop = projectBoatPoint(Math.cos(a) * boatRadius * 0.96, Math.sin(a) * boatRadius * 0.96, -2, cx, cy);
+                const pMid = projectBoatPoint(Math.cos(a) * boatRadius * 0.68, Math.sin(a) * boatRadius * 0.68, -bowlDepth * 0.68, cx, cy);
+                const pBot = projectBoatPoint(Math.cos(a) * boatRadius * 0.22, Math.sin(a) * boatRadius * 0.22, -bowlDepth * 0.96, cx, cy);
+
+                // Dark shadow edge of rib
+                ctx.strokeStyle = '#5C3A21';
+                ctx.lineWidth = 6.5;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(pTop.x, pTop.y);
+                ctx.quadraticCurveTo(pMid.x, pMid.y, pBot.x, pBot.y);
+                ctx.stroke();
+
+                // Light bamboo highlight of rib
+                ctx.strokeStyle = '#F3D5B5';
+                ctx.lineWidth = 3.2;
+                ctx.beginPath();
+                ctx.moveTo(pTop.x, pTop.y);
+                ctx.quadraticCurveTo(pMid.x, pMid.y, pBot.x, pBot.y);
+                ctx.stroke();
+            }
+
+            // Slatted Wooden Cross-Bench Plank across the middle of the basket boat
+            drawWoodenCrossBench(cx, cy, boatRadius, bowlDepth);
+
+            ctx.restore();
+
+            // 3. Draw Back-Side Exterior Hull & Back Rim Segments (Segments further from camera)
+            rimPoints.forEach(seg => {
+                if (seg.avgDepth < 0) {
+                    drawHullWallSegment(seg);
+                    drawColorfulRimSegment(seg);
+                }
+            });
+
+            // 4. Invoke callback to draw Depth-Sorted Student Hamsters & Captain Coconut INSIDE the boat!
+            if (renderCallbackInside) {
+                renderCallbackInside();
+            }
+
+            // 5. Draw Front-Side Exterior Hull Wall (occluding lower bodies of hamsters inside) & Front Colorful Rim
+            // Sort front segments back-to-front for clean overlapping
+            const frontSegments = rimPoints.filter(seg => seg.avgDepth >= 0).sort((a, b) => a.avgDepth - b.avgDepth);
+            frontSegments.forEach(seg => {
+                drawHullWallSegment(seg);
+            });
+            frontSegments.forEach(seg => {
+                drawColorfulRimSegment(seg);
+            });
+
+            // 6. Draw Dynamic Water Foam & Spray Splashing against the Low Tilted Side of the Boat
+            drawBoatEdgeWaterSpray(cx, cy, boatRadius, bowlDepth, time);
+        }
+
+        function drawWoodenCrossBench(cx, cy, boatRadius, bowlDepth) {
+            const benchZ = -bowlDepth * 0.28;
+            const halfLen = boatRadius * 0.84;
+            const halfWid = boatRadius * 0.19;
+
+            const corners = [
+                projectBoatPoint(-halfLen, -halfWid, benchZ, cx, cy),
+                projectBoatPoint(halfLen, -halfWid, benchZ, cx, cy),
+                projectBoatPoint(halfLen, halfWid, benchZ, cx, cy),
+                projectBoatPoint(-halfLen, halfWid, benchZ, cx, cy)
+            ];
+
+            // Bench drop shadow inside hull
+            ctx.fillStyle = 'rgba(58, 34, 16, 0.35)';
+            ctx.beginPath();
+            ctx.moveTo(corners[0].x, corners[0].y + 8);
+            ctx.lineTo(corners[1].x, corners[1].y + 8);
+            ctx.lineTo(corners[2].x, corners[2].y + 8);
+            ctx.lineTo(corners[3].x, corners[3].y + 8);
+            ctx.closePath();
+            ctx.fill();
+
+            // Bamboo slat bench surface
+            ctx.fillStyle = '#E6CCB2';
+            ctx.strokeStyle = '#5C3A21';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(corners[0].x, corners[0].y);
+            ctx.lineTo(corners[1].x, corners[1].y);
+            ctx.lineTo(corners[2].x, corners[2].y);
+            ctx.lineTo(corners[3].x, corners[3].y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Slatted lines along the bench
+            ctx.strokeStyle = '#9C6644';
+            ctx.lineWidth = 1.6;
+            for (let s = -0.6; s <= 0.6; s += 0.4) {
+                const pA = projectBoatPoint(-halfLen * 0.92, halfWid * s, benchZ, cx, cy);
+                const pB = projectBoatPoint(halfLen * 0.92, halfWid * s, benchZ, cx, cy);
+                ctx.beginPath();
+                ctx.moveTo(pA.x, pA.y);
+                ctx.lineTo(pB.x, pB.y);
+                ctx.stroke();
+            }
+        }
+
+        function drawHullWallSegment(seg) {
+            // Only draw outer hull wall where the 3D surface faces toward the viewer (front or high-tilted side)
+            const { pRim0, pRim1, pMid0, pMid1, pBot0, pBot1, i } = seg;
+            if (pMid0.y <= pRim0.y - 2 && pMid1.y <= pRim1.y - 2) return;
+
+            ctx.save();
+            // Alternating dark fibrous coconut shell & painted vertical festival stripe panels (like the photo!)
+            const stripeColors = ['#4A2C11', '#5C3A21', '#D90429', '#F4A261', '#1D3557', '#2A9D8F'];
+            const panelColor = (i % 3 === 0) ? stripeColors[(i / 3) % stripeColors.length | 0] : ((i % 2 === 0) ? '#5C3A21' : '#4A2C11');
+
+            ctx.fillStyle = panelColor;
+            ctx.strokeStyle = '#3A2210';
+            ctx.lineWidth = 1.8;
+
+            ctx.beginPath();
+            ctx.moveTo(pRim0.x, pRim0.y);
+            ctx.lineTo(pRim1.x, pRim1.y);
+            ctx.lineTo(pMid1.x, pMid1.y);
+            ctx.lineTo(pBot1.x, pBot1.y);
+            ctx.lineTo(pBot0.x, pBot0.y);
+            ctx.lineTo(pMid0.x, pMid0.y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Woven bamboo horizontal texture lines on exterior hull
+            ctx.strokeStyle = 'rgba(255, 248, 231, 0.18)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo((pRim0.x + pMid0.x) * 0.5, (pRim0.y + pMid0.y) * 0.5);
+            ctx.lineTo((pRim1.x + pMid1.x) * 0.5, (pRim1.y + pMid1.y) * 0.5);
+            ctx.stroke();
+
+            // Stenciled white boat lettering ("C", "O", "C", "O") on front panels like the tourist basket boat photo
+            const letters = { 2: 'C', 3: 'O', 4: 'C', 5: 'O', 14: 'C', 15: 'H', 16: 'A', 17: 'O', 18: 'S' };
+            if (letters[i] && pMid0.y > pRim0.y + 8) {
+                const lx = (pRim0.x + pRim1.x + pMid0.x + pMid1.x) * 0.25;
+                const ly = (pRim0.y + pRim1.y + pMid0.y + pMid1.y) * 0.25;
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+                ctx.font = "900 13px 'Fredoka', sans-serif";
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(letters[i], lx, ly);
+            }
+
+            ctx.restore();
+        }
+
+        function drawColorfulRimSegment(seg) {
+            const { pRim0, pRim1, i } = seg;
+            const color = RIM_COLORS[i % RIM_COLORS.length];
+            const rimThickness = 15;
+
+            ctx.save();
+            // Thick painted torus rim segment
+            ctx.strokeStyle = '#3A2210';
+            ctx.lineWidth = rimThickness + 5;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(pRim0.x, pRim0.y);
+            ctx.lineTo(pRim1.x, pRim1.y);
+            ctx.stroke();
+
+            ctx.strokeStyle = color;
+            ctx.lineWidth = rimThickness;
+            ctx.beginPath();
+            ctx.moveTo(pRim0.x, pRim0.y);
+            ctx.lineTo(pRim1.x, pRim1.y);
+            ctx.stroke();
+
+            // Glossy top highlight on rim
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.38)';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(pRim0.x, pRim0.y - 3);
+            ctx.lineTo(pRim1.x, pRim1.y - 3);
+            ctx.stroke();
+
+            // Rattan lashing band between segments
+            ctx.fillStyle = '#3A2210';
+            ctx.beginPath();
+            ctx.arc(pRim0.x, pRim0.y, rimThickness * 0.48, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawBoatEdgeWaterSpray(cx, cy, boatRadius, bowlDepth, time) {
+            // Whenever the boat tilts or spins fast, draw frothy water splashes along the lowest rim edge
+            const tiltMag = Math.hypot(game.boatTiltRoll, game.boatTiltPitch);
+            if (tiltMag < 0.08 && game.boatSpeed < 1.5) return;
+
+            ctx.save();
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.82)';
+            for (let i = 0; i < 8; i++) {
+                const a = time * 4 + i * 0.8;
+                const pt = projectBoatPoint(Math.cos(a) * boatRadius * 1.04, Math.sin(a) * boatRadius * 1.04, -bowlDepth * 0.25, cx, cy);
+                if (pt.worldZ < -8) { // Submerged/low side of the tilted rim
+                    const r = 5 + Math.sin(time * 15 + i) * 3 + tiltMag * 12;
+                    ctx.beginPath();
+                    ctx.arc(pt.x, pt.y + 6, Math.max(2, r), 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            ctx.restore();
+        }
+
+        // Draw adorable kawaii hamster character
+        function drawHamsterCharacter(targetCtx, x, y, radius, hamster, time, isCaptain = false) {
+            targetCtx.save();
+            targetCtx.translate(x, y);
+
+            // Wobble or rock rotation
+            const wobble = hamster.wobbleAngle || 0;
+            targetCtx.rotate(wobble);
+
+            // Soft drop shadow
+            targetCtx.fillStyle = 'rgba(74, 44, 17, 0.22)';
+            targetCtx.beginPath();
+            targetCtx.ellipse(0, radius * 0.78, radius * 0.85, radius * 0.38, 0, 0, Math.PI * 2);
+            targetCtx.fill();
+
+            const furColor = isCaptain ? '#D97706' : hamster.palette.body;
+            const bellyColor = isCaptain ? '#FEF3C7' : hamster.palette.belly;
+            const earInner = isCaptain ? '#F59E0B' : hamster.palette.ear;
+
+            // Round little ears
+            const earSpread = radius * 0.68;
+            const earY = -radius * 0.65;
+            [-1, 1].forEach(dir => {
+                targetCtx.fillStyle = furColor;
+                targetCtx.strokeStyle = '#4A2C11';
+                targetCtx.lineWidth = Math.max(2, radius * 0.1);
+                targetCtx.beginPath();
+                targetCtx.arc(dir * earSpread, earY, radius * 0.34, 0, Math.PI * 2);
+                targetCtx.fill();
+                targetCtx.stroke();
+
+                targetCtx.fillStyle = '#FFCAD4';
+                targetCtx.beginPath();
+                targetCtx.arc(dir * earSpread, earY, radius * 0.18, 0, Math.PI * 2);
+                targetCtx.fill();
+            });
+
+            // Chubby 3D-shaded potato-shaped body
+            const bodyGrad = targetCtx.createRadialGradient(-radius * 0.28, -radius * 0.28, radius * 0.08, 0, 0, radius * 1.05);
+            bodyGrad.addColorStop(0, '#FFFFFF');
+            bodyGrad.addColorStop(0.2, furColor);
+            bodyGrad.addColorStop(0.85, furColor);
+            bodyGrad.addColorStop(1, earInner);
+            targetCtx.fillStyle = bodyGrad;
+            targetCtx.strokeStyle = '#4A2C11';
+            targetCtx.lineWidth = Math.max(2.2, radius * 0.11);
+            targetCtx.beginPath();
+            targetCtx.ellipse(0, 0, radius * 0.96, radius * 0.9, 0, 0, Math.PI * 2);
+            targetCtx.fill();
+            targetCtx.stroke();
+
+            // Fluffy top head fur tuft
+            targetCtx.fillStyle = furColor;
+            targetCtx.beginPath();
+            targetCtx.moveTo(-radius * 0.16, -radius * 0.84);
+            targetCtx.quadraticCurveTo(0, -radius * 1.08, radius * 0.06, -radius * 0.88);
+            targetCtx.quadraticCurveTo(radius * 0.18, -radius * 1.04, radius * 0.18, -radius * 0.82);
+            targetCtx.fill();
+            targetCtx.stroke();
+
+            // Fluffy cream belly patch
+            targetCtx.fillStyle = bellyColor;
+            targetCtx.beginPath();
+            targetCtx.ellipse(0, radius * 0.24, radius * 0.58, radius * 0.48, 0, 0, Math.PI * 2);
+            targetCtx.fill();
+
+            // Rosy pink cheeks & delicate whiskers
+            targetCtx.fillStyle = 'rgba(255, 105, 135, 0.7)';
+            [-1, 1].forEach(dir => {
+                targetCtx.beginPath();
+                targetCtx.ellipse(dir * radius * 0.54, radius * 0.06, radius * 0.23, radius * 0.15, 0, 0, Math.PI * 2);
+                targetCtx.fill();
+
+                // Cute twin whiskers on each cheek
+                targetCtx.strokeStyle = 'rgba(74, 44, 17, 0.65)';
+                targetCtx.lineWidth = Math.max(1.2, radius * 0.055);
+                targetCtx.beginPath();
+                targetCtx.moveTo(dir * radius * 0.68, radius * 0.02);
+                targetCtx.lineTo(dir * radius * 1.06, -radius * 0.05);
+                targetCtx.moveTo(dir * radius * 0.68, radius * 0.11);
+                targetCtx.lineTo(dir * radius * 1.04, radius * 0.14);
+                targetCtx.stroke();
+            });
+
+            // Expressive eyes
+            const expr = isCaptain ? 'captain' : (hamster.expression || 'happy');
+            const eyeX = radius * 0.34;
+            const eyeY = -radius * 0.14;
+
+            if (expr === 'dizzy') {
+                // Swirling spiral eyes
+                targetCtx.strokeStyle = '#4A2C11';
+                targetCtx.lineWidth = 2.2;
+                [-1, 1].forEach(dir => {
+                    targetCtx.save();
+                    targetCtx.translate(dir * eyeX, eyeY);
+                    targetCtx.rotate(time * 8 * dir);
+                    targetCtx.beginPath();
+                    targetCtx.arc(0, 0, radius * 0.17, 0, Math.PI * 1.5);
+                    targetCtx.stroke();
+                    targetCtx.restore();
+                });
+            } else if (expr === 'shocked' || expr === 'scream') {
+                // Wide popped cartoon eyes
+                [-1, 1].forEach(dir => {
+                    targetCtx.fillStyle = '#FFFFFF';
+                    targetCtx.strokeStyle = '#4A2C11';
+                    targetCtx.lineWidth = 2;
+                    targetCtx.beginPath();
+                    targetCtx.arc(dir * eyeX, eyeY, radius * 0.22, 0, Math.PI * 2);
+                    targetCtx.fill();
+                    targetCtx.stroke();
+
+                    targetCtx.fillStyle = '#2B180A';
+                    targetCtx.beginPath();
+                    targetCtx.arc(dir * eyeX, eyeY, radius * 0.09, 0, Math.PI * 2);
+                    targetCtx.fill();
+                });
+            } else {
+                // Big glossy kawaii eyes with dual anime-style catchlights
+                [-1, 1].forEach(dir => {
+                    targetCtx.fillStyle = '#2B180A';
+                    targetCtx.beginPath();
+                    targetCtx.arc(dir * eyeX, eyeY, radius * 0.18, 0, Math.PI * 2);
+                    targetCtx.fill();
+
+                    // Large upper eye shine highlight
+                    targetCtx.fillStyle = '#FFFFFF';
+                    targetCtx.beginPath();
+                    targetCtx.arc(dir * eyeX - radius * 0.055, eyeY - radius * 0.055, radius * 0.07, 0, Math.PI * 2);
+                    targetCtx.fill();
+
+                    // Small lower sparkle catchlight
+                    targetCtx.beginPath();
+                    targetCtx.arc(dir * eyeX + radius * 0.05, eyeY + radius * 0.05, radius * 0.032, 0, Math.PI * 2);
+                    targetCtx.fill();
+                });
+            }
+
+            // Cute tiny pink nose & mouth
+            targetCtx.fillStyle = '#FF758F';
+            targetCtx.beginPath();
+            targetCtx.ellipse(0, -radius * 0.01, radius * 0.1, radius * 0.07, 0, 0, Math.PI * 2);
+            targetCtx.fill();
+
+            targetCtx.strokeStyle = '#4A2C11';
+            targetCtx.lineWidth = 2;
+            if (expr === 'scream' || expr === 'shocked') {
+                targetCtx.fillStyle = '#E63946';
+                targetCtx.beginPath();
+                targetCtx.ellipse(0, radius * 0.18, radius * 0.16, radius * 0.2, 0, 0, Math.PI * 2);
+                targetCtx.fill();
+                targetCtx.stroke();
+            } else {
+                // Cat-like "w" hamster smile
+                targetCtx.beginPath();
+                targetCtx.arc(-radius * 0.09, radius * 0.07, radius * 0.09, 0, Math.PI);
+                targetCtx.arc(radius * 0.09, radius * 0.07, radius * 0.09, 0, Math.PI);
+                targetCtx.stroke();
+            }
+
+            // Little paws (clinging or waving frantically)
+            const pawWave = (expr === 'scream' || expr === 'shocked') ? Math.sin(time * 24) * radius * 0.25 : Math.sin(time * 4 + (hamster.bobOffset || 0)) * radius * 0.08;
+            targetCtx.fillStyle = bellyColor;
+            targetCtx.strokeStyle = '#4A2C11';
+            targetCtx.lineWidth = 2;
+            [-1, 1].forEach(dir => {
+                targetCtx.beginPath();
+                targetCtx.arc(dir * radius * 0.58, radius * 0.22 - Math.abs(pawWave), radius * 0.17, 0, Math.PI * 2);
+                targetCtx.fill();
+                targetCtx.stroke();
+            });
+
+            // Optional sunflower seed snack in idle
+            if (!isCaptain && hamster.eatingSeed && game.state === STATE.IDLE) {
+                targetCtx.fillStyle = '#3D405B';
+                targetCtx.beginPath();
+                targetCtx.ellipse(0, radius * 0.22, radius * 0.12, radius * 0.18, 0.3, 0, Math.PI * 2);
+                targetCtx.fill();
+            }
+
+            // Accessories or Captain Hat
+            if (isCaptain) {
+                drawCaptainHatAndPaddle(targetCtx, radius, time);
+            } else {
+                if (hamster.expression === 'crown') {
+                    drawWinnerCrown(targetCtx, radius);
+                } else {
+                    drawHamsterAccessory(targetCtx, radius, hamster.accessory, time);
+                }
+            }
+
+            targetCtx.restore();
+        }
+
+        function drawCaptainHatAndPaddle(targetCtx, r, time) {
+            // Iconic Vietnamese Conical Bamboo Hat (Nón Lá) + Captain Band (inspired by the photo!)
+            targetCtx.save();
+            targetCtx.translate(0, -r * 0.72);
+
+            // Turquoise neck scarf fluttering
+            targetCtx.fillStyle = '#00BBF9';
+            targetCtx.strokeStyle = '#4A2C11';
+            targetCtx.lineWidth = 2;
+            targetCtx.beginPath();
+            targetCtx.ellipse(0, r * 1.02, r * 0.62, r * 0.18, 0, 0, Math.PI * 2);
+            targetCtx.fill();
+            targetCtx.stroke();
+
+            // Conical Nón Lá Straw Hat
+            const hatGrad = targetCtx.createLinearGradient(-r, -r * 0.7, r, 0);
+            hatGrad.addColorStop(0, '#FFF8E7');
+            hatGrad.addColorStop(0.5, '#F3D5B5');
+            hatGrad.addColorStop(1, '#D4A373');
+            targetCtx.fillStyle = hatGrad;
+            targetCtx.strokeStyle = '#4A2C11';
+            targetCtx.lineWidth = 2.5;
+            targetCtx.beginPath();
+            targetCtx.moveTo(-r * 1.25, r * 0.05);
+            targetCtx.lineTo(0, -r * 0.78);
+            targetCtx.lineTo(r * 1.25, r * 0.05);
+            targetCtx.quadraticCurveTo(0, r * 0.28, -r * 1.25, r * 0.05);
+            targetCtx.closePath();
+            targetCtx.fill();
+            targetCtx.stroke();
+
+            // Woven rings on the conical hat
+            targetCtx.strokeStyle = 'rgba(92, 58, 33, 0.35)';
+            targetCtx.lineWidth = 1.5;
+            targetCtx.beginPath();
+            targetCtx.moveTo(-r * 0.75, -r * 0.22);
+            targetCtx.quadraticCurveTo(0, -r * 0.08, r * 0.75, -r * 0.22);
+            targetCtx.stroke();
+
+            targetCtx.restore();
+
+            // Long Bamboo Oar / Paddle dipping deep into the river water on the side
+            const strokeAngle = Math.sin(game.captainPaddlePhase) * 0.48;
+            targetCtx.save();
+            targetCtx.translate(r * 0.45, r * 0.15);
+            targetCtx.rotate(0.55 + strokeAngle);
+
+            // Long bamboo shaft
+            targetCtx.strokeStyle = '#DDB892';
+            targetCtx.lineWidth = Math.max(5, r * 0.24);
+            targetCtx.lineCap = 'round';
+            targetCtx.beginPath();
+            targetCtx.moveTo(-r * 0.9, -r * 0.4);
+            targetCtx.lineTo(r * 2.1, r * 0.9);
+            targetCtx.stroke();
+
+            targetCtx.strokeStyle = '#4A2C11';
+            targetCtx.lineWidth = 2;
+            targetCtx.beginPath();
+            targetCtx.moveTo(-r * 0.9, -r * 0.4);
+            targetCtx.lineTo(r * 2.1, r * 0.9);
+            targetCtx.stroke();
+
+            // Wooden paddle blade & water splash foam at tip
+            targetCtx.fillStyle = '#B08968';
+            targetCtx.strokeStyle = '#4A2C11';
+            targetCtx.lineWidth = 2.2;
+            targetCtx.beginPath();
+            targetCtx.ellipse(r * 2.25, r * 0.98, r * 0.48, r * 0.22, 0.4, 0, Math.PI * 2);
+            targetCtx.fill();
+            targetCtx.stroke();
+
+            // White water splash droplets around the oar blade
+            targetCtx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+            targetCtx.beginPath();
+            targetCtx.arc(r * 2.45, r * 1.05, r * 0.22, 0, Math.PI * 2);
+            targetCtx.arc(r * 2.05, r * 1.12, r * 0.16, 0, Math.PI * 2);
+            targetCtx.fill();
+
+            targetCtx.restore();
+        }
+
+        function drawHamsterAccessory(targetCtx, r, type, time) {
+            targetCtx.save();
+            targetCtx.strokeStyle = '#4A2C11';
+            targetCtx.lineWidth = 2;
+
+            if (type === 'pink_bow') {
+                targetCtx.translate(-r * 0.45, -r * 0.72);
+                targetCtx.fillStyle = '#FF4D6D';
+                targetCtx.beginPath();
+                targetCtx.ellipse(-r * 0.18, 0, r * 0.2, r * 0.13, -0.2, 0, Math.PI * 2);
+                targetCtx.ellipse(r * 0.18, 0, r * 0.2, r * 0.13, 0.2, 0, Math.PI * 2);
+                targetCtx.fill();
+                targetCtx.stroke();
+                targetCtx.beginPath();
+                targetCtx.arc(0, 0, r * 0.1, 0, Math.PI * 2);
+                targetCtx.fill();
+                targetCtx.stroke();
+            } else if (type === 'sunglasses') {
+                targetCtx.fillStyle = '#1D3557';
+                targetCtx.fillRect(-r * 0.62, -r * 0.3, r * 0.5, r * 0.28);
+                targetCtx.fillRect(r * 0.12, -r * 0.3, r * 0.5, r * 0.28);
+                targetCtx.beginPath();
+                targetCtx.moveTo(-r * 0.12, -r * 0.18);
+                targetCtx.lineTo(r * 0.12, -r * 0.18);
+                targetCtx.stroke();
+            } else if (type === 'sailor_hat') {
+                targetCtx.translate(0, -r * 0.85);
+                targetCtx.fillStyle = '#FFFFFF';
+                targetCtx.beginPath();
+                targetCtx.arc(0, 0, r * 0.4, Math.PI, 0);
+                targetCtx.closePath();
+                targetCtx.fill();
+                targetCtx.stroke();
+                targetCtx.fillStyle = '#3A86FF';
+                targetCtx.fillRect(-r * 0.4, -r * 0.12, r * 0.8, r * 0.12);
+            } else if (type === 'headband') {
+                targetCtx.fillStyle = '#FF006E';
+                targetCtx.fillRect(-r * 0.78, -r * 0.52, r * 1.56, r * 0.18);
+                targetCtx.strokeRect(-r * 0.78, -r * 0.52, r * 1.56, r * 0.18);
+            } else if (type === 'flower') {
+                targetCtx.translate(r * 0.45, -r * 0.72);
+                targetCtx.fillStyle = '#FFBE0B';
+                for (let p = 0; p < 5; p++) {
+                    const a = (p / 5) * Math.PI * 2;
+                    targetCtx.beginPath();
+                    targetCtx.arc(Math.cos(a) * r * 0.16, Math.sin(a) * r * 0.16, r * 0.12, 0, Math.PI * 2);
+                    targetCtx.fill();
+                }
+                targetCtx.fillStyle = '#FB5607';
+                targetCtx.beginPath();
+                targetCtx.arc(0, 0, r * 0.1, 0, Math.PI * 2);
+                targetCtx.fill();
+            } else if (type === 'propeller_cap') {
+                targetCtx.translate(0, -r * 0.82);
+                targetCtx.fillStyle = '#06D6A0';
+                targetCtx.beginPath();
+                targetCtx.arc(0, 0, r * 0.42, Math.PI, 0);
+                targetCtx.fill();
+                targetCtx.stroke();
+                targetCtx.fillStyle = '#EF476F';
+                targetCtx.fillRect(-r * 0.35, -r * 0.52, r * 0.7, r * 0.09);
+            } else if (type === 'straw_hat') {
+                targetCtx.translate(0, -r * 0.82);
+                targetCtx.fillStyle = '#F4D35E';
+                targetCtx.beginPath();
+                targetCtx.ellipse(0, 0, r * 0.72, r * 0.18, 0, 0, Math.PI * 2);
+                targetCtx.fill();
+                targetCtx.stroke();
+            } else if (type === 'leaf_sprout') {
+                targetCtx.translate(0, -r * 0.88);
+                targetCtx.fillStyle = '#80ED99';
+                targetCtx.beginPath();
+                targetCtx.ellipse(-r * 0.15, -r * 0.15, r * 0.2, r * 0.1, -0.4, 0, Math.PI * 2);
+                targetCtx.ellipse(r * 0.15, -r * 0.15, r * 0.2, r * 0.1, 0.4, 0, Math.PI * 2);
+                targetCtx.fill();
+                targetCtx.stroke();
+            }
+
+            targetCtx.restore();
+        }
+
+        function drawWinnerCrown(targetCtx, r) {
+            targetCtx.save();
+            targetCtx.translate(0, -r * 1.05);
+            targetCtx.fillStyle = '#FFD700';
+            targetCtx.strokeStyle = '#4A2C11';
+            targetCtx.lineWidth = 2.5;
+            targetCtx.beginPath();
+            targetCtx.moveTo(-r * 0.48, 0);
+            targetCtx.lineTo(-r * 0.55, -r * 0.45);
+            targetCtx.lineTo(-r * 0.2, -r * 0.2);
+            targetCtx.lineTo(0, -r * 0.55);
+            targetCtx.lineTo(r * 0.2, -r * 0.2);
+            targetCtx.lineTo(r * 0.55, -r * 0.45);
+            targetCtx.lineTo(r * 0.48, 0);
+            targetCtx.closePath();
+            targetCtx.fill();
+            targetCtx.stroke();
+            targetCtx.restore();
+        }
+
+        // Draw crisp student name badge that ALWAYS stays upright and legible
+        function drawNameTag(x, y, text, isCaptain = false) {
+            ctx.save();
+            ctx.font = isCaptain ? "700 13px 'Fredoka', sans-serif" : "700 14px 'Quicksand', sans-serif";
+            const paddingX = 10;
+            const metrics = ctx.measureText(text);
+            const boxW = metrics.width + paddingX * 2;
+            const boxH = 23;
+
+            ctx.translate(x, y);
+
+            // Soft drop shadow under badge
+            ctx.fillStyle = 'rgba(43, 24, 10, 0.28)';
+            ctx.beginPath();
+            ctx.roundRect(-boxW / 2, -boxH / 2 + 3, boxW, boxH, 10);
+            ctx.fill();
+
+            ctx.fillStyle = isCaptain ? '#5C3A21' : 'rgba(255, 253, 245, 0.96)';
+            ctx.strokeStyle = isCaptain ? '#FFD166' : '#4A2C11';
+            ctx.lineWidth = 2.4;
+
+            ctx.beginPath();
+            ctx.roundRect(-boxW / 2, -boxH / 2, boxW, boxH, 10);
+            ctx.fill();
+            ctx.stroke();
+
+            // Little pointer triangle pointing to the hamster
+            ctx.beginPath();
+            ctx.moveTo(-4, boxH / 2);
+            ctx.lineTo(4, boxH / 2);
+            ctx.lineTo(0, boxH / 2 + 4);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.fillStyle = isCaptain ? '#FFD166' : '#3A2210';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 0, 1);
+            ctx.restore();
+        }
+
+        /********************************************************************
+         * 6. MAIN GAMEPLAY LOOP & ANIMATION SEQUENCE
+         ********************************************************************/
+        let lastFrameTime = performance.now();
+
+        function gameLoop(now) {
+            const rawDt = Math.min(0.05, (now - lastFrameTime) / 1000);
+            lastFrameTime = now;
+            const dt = game.paused ? 0 : rawDt * game.slowMoFactor;
+            const time = now / 1000;
+
+            updateGameLogic(dt, time);
+            renderScene(time);
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function getSpeedMultiplier() {
+            if (game.settings.speedPreset === 'slow') return 0.65;
+            if (game.settings.speedPreset === 'crazy') return 1.55;
+            return 1.0;
+        }
+
+        function getRoundDuration() {
+            if (game.settings.durationPreset === 'short') return 4.2;
+            if (game.settings.durationPreset === 'long') return 10.5;
+            return 7.0;
+        }
+
+        function updateGameLogic(dt, time) {
+            if (game.paused) return;
+
+            const speedMult = getSpeedMultiplier();
+            const totalDuration = getRoundDuration();
+
+            // Update camera perspective pitch
+            if (game.cameraMode === 'side') {
+                game.cameraPitch += (0.56 - game.cameraPitch) * 5 * dt; // ~32 deg dramatic side view
+            } else if (game.cameraMode === 'high') {
+                game.cameraPitch += (0.98 - game.cameraPitch) * 5 * dt; // ~56 deg high overview
+            } else if (game.cameraMode === 'dynamic') {
+                const targetPitch = 0.52 + Math.sin(time * 0.85) * 0.18;
+                game.cameraPitch += (targetPitch - game.cameraPitch) * 4 * dt;
+            }
+
+            // Gentle rocking motion on water
+            game.boatRockPhase += dt * (2.5 + game.boatSpeed * 10);
+
+            // Calculate acrobatic 3D Boat Roll & Pitch (like the real Vietnamese basket boat performers!)
+            let tiltIntensity = 0.10;
+            if (game.state === STATE.SLOW_SPIN) tiltIntensity = 0.22;
+            else if (game.state === STATE.CHAOS_SPIN) tiltIntensity = 0.44; // Dramatic 25+ degree side tilt!
+            else if (game.state === STATE.LAUNCHING) tiltIntensity = 0.35;
+
+            game.boatTiltRoll = Math.sin(game.boatRockPhase) * tiltIntensity;
+            game.boatTiltPitch = Math.cos(game.boatRockPhase * 0.85) * (tiltIntensity * 0.65);
+
+            if (game.state === STATE.BOARDING) {
+                game.phaseTimer += dt;
+                let allBoarded = true;
+                game.students.forEach(h => {
+                    if (game.phaseTimer > h.boardDelay) {
+                        h.boardProgress = Math.min(1, h.boardProgress + dt * 3.2);
+                    }
+                    if (h.boardProgress < 1) allBoarded = false;
+                });
+                game.boatAngle += 0.35 * dt;
+                game.captainPaddlePhase += dt * 4;
+                if (allBoarded && game.phaseTimer > 1.2) {
+                    game.state = STATE.IDLE;
+                    setStatusText("ALL HAMSTERS ABOARD! READY TO SPIN 🥥");
+                }
+            } else if (game.state === STATE.IDLE) {
+                game.boatAngle += 0.28 * dt;
+                game.captainPaddlePhase += dt * 3.8;
+            } else if (game.state === STATE.SLOW_SPIN) {
+                // Phase 2: Nice and easy
+                game.phaseTimer += dt;
+                game.boatSpeed = (1.2 + game.phaseTimer * 0.6) * speedMult;
+                game.boatAngle += game.boatSpeed * dt;
+                game.captainPaddlePhase += dt * 9 * speedMult;
+
+                if (Math.random() < 0.14) {
+                    sound.playPaddleSplash(0.5);
+                }
+
+                if (game.phaseTimer >= totalDuration * 0.32) {
+                    game.state = STATE.CHAOS_SPIN;
+                    setStatusText("🌪️ ACROBATIC COCONUT CHAOS!! 🌪️");
+                }
+            } else if (game.state === STATE.CHAOS_SPIN) {
+                // Phase 3: High speed chaos, dramatic side tilting, sliding, wobbling, funny quotes
+                game.phaseTimer += dt;
+                const chaosProgress = (game.phaseTimer - totalDuration * 0.32) / (totalDuration * 0.68);
+                game.boatSpeed = (2.2 + chaosProgress * 5.8) * speedMult;
+                game.boatAngle += game.boatSpeed * dt;
+                game.captainPaddlePhase += dt * 22 * speedMult;
+
+                if (Math.random() < 0.28) {
+                    sound.playPaddleSplash(1.2);
+                }
+                if (Math.random() < 0.08) {
+                    sound.playSqueak();
+                }
+
+                // Random funny hamster quotes
+                game.quoteTimer -= dt;
+                if (game.quoteTimer <= 0) {
+                    const quote = CHAOS_QUOTES[Math.floor(Math.random() * CHAOS_QUOTES.length)];
+                    showPhaseBanner(quote, 1300);
+                    game.quoteTimer = 1.45;
+                }
+
+                // Update active hamsters' expressions & centrifugal slide toward the tilted rim
+                const active = game.students.filter(s => !s.eliminated);
+                active.forEach((h, idx) => {
+                    h.wobbleAngle = Math.sin(time * 18 + idx) * 0.38 - game.boatTiltRoll * 0.6;
+                    const pushOut = 1 + Math.min(0.26, chaosProgress * 0.24);
+                    const slideGravityX = Math.sin(game.boatTiltRoll) * 0.14;
+                    h.curX = h.seatX * pushOut + slideGravityX + Math.cos(time * 12 + idx) * 0.04;
+                    h.curY = h.seatY * pushOut + Math.sin(time * 12 + idx) * 0.04;
+                    h.expression = idx % 2 === 0 ? 'dizzy' : 'scream';
+                });
+
+                if (game.phaseTimer >= totalDuration) {
+                    launchRandomVictim();
+                }
+            } else if (game.state === STATE.LAUNCHING) {
+                // Phase 4: Slow-motion dramatic launch into the water
+                game.boatAngle += game.boatSpeed * 0.35 * dt;
+                if (game.flyingHamster) {
+                    game.flyingHamster.t += dt / 1.15; // 1.15s flight duration
+                    if (game.flyingHamster.t > 0.15 && game.flyingHamster.t < 0.65) {
+                        game.slowMoFactor = 0.48; // Dramatic slow motion mid-air!
+                    } else {
+                        game.slowMoFactor = 1.0;
+                    }
+
+                    if (game.flyingHamster.t >= 1) {
+                        completeEliminationSplash();
+                    }
+                }
+            }
+
+            // Update splash & confetti particles
+            for (let i = game.particles.length - 1; i >= 0; i--) {
+                const p = game.particles[i];
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                if (p.gravity) p.vy += p.gravity * dt;
+                p.life -= dt;
+                if (p.life <= 0) game.particles.splice(i, 1);
+            }
+        }
+
+        function renderScene(time) {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            const cx = w / 2;
+            const cy = h * 0.57; // Positioned in the river foreground below the Nipa palm bank
+
+            drawTropicalLagoon(w, h, time);
+
+            // Responsive Coconut Basket Boat Radius
+            const boatRadius = Math.min(w, h) * (w < 640 ? 0.34 : 0.31);
+            const bowlDepth = boatRadius * 0.66;
+
+            // Helper to render floating eliminated hamsters (split into background & foreground for true 2.5D depth)
+            const eliminated = game.students.filter(s => s.eliminated);
+            const sinCam = Math.sin(game.cameraPitch);
+
+            function drawEliminatedSet(isForeground) {
+                eliminated.forEach((ham, idx) => {
+                    const floatR = boatRadius * 1.48 + (idx % 2) * 34;
+                    const ang = ham.floatAngle + Math.sin(time * 0.45 + idx) * 0.08;
+                    const sinA = Math.sin(ang);
+                    if (isForeground ? (sinA < 0) : (sinA >= 0)) return;
+
+                    const fx = cx + Math.cos(ang) * floatR;
+                    const fy = cy + sinA * floatR * sinCam + Math.sin(time * 3 + idx) * 4;
+                    const depthScale = 0.85 + (sinA + 1) * 0.12;
+
+                    // Gentle water ripple under floatie
+                    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.ellipse(fx, fy + 6, 30 * depthScale, 15 * depthScale, 0, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    // Colorful 2.5D glossy donut inner tube with tropical stripes
+                    const tubeGrad = ctx.createRadialGradient(fx - 6 * depthScale, fy - 2 * depthScale, 3 * depthScale, fx, fy + 4, 26 * depthScale);
+                    tubeGrad.addColorStop(0, '#FFFFFF');
+                    tubeGrad.addColorStop(0.25, ham.tubeColor);
+                    tubeGrad.addColorStop(1, ham.tubeColor);
+                    ctx.fillStyle = tubeGrad;
+                    ctx.strokeStyle = '#4A2C11';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.ellipse(fx, fy + 4, 25 * depthScale, 14.5 * depthScale, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // Inner ring detail on floatie
+                    ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.ellipse(fx, fy + 2, 16 * depthScale, 8 * depthScale, 0, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    drawHamsterCharacter(ctx, fx, fy - 4 * depthScale, 16 * depthScale, ham, time, false);
+                    drawNameTag(fx, fy - 30 * depthScale, ham.name, false);
+                });
+            }
+
+            // 1. Draw Eliminated Hamsters floating behind the boat
+            drawEliminatedSet(false);
+
+            // 2. Draw Tilted 3D Coconut Basket Boat + Depth-Sorted Hamsters & Captain Inside
+            const rockX = Math.sin(game.boatRockPhase * 0.5) * 7;
+            const rockY = Math.cos(game.boatRockPhase * 0.8) * 5;
+            const boatX = cx + rockX;
+            const boatY = cy + rockY;
+
+            const active = game.students.filter(s => !s.eliminated);
+            const hamRadius = Math.max(15, Math.min(28, boatRadius * (active.length > 18 ? 0.12 : active.length > 10 ? 0.15 : 0.19)));
+            const usableRadius = boatRadius * 0.80;
+            const nameTagQueue = [];
+
+            drawTiltedCoconutBasketBoat(boatX, boatY, boatRadius, time, () => {
+                // Collect all 3D entities inside the boat (Students + Captain Coconut) and sort by depth (back-to-front)
+                const renderEntities = [];
+
+                active.forEach(ham => {
+                    if (game.flyingHamster && game.flyingHamster.hamster.id === ham.id) return;
+
+                    const lx = (game.state === STATE.CHAOS_SPIN ? ham.curX : ham.seatX) * usableRadius;
+                    const ly = (game.state === STATE.CHAOS_SPIN ? ham.curY : ham.seatY) * usableRadius;
+
+                    // Height inside the concave bowl: rim seats sit higher, bench/floor sit deeper inside
+                    const rNorm = Math.min(1, Math.hypot(lx, ly) / boatRadius);
+                    const seatZ = -bowlDepth * (1 - rNorm * rNorm * 0.82) + hamRadius * 0.35;
+
+                    const proj = projectBoatPoint(lx, ly, seatZ, boatX, boatY);
+                    renderEntities.push({
+                        type: 'student',
+                        ham,
+                        proj,
+                        depth: proj.depth
+                    });
+                });
+
+                // Captain Coconut stands near the stern/side edge rocking the boat with a long bamboo paddle
+                const capBounce = Math.abs(Math.sin(game.captainPaddlePhase)) * 8;
+                const capProj = projectBoatPoint(0, -boatRadius * 0.78, hamRadius * 0.55 + capBounce, boatX, boatY);
+                renderEntities.push({
+                    type: 'captain',
+                    proj: capProj,
+                    depth: capProj.depth
+                });
+
+                // Painter's Algorithm: Sort from furthest back (smallest depth) to closest front (largest depth)
+                renderEntities.sort((a, b) => a.depth - b.depth);
+
+                renderEntities.forEach(ent => {
+                    if (ent.type === 'captain') {
+                        const capR = Math.max(24, boatRadius * 0.20);
+                        drawHamsterCharacter(ctx, ent.proj.x, ent.proj.y, capR, {
+                            wobbleAngle: Math.sin(time * 10) * 0.14 - game.boatTiltRoll * 0.5
+                        }, time, true);
+
+                        nameTagQueue.push({
+                            x: ent.proj.x,
+                            y: ent.proj.y - capR - 22,
+                            name: "CAPTAIN COCONUT 🥥",
+                            isCaptain: true
+                        });
+                    } else {
+                        const ham = ent.ham;
+                        let screenX = ent.proj.x;
+                        let screenY = ent.proj.y;
+
+                        // Perspective scale based on depth
+                        const depthFactor = 0.92 + (ent.proj.depth / (boatRadius * 2)) * 0.18;
+                        let scale = depthFactor;
+
+                        if (ham.boardProgress < 1) {
+                            const p = ham.boardProgress;
+                            screenY -= Math.sin(p * Math.PI) * 110;
+                            scale *= (0.5 + 0.5 * p);
+                        } else {
+                            screenY += Math.sin(time * 5 + ham.bobOffset) * 2.5;
+                        }
+
+                        drawHamsterCharacter(ctx, screenX, screenY, hamRadius * scale, ham, time, false);
+                        nameTagQueue.push({
+                            x: screenX,
+                            y: screenY - hamRadius * scale - 14,
+                            name: ham.name,
+                            isCaptain: false
+                        });
+                    }
+                });
+            });
+
+            // 3. Draw Eliminated Hamsters floating in the foreground water
+            drawEliminatedSet(true);
+
+            // 4. Render all student & captain name tags upright on top so they are 100% legible
+            nameTagQueue.forEach(tag => {
+                drawNameTag(tag.x, tag.y, tag.name, tag.isCaptain);
+            });
+
+            // 5. Draw Flying Eliminated Hamster (During Phase 4 High-Arc 3D Launch)
+            if (game.flyingHamster) {
+                const fh = game.flyingHamster;
+                const t = fh.t;
+                const curX = fh.startX + (fh.targetX - fh.startX) * t;
+                const curY = fh.startY + (fh.targetY - fh.startY) * t - Math.sin(t * Math.PI) * 210;
+                const zoomScale = 1 + Math.sin(t * Math.PI) * 0.72;
+
+                fh.hamster.wobbleAngle = t * Math.PI * 6;
+                fh.hamster.expression = 'shocked';
+                drawHamsterCharacter(ctx, curX, curY, hamRadius * zoomScale, fh.hamster, time, false);
+                drawNameTag(curX, curY - hamRadius * zoomScale - 18, fh.hamster.name, false);
+            }
+
+            // 6. Render Multi-Layered Water Splash & Confetti Particles
+            game.particles.forEach(p => {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, Math.min(1, p.life / p.maxLife));
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                if (p.shape === 'rect') {
+                    ctx.translate(p.x, p.y);
+                    ctx.rotate(p.life * 8);
+                    ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+                } else {
+                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.restore();
+            });
+
+            // 7. Subtle Warm Sunlit Vignette Frame
+            const vig = ctx.createRadialGradient(cx, h * 0.5, Math.min(w, h) * 0.38, cx, h * 0.5, Math.max(w, h) * 0.75);
+            vig.addColorStop(0, 'rgba(255, 255, 255, 0)');
+            vig.addColorStop(1, 'rgba(10, 46, 54, 0.16)');
+            ctx.fillStyle = vig;
+            ctx.fillRect(0, 0, w, h);
+        }
+
+        /********************************************************************
+         * 7. GENUINE RANDOM SELECTION & ELIMINATION FLOW
+         ********************************************************************/
+        function startSpinRound() {
+            const active = game.students.filter(s => !s.eliminated);
+            if (active.length <= 1) {
+                if (active.length === 1) declareChampion(active[0]);
+                return;
+            }
+
+            document.getElementById('resultModal').classList.add('hidden');
+            document.getElementById('resultModal').classList.remove('flex');
+
+            active.forEach(h => {
+                h.expression = 'happy';
+                h.wobbleAngle = 0;
+                h.curX = h.seatX;
+                h.curY = h.seatY;
+            });
+
+            game.state = STATE.SLOW_SPIN;
+            game.phaseTimer = 0;
+            game.quoteTimer = 1.0;
+            game.paused = false;
+            setStatusText("🚣 NICE AND EASY… EVERYONE IS SAFE! 🐹");
+            showPhaseBanner("Nice and easy… Everyone is safe! 🐹", 2000);
+            sound.playPop(600);
+            updateHUD();
+        }
+
+        function launchRandomVictim() {
+            const active = game.students.filter(s => !s.eliminated);
+            if (active.length === 0) return;
+
+            // Genuine uniform random selection independent of seat position
+            const randomIndex = Math.floor(Math.random() * active.length);
+            const victim = active[randomIndex];
+            game.selectedVictim = victim;
+
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            const cx = w / 2;
+            const cy = h * 0.57;
+            const boatRadius = Math.min(w, h) * (w < 640 ? 0.34 : 0.31);
+
+            // Compute victim's current 3D projected screen position inside the tilted boat
+            const usableRadius = boatRadius * 0.80;
+            const lx = victim.seatX * usableRadius;
+            const ly = victim.seatY * usableRadius;
+            const startProj = projectBoatPoint(lx, ly, -boatRadius * 0.2, cx, cy);
+
+            // Compute target splash landing spot in the lagoon outside the boat
+            const splashAngle = Math.atan2(startProj.y - cy, startProj.x - cx);
+            const targetDist = boatRadius * 1.48;
+            const targetX = cx + Math.cos(splashAngle) * targetDist;
+            const targetY = cy + Math.sin(splashAngle) * targetDist * Math.sin(game.cameraPitch);
+
+            victim.floatAngle = splashAngle;
+
+            game.flyingHamster = {
+                hamster: victim,
+                startX: startProj.x,
+                startY: startProj.y,
+                targetX,
+                targetY,
+                t: 0
+            };
+
+            game.state = STATE.LAUNCHING;
+            setStatusText("OH NOOOOO! 💦 SOMEONE IS FLYING OVER THE RIM!");
+            showPhaseBanner("OH NOOOOO! 💦", 1400);
+            sound.playFallWhistle();
+        }
+
+        function completeEliminationSplash() {
+            const fh = game.flyingHamster;
+            if (!fh) return;
+
+            const victim = fh.hamster;
+            victim.eliminated = true;
+            victim.expression = 'happy';
+            victim.wobbleAngle = 0;
+            game.eliminatedOrder.push(victim.name);
+
+            // Spawn Big Cartoon Water Splash & Bubbles
+            spawnWaterSplash(fh.targetX, fh.targetY);
+            sound.playBigSplash();
+
+            game.flyingHamster = null;
+            game.slowMoFactor = 1.0;
+
+            // Reposition remaining hamsters neatly
+            arrangeHamstersInBoat();
+            game.students.filter(s => !s.eliminated).forEach(h => {
+                h.expression = 'happy';
+                h.wobbleAngle = 0;
+            });
+
+            updateHUD();
+
+            const remaining = game.students.filter(s => !s.eliminated);
+            if (remaining.length === 1) {
+                // First show the eliminated student briefly, or if teacher prefers, show elimination modal then crown champion
+                showEliminationModal(victim, true);
+            } else {
+                showEliminationModal(victim, false);
+            }
+        }
+
+        function spawnWaterSplash(x, y) {
+            const colors = ['#FFFFFF', '#CAF0F8', '#90E0EF', '#48CAE4'];
+            for (let i = 0; i < 38; i++) {
+                const ang = Math.random() * Math.PI * 2;
+                const spd = 40 + Math.random() * 190;
+                game.particles.push({
+                    x,
+                    y,
+                    vx: Math.cos(ang) * spd,
+                    vy: Math.sin(ang) * spd - 90,
+                    gravity: 340,
+                    size: 4 + Math.random() * 7,
+                    color: colors[i % colors.length],
+                    life: 0.6 + Math.random() * 0.5,
+                    maxLife: 1.1,
+                    shape: 'circle'
+                });
+            }
+        }
+
+        function spawnVictoryConfetti() {
+            const w = window.innerWidth;
+            const colors = ['#FF4D6D', '#FFD166', '#06D6A0', '#4CC9F0', '#F72585', '#FFBE0B'];
+            for (let i = 0; i < 85; i++) {
+                game.particles.push({
+                    x: Math.random() * w,
+                    y: -20 - Math.random() * 120,
+                    vx: (Math.random() - 0.5) * 140,
+                    vy: 90 + Math.random() * 160,
+                    gravity: 80,
+                    size: 8 + Math.random() * 6,
+                    color: colors[i % colors.length],
+                    life: 2.5 + Math.random() * 1.5,
+                    maxLife: 4.0,
+                    shape: 'rect'
+                });
+            }
+        }
+
+        function showEliminationModal(hamster, isPenultimate) {
+            game.state = STATE.PAUSED_RESULT;
+            setStatusText(`${hamster.name.toUpperCase()} HAS BEEN COCONUT-ED! 🥥`);
+
+            // Draw cute portrait of the selected hamster
+            pCtx.clearRect(0, 0, 144, 144);
+            drawHamsterCharacter(pCtx, 72, 78, 42, hamster, performance.now() / 1000, false);
+
+            document.getElementById('modalBadge').textContent = "OH NOOOOO! 💦 OUT YOU GO!";
+            document.getElementById('modalBadge').className = "inline-block bg-rose-500 text-white cartoon-font text-xl px-5 py-1.5 rounded-full border-4 border-amber-950 -mt-12 shadow-md mb-3";
+            document.getElementById('modalStudentName').textContent = hamster.name;
+            document.getElementById('modalSubtext').textContent = "HAS BEEN COCONUT-ED! 🥥";
+
+            document.getElementById('modalButtonsElimination').classList.remove('hidden');
+            document.getElementById('modalButtonsElimination').classList.add('flex');
+            document.getElementById('modalButtonsChampion').classList.add('hidden');
+
+            const spinBtn = document.getElementById('btnModalSpinAgain');
+            if (isPenultimate) {
+                spinBtn.innerHTML = "<span>👑 CROWN FINAL CHAMPION!</span>";
+            } else {
+                spinBtn.innerHTML = "<span>SPIN AGAIN! 🥥</span>";
+            }
+
+            const modal = document.getElementById('resultModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+
+            // Auto-continue mode support
+            if (game.settings.autoMode) {
+                setTimeout(() => {
+                    if (game.state === STATE.PAUSED_RESULT) {
+                        handleSpinAgainClick();
+                    }
+                }, 3200);
+            }
+        }
+
+        function declareChampion(winner) {
+            game.state = STATE.CHAMPION;
+            winner.expression = 'crown';
+            winner.seatX = 0;
+            winner.seatY = 0;
+            sound.playFanfare();
+            spawnVictoryConfetti();
+
+            setStatusText(`🏆 ${winner.name.toUpperCase()} IS THE COCONUT CHAMPION! 🏆`);
+
+            pCtx.clearRect(0, 0, 144, 144);
+            drawHamsterCharacter(pCtx, 72, 82, 42, winner, performance.now() / 1000, false);
+
+            document.getElementById('modalBadge').textContent = "🏆 THE LAST HAMSTER STANDING! 🏆";
+            document.getElementById('modalBadge').className = "inline-block bg-amber-400 text-amber-950 cartoon-font text-xl px-5 py-1.5 rounded-full border-4 border-amber-950 -mt-12 shadow-md mb-3";
+            document.getElementById('modalStudentName').textContent = winner.name;
+            document.getElementById('modalSubtext').textContent = "IS THE COCONUT CHAMPION! 👑🥥";
+
+            document.getElementById('modalButtonsElimination').classList.add('hidden');
+            document.getElementById('modalButtonsChampion').classList.remove('hidden');
+            document.getElementById('modalButtonsChampion').classList.add('flex');
+
+            const modal = document.getElementById('resultModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function handleSpinAgainClick() {
+            const remaining = game.students.filter(s => !s.eliminated);
+            if (remaining.length === 1) {
+                declareChampion(remaining[0]);
+            } else {
+                game.round++;
+                startSpinRound();
+            }
+        }
+
+        /********************************************************************
+         * 8. UI CONTROLS, BANNERS & TEACHER PANEL BINDINGS
+         ********************************************************************/
+        let bannerTimeout = null;
+        function showPhaseBanner(text, duration = 1800) {
+            const banner = document.getElementById('phaseBanner');
+            const bannerText = document.getElementById('phaseBannerText');
+            bannerText.textContent = text;
+            banner.classList.remove('hidden');
+            if (bannerTimeout) clearTimeout(bannerTimeout);
+            bannerTimeout = setTimeout(() => {
+                banner.classList.add('hidden');
+            }, duration);
+        }
+
+        function setStatusText(text) {
+            document.getElementById('hudStatusPill').textContent = text;
+        }
+
+        function updateHUD() {
+            const total = game.students.length;
+            const eliminatedCount = game.students.filter(s => s.eliminated).length;
+            const aboardCount = total - eliminatedCount;
+
+            document.getElementById('hudAboard').textContent = aboardCount;
+            document.getElementById('hudEliminated').textContent = eliminatedCount;
+            document.getElementById('hudRound').textContent = game.round;
+            document.getElementById('drawerCountBadge').textContent = `${total} Students`;
+
+            // Update pause button state
+            const isSpinning = (game.state === STATE.SLOW_SPIN || game.state === STATE.CHAOS_SPIN);
+            document.getElementById('btnPauseResume').disabled = !isSpinning;
+            document.getElementById('btnStartGame').disabled = isSpinning || (game.state === STATE.LAUNCHING) || aboardCount <= 1;
+
+            // Update eliminated order list in Teacher Drawer
+            const elimContainer = document.getElementById('eliminatedListContainer');
+            if (game.eliminatedOrder.length === 0) {
+                elimContainer.innerHTML = '<span class="text-rose-400 italic">No hamsters splashed out yet!</span>';
+            } else {
+                elimContainer.innerHTML = game.eliminatedOrder.map((name, idx) =>
+                    `<span class="bg-rose-200 text-rose-950 px-2.5 py-1 rounded-lg">#${idx + 1} ${name}</span>`
+                ).join('');
+            }
+        }
+
+        // Sync textarea with current student roster
+        function syncTextareaFromStudents() {
+            document.getElementById('studentTextarea').value = game.students.map(s => s.name).join('\n');
+        }
+
+        function applyStudentListFromTextarea() {
+            const raw = document.getElementById('studentTextarea').value;
+            const names = raw.split('\n').map(s => s.trim()).filter(Boolean);
+            if (names.length < 2) {
+                showPhaseBanner("Please enter at least 2 students! 🐹", 2200);
+                return;
+            }
+            triggerBoardingAnimation(names);
+        }
+
+        // Event Listeners
+        document.getElementById('btnWelcomePlay').addEventListener('click', () => {
+            sound.init();
+            sound.playPop(550);
+            document.getElementById('welcomeOverlay').classList.add('hidden');
+            triggerBoardingAnimation(game.students.map(s => s.name));
+        });
+
+        document.getElementById('btnWelcomeEdit').addEventListener('click', () => {
+            sound.init();
+            sound.playPop(480);
+            document.getElementById('welcomeOverlay').classList.add('hidden');
+            document.getElementById('teacherDrawer').classList.remove('translate-x-full');
+        });
+
+        document.getElementById('btnHome').addEventListener('click', () => {
+            sound.playPop(450);
+            document.getElementById('welcomeOverlay').classList.remove('hidden');
+        });
+
+        document.getElementById('btnStartGame').addEventListener('click', () => {
+            startSpinRound();
+        });
+
+        document.getElementById('btnPauseResume').addEventListener('click', () => {
+            if (game.state !== STATE.SLOW_SPIN && game.state !== STATE.CHAOS_SPIN) return;
+            game.paused = !game.paused;
+            document.getElementById('pauseBtnText').textContent = game.paused ? 'RESUME' : 'PAUSE';
+            setStatusText(game.paused ? "⏸️ GAME PAUSED BY TEACHER" : "🚣 SPINNING IN PROGRESS...");
+        });
+
+        document.getElementById('btnShuffle').addEventListener('click', () => {
+            sound.playPop(640);
+            for (let i = game.students.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [game.students[i], game.students[j]] = [game.students[j], game.students[i]];
+            }
+            arrangeHamstersInBoat();
+            showPhaseBanner("Positions Shuffled! 🔀", 1400);
+        });
+
+        document.getElementById('btnReset').addEventListener('click', () => {
+            document.getElementById('resultModal').classList.add('hidden');
+            document.getElementById('resultModal').classList.remove('flex');
+            triggerBoardingAnimation(game.students.map(s => s.name));
+        });
+
+        document.getElementById('btnModalSpinAgain').addEventListener('click', () => {
+            handleSpinAgainClick();
+        });
+
+        document.getElementById('btnModalStop').addEventListener('click', () => {
+            sound.playPop(420);
+            document.getElementById('resultModal').classList.add('hidden');
+            document.getElementById('resultModal').classList.remove('flex');
+            game.state = STATE.IDLE;
+            setStatusText("READY FOR NEXT ROUND! 🥥");
+            updateHUD();
+        });
+
+        document.getElementById('btnModalPlayAgain').addEventListener('click', () => {
+            document.getElementById('resultModal').classList.add('hidden');
+            document.getElementById('resultModal').classList.remove('flex');
+            triggerBoardingAnimation(game.students.map(s => s.name));
+        });
+
+        // Teacher Drawer Controls
+        document.getElementById('btnToggleDrawer').addEventListener('click', () => {
+            sound.playPop(500);
+            document.getElementById('teacherDrawer').classList.toggle('translate-x-full');
+        });
+
+        document.getElementById('btnCloseDrawer').addEventListener('click', () => {
+            sound.playPop(420);
+            document.getElementById('teacherDrawer').classList.add('translate-x-full');
+        });
+
+        document.getElementById('btnApplyRoster').addEventListener('click', () => {
+            applyStudentListFromTextarea();
+            document.getElementById('teacherDrawer').classList.add('translate-x-full');
+        });
+
+        document.getElementById('btnQuickAdd').addEventListener('click', () => {
+            const input = document.getElementById('quickAddInput');
+            const val = input.value.trim();
+            if (!val) return;
+            const current = document.getElementById('studentTextarea').value.trim();
+            document.getElementById('studentTextarea').value = current ? (current + '\n' + val) : val;
+            input.value = '';
+            applyStudentListFromTextarea();
+        });
+
+        document.getElementById('quickAddInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') document.getElementById('btnQuickAdd').click();
+        });
+
+        document.getElementById('btnSampleClass').addEventListener('click', () => {
+            document.getElementById('studentTextarea').value = DEFAULT_STUDENTS.join('\n');
+            applyStudentListFromTextarea();
+        });
+
+        // Speed & Duration Setting Buttons
+        document.querySelectorAll('.speed-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                game.settings.speedPreset = btn.dataset.speed;
+                document.querySelectorAll('.speed-btn').forEach(b => {
+                    b.className = "speed-btn py-2 rounded-xl font-bold text-sm border-2 border-amber-900 bg-amber-100 text-amber-900";
+                });
+                btn.className = "speed-btn py-2 rounded-xl font-bold text-sm border-2 border-amber-900 bg-amber-400 text-amber-950 shadow-inner";
+                sound.playPop(580);
+            });
+        });
+
+        document.querySelectorAll('.dur-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                game.settings.durationPreset = btn.dataset.duration;
+                document.querySelectorAll('.dur-btn').forEach(b => {
+                    b.className = "dur-btn py-2 rounded-xl font-bold text-sm border-2 border-amber-900 bg-amber-100 text-amber-900";
+                });
+                btn.className = "dur-btn py-2 rounded-xl font-bold text-sm border-2 border-amber-900 bg-amber-400 text-amber-950 shadow-inner";
+                sound.playPop(580);
+            });
+        });
+
+        document.getElementById('toggleAutoMode').addEventListener('change', (e) => {
+            game.settings.autoMode = e.target.checked;
+            sound.playPop(520);
+        });
+
+        // Sound, Music & Camera Perspective Toggles
+        document.getElementById('btnCameraToggle').addEventListener('click', () => {
+            const modes = ['side', 'dynamic', 'high'];
+            const labels = {
+                side: 'SIDE TILT',
+                dynamic: 'DYNAMIC CAM',
+                high: 'HIGH ANGLE'
+            };
+            const nextIdx = (modes.indexOf(game.cameraMode) + 1) % modes.length;
+            game.cameraMode = modes[nextIdx];
+            document.getElementById('cameraBtnText').textContent = labels[game.cameraMode];
+            sound.playPop(660);
+            showPhaseBanner(`🎥 Camera: ${labels[game.cameraMode]}`, 1200);
+        });
+
+        document.getElementById('btnSoundToggle').addEventListener('click', (e) => {
+            sound.sfxEnabled = !sound.sfxEnabled;
+            e.currentTarget.textContent = sound.sfxEnabled ? '🔊' : '🔇';
+            if (sound.sfxEnabled) sound.playPop(600);
+        });
+
+        document.getElementById('btnMusicToggle').addEventListener('click', (e) => {
+            const playing = sound.toggleMusic();
+            e.currentTarget.className = playing
+                ? "btn-cartoon bg-emerald-400 hover:bg-emerald-300 text-amber-950 w-11 h-11 rounded-2xl flex items-center justify-center text-xl"
+                : "btn-cartoon bg-teal-400 hover:bg-teal-300 text-amber-950 w-11 h-11 rounded-2xl flex items-center justify-center text-xl";
+        });
+
+        // Initialize Default Roster & Start Animation Loop on Load
+        window.onload = function () {
+            document.getElementById('studentTextarea').value = DEFAULT_STUDENTS.join('\n');
+            game.students = DEFAULT_STUDENTS.map((n, i) => createHamsterFromName(n, i));
+            arrangeHamstersInBoat();
+            updateHUD();
+            requestAnimationFrame(gameLoop);
+        };
+    </script>
+</body>
+</html>

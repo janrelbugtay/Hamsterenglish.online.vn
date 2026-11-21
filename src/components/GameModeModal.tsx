@@ -667,7 +667,7 @@ export function GameModeModal({
       },
     ];
 
-    const finalQuestions: any[] = (normalizedQuestions.length > 0 ? normalizedQuestions : fallbackQuestions).slice(0, 30);
+    const finalQuestions: any[] = normalizedQuestions.length > 0 ? normalizedQuestions : fallbackQuestions;
 
     const splitEmbeddedMedia = (rawVal: any): { text: string; media: string } => {
       if (!rawVal || typeof rawVal !== 'string') return { text: '', media: '' };

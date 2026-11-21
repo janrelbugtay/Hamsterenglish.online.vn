@@ -1299,9 +1299,9 @@ export function FlashcardsMatch({
     if (parsed.length === 0) return;
 
     if (mode === 'replace') {
-      setCards(parsed.slice(0, 50));
+      setCards(parsed);
     } else {
-      setCards((prev) => [...prev, ...parsed].slice(0, 50));
+      setCards((prev) => [...prev, ...parsed]);
     }
     setShowBulkPasteModal(false);
     setBulkText('');
@@ -1318,10 +1318,6 @@ export function FlashcardsMatch({
   };
 
   const duplicateCard = (idx: number) => {
-    if (cards.length >= 50) {
-      showToast('Max 50 cards per deck reached');
-      return;
-    }
     const copy = { ...cards[idx], id: `c_${Date.now()}` };
     const nextCards = [...cards];
     nextCards.splice(idx + 1, 0, copy);
@@ -2043,10 +2039,6 @@ export function FlashcardsMatch({
                 <button
                   type="button"
                   onClick={() => {
-                    if (cards.length >= 50) {
-                      showToast('Maximum 50 cards per deck reached');
-                      return;
-                    }
                     setCards((prev) => [...prev, BLANK_CARD(String(prev.length + 1))]);
                   }}
                   className="w-full py-4 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold text-sm transition-all flex items-center justify-center gap-2 group cursor-pointer"
