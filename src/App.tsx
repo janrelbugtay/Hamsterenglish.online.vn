@@ -7,6 +7,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { ViewState } from "./types";
 import { Navigation, Header } from "./components/Navigation";
 import { Footer } from "./components/Footer";
+import { HamsterMascotIcon } from "./components/HamsterBrandLogo";
 import { Home } from "./views/Home";
 import { recordRecentGame } from "./data/studioGames";
 import { HamsterPaintball } from "./views/HamsterPaintball";
@@ -618,17 +619,7 @@ export default function App() {
         <div className="flex flex-col items-center justify-center h-full min-h-[60vh] p-4 font-sans">
           <div className="bg-white dark:bg-slate-900 p-6 sm:p-7 rounded-3xl shadow-xl border-2 border-slate-200 dark:border-slate-800 text-left max-w-[420px] w-full">
             <div className="flex flex-col items-center text-center mb-5">
-              <div className="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center shrink-0 border-2 border-indigo-200 dark:border-indigo-800 shadow-sm mb-3 overflow-hidden">
-                <img 
-                  src="https://drive.google.com/thumbnail?id=1IrQAzr2JXZjfhDxPhP-MZkFlbF8GfW9n&sz=w1000" 
-                  alt="Hamster English Studio" 
-                  className="w-14 h-14 rounded-xl object-cover" 
-                  referrerPolicy="no-referrer"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).src = '/images/bubble-pop-card.jpg?v=3';
-                  }}
-                />
-              </div>
+              <HamsterMascotIcon size="lg" className="mb-3" />
               <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
                 {feature.title}
               </h2>

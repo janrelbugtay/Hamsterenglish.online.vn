@@ -23,6 +23,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useLanguage } from "../contexts/LanguageContext";
 import { LanguageSelector } from "./LanguageSelector";
 import { STUDIO_GAMES } from "../data/studioGames";
+import { HamsterBrandLogo } from "./HamsterBrandLogo";
 
 interface NavigationProps {
   currentView: ViewState;
@@ -101,33 +102,20 @@ export function Navigation({
       <aside
         className={cn(
           "bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col p-5 shadow-sm shrink-0 h-full",
-          "fixed md:static inset-y-0 left-0 z-50 w-[240px] md:w-[220px] transition-transform duration-300 ease-in-out",
+          "fixed md:static inset-y-0 left-0 z-50 w-[240px] md:w-[228px] transition-transform duration-300 ease-in-out",
           isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
       >
         <div className="flex items-center justify-between mb-8">
           <button
             type="button"
-            className="flex items-center gap-2 cursor-pointer text-left rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-purple"
+            className="group flex items-center gap-2.5 p-1.5 -ml-1.5 cursor-pointer text-left rounded-2xl hover:bg-amber-50/60 dark:hover:bg-slate-700/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-purple"
             onClick={() => {
               onViewChange("home");
               setIsMobileMenuOpen(false);
             }}
           >
-            <img
-              src="https://drive.google.com/thumbnail?id=1IrQAzr2JXZjfhDxPhP-MZkFlbF8GfW9n&sz=w1000"
-              alt="Hamster English Logo"
-              className="w-10 h-10 rounded-xl object-cover shadow-lg shadow-purple-200/50 shrink-0"
-              referrerPolicy="no-referrer"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).src = "/images/bubble-pop-card.jpg?v=3";
-              }}
-            />
-            <span className="font-bold text-lg leading-tight tracking-tight text-slate-900 dark:text-white">
-              Hamster English
-              <br />
-              <span className="text-brand-purple">- ESL Studio</span>
-            </span>
+            <HamsterBrandLogo variant="sidebar" />
           </button>
           <button
             type="button"

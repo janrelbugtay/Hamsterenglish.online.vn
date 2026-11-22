@@ -98,19 +98,6 @@ export function Home({
                 <span>{isCheckingRoom ? "..." : t("home.joinLobby")}</span>
               </button>
             </form>
-
-            <button 
-              type="button"
-              onClick={() => {
-                if (onViewChange) {
-                  onViewChange("generator");
-                }
-              }}
-              className="flex items-center gap-2 px-6 py-3.5 bg-gradient-to-r from-brand-purple to-indigo-600 hover:from-purple-700 hover:to-indigo-700 active:scale-[0.98] text-white rounded-2xl font-bold shadow-xl shadow-brand-purple/20 dark:shadow-none transition-all cursor-pointer whitespace-nowrap shrink-0"
-            >
-              <PlusCircle size={22} />
-              <span>{t("home.createGame")}</span>
-            </button>
           </div>
           {joinRoomError && (
             <p className="text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1.5 px-1">
@@ -182,10 +169,6 @@ function FeaturedGamesSection({
       })
     : games;
 
-  const recentGames = getRecentGameIds()
-    .map((id) => games.find((g) => g.id === id))
-    .filter((g): g is Game => Boolean(g));
-
   const visibleSections = GAME_CATEGORY_SECTIONS.map((section) => ({
     ...section,
     games: filteredGames.filter((g) => g.category === section.id),
@@ -200,45 +183,6 @@ function FeaturedGamesSection({
 
   return (
     <section className="py-2 flex flex-col gap-7">
-      {/* Jump Back In — Recent Games Quick Resume */}
-      {recentGames.length > 0 && !normalizedQuery && (
-        <div className="bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200/80 dark:border-slate-700 p-4 shadow-sm">
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              <History size={14} className="text-brand-purple" />
-              <span>Jump Back In</span>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-            {recentGames.map((game) => (
-              <button
-                key={game.id}
-                type="button"
-                onClick={() => onViewChange && onViewChange(game.id as ViewState)}
-                className="group flex items-center justify-between gap-2.5 p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-900/70 dark:hover:bg-slate-700/70 border border-slate-200/70 dark:border-slate-700/80 transition-colors text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-purple"
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className="w-9 h-9 rounded-lg bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 flex items-center justify-center text-lg shrink-0">
-                    {game.icon || "🎮"}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                      {game.title}
-                    </p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                      {game.subject}
-                    </p>
-                  </div>
-                </div>
-                <ArrowRight
-                  size={15}
-                  className="text-slate-400 group-hover:text-brand-purple group-hover:translate-x-0.5 transition-all shrink-0"
-                />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Active Search Indicator */}
       {normalizedQuery && (

@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { ViewState } from '../types';
 import { verifyMultiplayerRoomCode } from '../utils/roomCodeValidator';
+import { HamsterBrandLogo } from './HamsterBrandLogo';
 
 interface GoogleAuthModalProps {
   isOpen: boolean;
@@ -116,22 +117,7 @@ export function GoogleAuthModal({
           </button>
 
           {/* Centered Brand Header */}
-          <div className="flex flex-col items-center text-center mb-5">
-            <div className="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center border-2 border-indigo-200 dark:border-indigo-800 shadow-sm mb-3 overflow-hidden">
-              <img
-                src="https://drive.google.com/thumbnail?id=1IrQAzr2JXZjfhDxPhP-MZkFlbF8GfW9n&sz=w1000"
-                alt="Hamster English Studio"
-                className="w-14 h-14 rounded-xl object-cover"
-                referrerPolicy="no-referrer"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).src = '/images/bubble-pop-card.jpg?v=3';
-                }}
-              />
-            </div>
-            <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-              Hamster English Studio
-            </h2>
-          </div>
+          <HamsterBrandLogo variant="modal" className="mb-5" />
 
           {/* Concise Greeting from Teacher Jan */}
           <div className="mb-5 p-3.5 rounded-2xl bg-indigo-50/90 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800/80 flex items-center gap-3">
