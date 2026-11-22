@@ -5629,6 +5629,315 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
     return res.json({ exists: nextStatus !== "SETUP", roomCode: cleanCode, status: nextStatus });
   });
 
+  // ============================================================================
+  // SUMO ROYALE: DOJO SHOWDOWN — AUTHORITATIVE MULTIPLAYER ROOMS
+  // ============================================================================
+  interface SumoRoomEntry {
+    room: Record<string, any>;
+    players: Map<string, Record<string, any>>;
+  }
+
+  const sumoRoomsMemory = new Map<string, SumoRoomEntry>();
+
+  function isSumoRoomActive(entry?: SumoRoomEntry | null): boolean {
+    if (!entry || !entry.room) return false;
+    if (entry.room.isUninitialized || entry.room.hostClosed) return false;
+    const lastHeartbeat = entry.room.hostHeartbeatAt || entry.room.updatedAt || 0;
+    return Date.now() - lastHeartbeat < ROOM_ACTIVE_TTL_MS;
+  }
+
+  function getExistingSumoRoom(rawCode: string): SumoRoomEntry | null {
+    const cleanCode = normalizeRoomCodeParam(rawCode);
+    if (!cleanCode) return null;
+    const entry = sumoRoomsMemory.get(cleanCode);
+    if (!entry || !isSumoRoomActive(entry)) return null;
+    return entry;
+  }
+
+  function getOrCreateSumoRoom(rawCode: string): SumoRoomEntry | null {
+    const cleanCode = normalizeRoomCodeParam(rawCode);
+    if (!cleanCode) return null;
+    let entry = sumoRoomsMemory.get(cleanCode);
+    if (!entry) {
+      entry = {
+        room: {
+          roomCode: cleanCode,
+          isUninitialized: false,
+          hostClosed: false,
+          matchType: "solo",
+          startingEnergy: 5,
+          questionOrder: "random",
+          phase: "LOBBY",
+          roundNumber: 0,
+          updatedAt: Date.now(),
+          hostHeartbeatAt: Date.now(),
+        },
+        players: new Map(),
+      };
+      sumoRoomsMemory.set(cleanCode, entry);
+    }
+    return entry;
+  }
+
+  function serializeSumoRoom(entry: SumoRoomEntry) {
+    const now = Date.now();
+    entry.players.forEach((p, id) => {
+      if (p.kicked && now - (p.updatedAt || 0) > 6000) {
+        entry.players.delete(id);
+      } else if (!p.isBot && now - (p.updatedAt || 0) > 300000) {
+        entry.players.delete(id);
+      }
+    });
+    return {
+      serverNow: now,
+      room: {
+        ...entry.room,
+        serverNow: now,
+      },
+      players: Array.from(entry.players.values()),
+    };
+  }
+
+  // GET /api/sumo/room/:code -> Fetch room state & all contenders
+  app.get("/api/sumo/room/:code", (req, res) => {
+    const cleanCode = normalizeRoomCodeParam(req.params.code);
+    if (!cleanCode) return res.status(400).json({ error: "Invalid room code", exists: false });
+    const entry = getExistingSumoRoom(cleanCode);
+    if (!entry) {
+      return res.json({
+        exists: false,
+        serverNow: Date.now(),
+        room: { roomCode: cleanCode, isUninitialized: true, hostClosed: false },
+        players: [],
+      });
+    }
+    return res.json({ exists: true, ...serializeSumoRoom(entry) });
+  });
+
+  // POST /api/sumo/room/:code/room -> Host updates room configuration, round phase, matchups, and bulk player state
+  app.post("/api/sumo/room/:code/room", (req, res) => {
+    const entry = getOrCreateSumoRoom(req.params.code);
+    if (!entry) return res.status(400).json({ error: "Invalid room code" });
+    const now = Date.now();
+    const { room: roomPatch, players: playersPatch, replacePlayers } = req.body || {};
+
+    if (roomPatch && typeof roomPatch === "object") {
+      if (roomPatch.hostClosed === true) {
+        entry.room = {
+          ...entry.room,
+          ...roomPatch,
+          roomCode: entry.room.roomCode,
+          isUninitialized: true,
+          hostClosed: true,
+          updatedAt: now,
+        };
+        return res.json({ exists: false, ...serializeSumoRoom(entry) });
+      }
+
+      const normalizedPatch = { ...roomPatch };
+      if (normalizedPatch.phase === "QUESTION" && entry.room.phase !== "QUESTION") {
+        normalizedPatch.roundServerStartedAt = now;
+      }
+
+      entry.room = {
+        ...entry.room,
+        ...normalizedPatch,
+        roomCode: entry.room.roomCode,
+        isUninitialized: false,
+        hostClosed: false,
+        hostHeartbeatAt: now,
+        updatedAt: now,
+      };
+    }
+
+    if (replacePlayers && Array.isArray(playersPatch)) {
+      entry.players.clear();
+    }
+
+    if (Array.isArray(playersPatch)) {
+      playersPatch.forEach((pPatch: any) => {
+        if (!pPatch || !pPatch.id) return;
+        const existing = entry.players.get(pPatch.id) || {};
+        entry.players.set(pPatch.id, {
+          ...existing,
+          ...pPatch,
+          updatedAt: now,
+        });
+      });
+    }
+
+    return res.json({ exists: isSumoRoomActive(entry), ...serializeSumoRoom(entry) });
+  });
+
+  // POST /api/sumo/room/:code/player -> Student joins, heartbeats, or submits round answer
+  app.post("/api/sumo/room/:code/player", (req, res) => {
+    const cleanCode = normalizeRoomCodeParam(req.params.code);
+    if (!cleanCode) return res.status(400).json({ error: "Invalid room code" });
+
+    const body = req.body || {};
+    const isHostAction = Boolean(body.isHostAction);
+    let entry = getExistingSumoRoom(cleanCode);
+    if (!entry && isHostAction) {
+      entry = getOrCreateSumoRoom(cleanCode);
+    }
+    if (!entry) {
+      return res.status(404).json({
+        error: "Room not found or host is not active",
+        roomNotFound: true,
+      });
+    }
+
+    const rawPlayer = body.player || body;
+    const playerId = String(rawPlayer.id || "").trim();
+    if (!playerId) {
+      return res.status(400).json({ error: "Player id is required" });
+    }
+
+    const now = Date.now();
+    const existing = entry.players.get(playerId) || {};
+
+    // Prevent student heartbeat from overwriting authoritative energy, teamId, or elimination state set by host during active match
+    const inActiveMatch = entry.room.phase && entry.room.phase !== "LOBBY" && entry.room.phase !== "SETTINGS";
+    const merged: Record<string, any> = {
+      ...existing,
+      ...rawPlayer,
+      id: playerId,
+      energy:
+        !isHostAction && inActiveMatch && typeof existing.energy === "number"
+          ? existing.energy
+          : typeof rawPlayer.energy === "number"
+          ? rawPlayer.energy
+          : typeof existing.energy === "number"
+          ? existing.energy
+          : entry.room.startingEnergy || 5,
+      maxEnergy:
+        typeof existing.maxEnergy === "number"
+          ? existing.maxEnergy
+          : typeof rawPlayer.maxEnergy === "number"
+          ? rawPlayer.maxEnergy
+          : entry.room.startingEnergy || 5,
+      teamId:
+        !isHostAction && existing.teamId
+          ? existing.teamId
+          : rawPlayer.teamId ?? existing.teamId ?? null,
+      eliminated:
+        !isHostAction && inActiveMatch && typeof existing.eliminated === "boolean"
+          ? existing.eliminated
+          : Boolean(rawPlayer.eliminated ?? existing.eliminated ?? false),
+      kicked: isHostAction
+        ? Boolean(rawPlayer.kicked)
+        : Boolean(existing.kicked || rawPlayer.kicked),
+      updatedAt: now,
+    };
+
+    entry.players.set(playerId, merged);
+    return res.json({ exists: true, ...serializeSumoRoom(entry) });
+  });
+
+  // DELETE /api/sumo/room/:code/player/:playerId -> Student leaves or Host removes player
+  app.delete("/api/sumo/room/:code/player/:playerId", (req, res) => {
+    const entry = getExistingSumoRoom(req.params.code);
+    if (!entry) return res.status(400).json({ error: "Room not found" });
+    const playerId = String(req.params.playerId || "").trim();
+    if (playerId) {
+      entry.players.delete(playerId);
+    }
+    return res.json({ exists: true, ...serializeSumoRoom(entry) });
+  });
+
+  app.post("/api/sumo/room/:code/player/:playerId/leave", (req, res) => {
+    const entry = getExistingSumoRoom(req.params.code);
+    if (!entry) return res.json({ ok: true });
+    const playerId = String(req.params.playerId || "").trim();
+    if (playerId) {
+      entry.players.delete(playerId);
+    }
+    return res.json({ ok: true });
+  });
+
+  // POST /api/sumo/ai-questions -> AI Question Generator for Sumo Tags & Sumo Royale
+  app.post("/api/sumo/ai-questions", async (req, res) => {
+    const { topic, classLevel, count } = req.body || {};
+    const cleanTopic = String(topic || "English Grammar & Vocabulary").trim();
+    const cleanLevel = String(classLevel || "Movers / A1-A2").trim();
+    const requestedCount = Math.max(3, Math.min(25, Number(count) || 10));
+
+    if (!hasValidGeminiKey()) {
+      return res.status(400).json({
+        error:
+          "Gemini API key is not configured. Please check Settings > Secrets to verify your GEMINI_API_KEY.",
+      });
+    }
+
+    try {
+      const ai = getAiClient();
+      const response = await ai.models.generateContent({
+        model: "gemini-4-hydrogen",
+        contents: `Generate ${requestedCount} engaging classroom multiple-choice questions on the topic "${cleanTopic}" tailored for "${cleanLevel}" students.
+Each question must have a clear question prompt (use "______" if it is a fill-in-the-blank sentence), exactly 4 distinct answer options (without A/B/C/D prefixes), and an answerIndex from 0 to 3 indicating the correct option.`,
+        config: {
+          systemInstruction:
+            "You are an expert ESL and K-12 curriculum designer creating fast-paced classroom quiz questions for a competitive Sumo game. Keep questions concise, age-appropriate, and unambiguous. Never prefix options with A., B., C., or D.",
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                text: {
+                  type: Type.STRING,
+                  description: "The question text or fill-in-the-blank sentence.",
+                },
+                options: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                  description: "Exactly 4 answer choices without letter prefixes.",
+                },
+                answerIndex: {
+                  type: Type.INTEGER,
+                  description: "0-based index (0, 1, 2, or 3) of the correct option.",
+                },
+              },
+              required: ["text", "options", "answerIndex"],
+            },
+          },
+        },
+      });
+
+      const rawJson = (response.text ?? "[]").trim();
+      const parsed = JSON.parse(rawJson);
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        return res.status(500).json({ error: "AI returned an empty question set. Please try again." });
+      }
+
+      const questions = parsed.map((item: any, idx: number) => {
+        const rawOpts = Array.isArray(item.options)
+          ? item.options.map((o: any) => String(o || "").replace(/^[A-Da-d][.)]\s+/, "").trim()).filter(Boolean)
+          : [];
+        while (rawOpts.length < 4) {
+          rawOpts.push(`Option ${rawOpts.length + 1}`);
+        }
+        const opts = rawOpts.slice(0, 4);
+        const ansIdx =
+          typeof item.answerIndex === "number" && item.answerIndex >= 0 && item.answerIndex < 4
+            ? item.answerIndex
+            : 0;
+        return {
+          id: `ai-sumo-${Date.now()}-${idx}`,
+          text: String(item.text || `Question ${idx + 1}`).trim(),
+          options: opts,
+          answerIndex: ansIdx,
+        };
+      });
+
+      return res.json({ questions });
+    } catch (err: any) {
+      const msg = String(err?.message || "Failed to generate AI questions");
+      return res.status(500).json({ error: msg });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

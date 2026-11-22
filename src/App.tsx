@@ -127,18 +127,55 @@ export default function App() {
     }
   };
 
+  // Synchronously detect direct Sumo Royale join links (?game=sumo&room=XXXXXX)
+  const getUrlSumoParams = (): { roomCode?: string } | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      let gameParam = searchParams.get('game');
+      let roomParam = searchParams.get('room') || searchParams.get('sumoRoom');
+
+      if (!gameParam && !roomParam && window.location.hash) {
+        const rawHash = window.location.hash;
+        if (rawHash.includes('game=sumo') || rawHash.includes('sumoRoom=')) {
+          const qPart = rawHash.includes('?') ? rawHash.split('?')[1] : rawHash.replace(/^#\/?/, '');
+          const hashParams = new URLSearchParams(qPart);
+          gameParam = hashParams.get('game') || (rawHash.includes('sumo') ? 'sumo' : null);
+          roomParam = hashParams.get('room') || hashParams.get('sumoRoom');
+        }
+      }
+
+      if (gameParam === 'sumo' || searchParams.get('sumoRoom')) {
+        const cleanRoom = (roomParam || '').trim().replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 6);
+        return { roomCode: cleanRoom || undefined };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
   const initialHwPin = getUrlHwPin();
   const initialPaintball = !initialHwPin ? getUrlPaintballParams() : null;
+  const initialSumo = !initialHwPin && !initialPaintball ? getUrlSumoParams() : null;
   const [isLockedHomeworkLink, setIsLockedHomeworkLink] = useState<boolean>(Boolean(initialHwPin));
 
   const [currentView, setCurrentView] = useState<ViewState>(
-    initialHwPin ? "homework" : initialPaintball ? "hamster-paintball" : "home"
+    initialHwPin
+      ? "homework"
+      : initialPaintball
+      ? "hamster-paintball"
+      : initialSumo
+      ? "sumo"
+      : "home"
   );
   const [selectedGame, setSelectedGame] = useState<any>(
     initialHwPin
       ? { pinCode: initialHwPin }
       : initialPaintball
       ? { roomCode: initialPaintball.roomCode }
+      : initialSumo
+      ? { roomCode: initialSumo.roomCode, isStudentJoin: true }
       : null
   );
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -196,6 +233,7 @@ export default function App() {
         const activePin = getUrlHwPin(true);
         const hasHwInUrl = Boolean(activePin) || isLockedHomeworkLink;
         const activePb = getUrlPaintballParams();
+        const activeSumo = getUrlSumoParams();
         const hasSlideInUrl =
           typeof window !== 'undefined' &&
           new URLSearchParams(window.location.search).has('slideId');
@@ -206,11 +244,16 @@ export default function App() {
           setSelectedGame((prev: any) =>
             prev?.roomCode ? prev : { roomCode: activePb.roomCode }
           );
+        } else if (activeSumo) {
+          setSelectedGame((prev: any) =>
+            prev?.roomCode ? prev : { roomCode: activeSumo.roomCode, isStudentJoin: true }
+          );
         }
 
         setCurrentView((prev) => {
           if (prev === 'homework' || hasHwInUrl) return 'homework';
           if (prev === 'hamster-paintball' || activePb) return 'hamster-paintball';
+          if (prev === 'sumo' && activeSumo) return 'sumo';
           if (prev === 'my-slides' || hasSlideInUrl) return 'my-slides';
           return 'home';
         });
@@ -399,6 +442,12 @@ export default function App() {
         setCurrentView('hamster-paintball');
         return;
       }
+      const sumoParams = getUrlSumoParams();
+      if (sumoParams) {
+        setSelectedGame((prev: any) => ({ ...(prev || {}), roomCode: sumoParams.roomCode, isStudentJoin: true }));
+        setCurrentView('sumo');
+        return;
+      }
       const params = new URLSearchParams(window.location.search);
       const code = params.get('joinCode');
       if (code) {
@@ -439,7 +488,9 @@ export default function App() {
 
   // Proactively redirect to home if visitor has no session and is on an action view
   useEffect(() => {
-    const isJoiningStudentRoom = currentView === "tic-tac-toe" && Boolean(selectedGame?.isStudentJoin);
+    const isJoiningStudentRoom =
+      (currentView === "tic-tac-toe" || currentView === "sumo") &&
+      Boolean(selectedGame?.isStudentJoin || selectedGame?.roomCode);
     if (!loading && !user && currentView !== "home" && !isPublicStudentView(currentView) && !isJoiningStudentRoom) {
       setPendingAction({ view: currentView, data: selectedGame });
       setCurrentView("home");

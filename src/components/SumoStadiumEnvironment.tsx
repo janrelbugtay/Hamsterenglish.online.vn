@@ -641,9 +641,17 @@ export interface CircularSumoArenaProps {
   rightFrozen?: boolean;
   leftCharacter?: SumoCharacterType;
   rightCharacter?: SumoCharacterType;
+  leftName?: string;
+  rightName?: string;
+  leftStreak?: number;
+  rightStreak?: number;
+  leftShield?: boolean;
+  rightShield?: boolean;
+  powerCallout?: string | null;
   cameraMode?: SumoCameraMode;
   onCycleCamera?: () => void;
   compact?: boolean;
+  mini?: boolean;
 }
 
 export const CircularSumoArena: React.FC<CircularSumoArenaProps> = ({
@@ -658,9 +666,17 @@ export const CircularSumoArena: React.FC<CircularSumoArenaProps> = ({
   rightFrozen = false,
   leftCharacter = 'rikishi',
   rightCharacter = 'panda',
+  leftName = 'Blue Team',
+  rightName = 'Red Team',
+  leftStreak = 0,
+  rightStreak = 0,
+  leftShield = false,
+  rightShield = false,
+  powerCallout = null,
   cameraMode = 'dynamic',
   onCycleCamera,
-  compact = false
+  compact = false,
+  mini = false
 }) => {
   // 40 braided golden rice-straw bales (Tawara) forming a large, deep circular Sumo ring
   const strawBales = Array.from({ length: 40 }).map((_, i) => {
@@ -679,13 +695,20 @@ export const CircularSumoArena: React.FC<CircularSumoArenaProps> = ({
 
   // Fixed stationary Close-Up Cam framing — the arena never moves or pans!
   const closeUpArenaStyle: React.CSSProperties = {
-    transform: `perspective(1100px) scale(${compact ? 1.18 : 1.28}) translate(0%, 4%)`,
+    transform: `perspective(1100px) scale(${mini ? 1.05 : compact ? 1.18 : 1.28}) translate(0%, 4%)`,
   };
+
+  const leftIsWinner = Boolean(winner && (winner === 'Blue Team' || winner === leftName));
+  const rightIsWinner = Boolean(winner && (winner === 'Red Team' || winner === rightName));
+  const isHeavyClash =
+    (leftPushing && leftStreak >= 2) || (rightPushing && rightStreak >= 2);
 
   return (
     <div
       className={`w-[99%] sm:w-[96%] lg:w-[92%] max-w-[1440px] mx-auto relative flex items-center justify-center overflow-visible z-10 ${
-        compact
+        mini
+          ? 'h-[125px] sm:h-[155px] md:h-[180px]'
+          : compact
           ? 'h-[175px] sm:h-[210px] md:h-[240px]'
           : 'h-[250px] sm:h-[310px] md:h-[365px] lg:h-[410px]'
       }`}
@@ -913,12 +936,19 @@ export const CircularSumoArena: React.FC<CircularSumoArenaProps> = ({
         {/* Edge Ring-Out Danger Callouts */}
         {battlePos <= 30 && !winner && (
           <div className="absolute top-1 sm:top-3 left-4 sm:left-12 bg-red-600 text-white font-black text-xs sm:text-sm md:text-base px-4 py-1 rounded-full animate-bounce shadow-xl border-2 border-white z-30">
-            BLUE RING-OUT DANGER!
+            {leftName.toUpperCase()} RING-OUT DANGER!
           </div>
         )}
         {battlePos >= 70 && !winner && (
           <div className="absolute top-1 sm:top-3 right-4 sm:right-12 bg-blue-600 text-white font-black text-xs sm:text-sm md:text-base px-4 py-1 rounded-full animate-bounce shadow-xl border-2 border-white z-30">
-            RED RING-OUT DANGER!
+            {rightName.toUpperCase()} RING-OUT DANGER!
+          </div>
+        )}
+
+        {/* Active Power-Up / Heavy Push Callout Banner */}
+        {powerCallout && !winner && (
+          <div className="absolute top-1 sm:top-2 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-600 text-white font-black text-[11px] sm:text-sm px-4 py-1 rounded-full shadow-2xl border-2 border-white z-40 whitespace-nowrap animate-bounce">
+            {powerCallout}
           </div>
         )}
 
@@ -930,37 +960,93 @@ export const CircularSumoArena: React.FC<CircularSumoArenaProps> = ({
             transform: `translate(-50%, calc(-56% - ${circleArcY}px))`
           }}
         >
-          <div className={`relative flex items-center ${compact ? '-space-x-2 sm:-space-x-3' : '-space-x-3 sm:-space-x-5 md:-space-x-6'}`}>
-            <SumoCharacter
-              team="left"
-              character={leftCharacter}
-              isPushing={leftPushing}
-              isOpponentPushing={rightPushing}
-              isStunned={leftStunned}
-              isFrozen={leftFrozen}
-              hasLost={winner === 'Red Team'}
-              isWinner={winner === 'Blue Team'}
-              compact={compact}
-            />
+          <div className={`relative flex items-center ${mini ? '-space-x-1.5 sm:-space-x-2' : compact ? '-space-x-2 sm:-space-x-3' : '-space-x-3 sm:-space-x-5 md:-space-x-6'}`}>
+            {/* LEFT FIGHTER WRAPPER WITH COMBO STREAK & IRON SHIELD AURA */}
+            <div className="relative flex flex-col items-center">
+              {!winner && (leftStreak >= 2 || leftShield) && (
+                <div className="absolute -top-6 sm:-top-8 z-30 flex items-center gap-1 whitespace-nowrap">
+                  {leftStreak >= 2 && (
+                    <span className="px-2 py-0.5 rounded-md bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 font-black text-[9px] sm:text-[11px] shadow-md border border-white tabular-nums">
+                      {leftStreak >= 4
+                        ? `${leftStreak}x FURY`
+                        : leftStreak >= 3
+                        ? `${leftStreak}x 2X PUSH`
+                        : `${leftStreak}x COMBO`}
+                    </span>
+                  )}
+                  {leftShield && (
+                    <span className="px-1.5 py-0.5 rounded-md bg-cyan-500 text-white font-black text-[9px] sm:text-[10px] shadow-md border border-white">
+                      SHIELD
+                    </span>
+                  )}
+                </div>
+              )}
+              {leftShield && !winner && (
+                <div className="absolute inset-1 rounded-full border-4 border-cyan-300/85 bg-cyan-400/15 shadow-[0_0_24px_rgba(34,211,238,0.65)] pointer-events-none z-20" />
+              )}
+              <SumoCharacter
+                team="left"
+                character={leftCharacter}
+                isPushing={leftPushing}
+                isOpponentPushing={rightPushing}
+                isStunned={leftStunned}
+                isFrozen={leftFrozen}
+                hasLost={rightIsWinner}
+                isWinner={leftIsWinner}
+                compact={compact}
+                size={mini ? 'card' : undefined}
+              />
+            </div>
 
             {/* Live Sumo Clash Shockwave Between Wrestlers */}
             {!winner && (leftPushing || rightPushing || isRumbling) && (
-              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none">
-                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full border-4 border-amber-300/90 animate-ping" />
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none flex items-center justify-center">
+                <div
+                  className={`${
+                    isHeavyClash
+                      ? 'w-16 h-16 sm:w-24 sm:h-24 border-[6px] border-amber-400 shadow-[0_0_30px_rgba(245,158,11,0.9)]'
+                      : 'w-12 h-12 sm:w-16 sm:h-16 border-4 border-amber-300/90'
+                  } rounded-full animate-ping`}
+                />
               </div>
             )}
 
-            <SumoCharacter
-              team="right"
-              character={rightCharacter}
-              isPushing={rightPushing}
-              isOpponentPushing={leftPushing}
-              isStunned={rightStunned}
-              isFrozen={rightFrozen}
-              hasLost={winner === 'Blue Team'}
-              isWinner={winner === 'Red Team'}
-              compact={compact}
-            />
+            {/* RIGHT FIGHTER WRAPPER WITH COMBO STREAK & IRON SHIELD AURA */}
+            <div className="relative flex flex-col items-center">
+              {!winner && (rightStreak >= 2 || rightShield) && (
+                <div className="absolute -top-6 sm:-top-8 z-30 flex items-center gap-1 whitespace-nowrap">
+                  {rightShield && (
+                    <span className="px-1.5 py-0.5 rounded-md bg-cyan-500 text-white font-black text-[9px] sm:text-[10px] shadow-md border border-white">
+                      SHIELD
+                    </span>
+                  )}
+                  {rightStreak >= 2 && (
+                    <span className="px-2 py-0.5 rounded-md bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 font-black text-[9px] sm:text-[11px] shadow-md border border-white tabular-nums">
+                      {rightStreak >= 4
+                        ? `${rightStreak}x FURY`
+                        : rightStreak >= 3
+                        ? `${rightStreak}x 2X PUSH`
+                        : `${rightStreak}x COMBO`}
+                    </span>
+                  )}
+                </div>
+              )}
+              {rightShield && !winner && (
+                <div className="absolute inset-1 rounded-full border-4 border-cyan-300/85 bg-cyan-400/15 shadow-[0_0_24px_rgba(34,211,238,0.65)] pointer-events-none z-20" />
+              )}
+              <SumoCharacter
+                team="right"
+                character={rightCharacter}
+                isPushing={rightPushing}
+                isOpponentPushing={leftPushing}
+                isStunned={rightStunned}
+                isFrozen={rightFrozen}
+                hasLost={leftIsWinner}
+                isWinner={rightIsWinner}
+                compact={compact}
+                size={mini ? 'card' : undefined}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -968,15 +1054,15 @@ export const CircularSumoArena: React.FC<CircularSumoArenaProps> = ({
       {/* Dramatic Ring-Out Victory Callout Banner */}
       {winner && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/45 backdrop-blur-[2px] rounded-full z-50 animate-in fade-in duration-300 pointer-events-none">
-          <div className="bg-[#1f1a16]/95 border-2 border-amber-500 text-white px-6 py-3 rounded-2xl shadow-2xl flex flex-col items-center text-center">
-            <div className="text-amber-400 font-black tracking-widest text-xs uppercase mb-0.5">
+          <div className="bg-[#1f1a16]/95 border-2 border-amber-500 text-white px-5 py-2.5 rounded-2xl shadow-2xl flex flex-col items-center text-center">
+            <div className="text-amber-400 font-black tracking-widest text-[11px] uppercase mb-0.5">
               OSHIDASHI · RING-OUT!
             </div>
-            <div className="text-xl sm:text-2xl md:text-3xl font-black tracking-tight text-white drop-shadow">
+            <div className="text-lg sm:text-2xl md:text-3xl font-black tracking-tight text-white drop-shadow">
               {winner.toUpperCase()} WINS!
             </div>
-            <div className="text-xs text-amber-200/90 font-semibold mt-0.5">
-              {winner === 'Blue Team' ? 'Red Team' : 'Blue Team'} was pushed out of the circular sumo ring!
+            <div className="text-[11px] sm:text-xs text-amber-200/90 font-semibold mt-0.5">
+              {leftIsWinner ? rightName : leftName} was pushed out of the circular sumo ring!
             </div>
           </div>
         </div>

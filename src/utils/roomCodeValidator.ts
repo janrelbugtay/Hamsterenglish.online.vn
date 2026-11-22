@@ -96,9 +96,35 @@ async function checkTicTacToeFirestore(code: string): Promise<boolean> {
   }
 }
 
+async function checkSumoServer(code: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/sumo/room/${encodeURIComponent(code)}`);
+    if (!res.ok) return false;
+    const data = await res.json();
+    return Boolean(
+      data?.exists === true ||
+        (data?.room && data.room.isUninitialized === false && !data.room.hostClosed)
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function checkSumoFirestore(code: string): Promise<boolean> {
+  if (isFirestoreQuotaExhausted()) return false;
+  try {
+    const sumoSnap = await getDoc(doc(db, "ttt_rooms", `sumo_room_${code}`));
+    if (!sumoSnap.exists()) return false;
+    const sumoData = sumoSnap.data();
+    return Boolean(sumoData && sumoData.isUninitialized !== true && sumoData.hostClosed !== true);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Validates whether a 6-character room code was actively created by a host
- * in a multiplayer game (Hamster Paintball or Tic-Tac-Toe).
+ * in a multiplayer game (Hamster Paintball, Sumo Royale, or Tic-Tac-Toe).
  */
 export async function verifyMultiplayerRoomCode(rawCode: string): Promise<RoomCodeValidationResult> {
   const cleaned = String(rawCode || "")
@@ -116,9 +142,11 @@ export async function verifyMultiplayerRoomCode(rawCode: string): Promise<RoomCo
   }
 
   // Run fast server API + same-browser checks first in parallel
-  const [pbServer, pbBroadcast, tttServer, tttBroadcast] = await Promise.all([
+  const [pbServer, pbBroadcast, sumoServer, sumoBroadcast, tttServer, tttBroadcast] = await Promise.all([
     checkPaintballServer(cleaned),
     pingSameBrowserHost(`hamster_paintball_net_${cleaned}`, cleaned),
+    checkSumoServer(cleaned),
+    pingSameBrowserHost(`sumo_royale_net_${cleaned}`, cleaned),
     checkTicTacToeServer(cleaned),
     pingSameBrowserHost(`ttt_room_net_${cleaned}`, cleaned),
   ]);
@@ -127,6 +155,14 @@ export async function verifyMultiplayerRoomCode(rawCode: string): Promise<RoomCo
     return {
       valid: true,
       gameView: "hamster-paintball",
+      roomCode: cleaned,
+    };
+  }
+
+  if (sumoServer || sumoBroadcast) {
+    return {
+      valid: true,
+      gameView: "sumo",
       roomCode: cleaned,
     };
   }
@@ -140,8 +176,9 @@ export async function verifyMultiplayerRoomCode(rawCode: string): Promise<RoomCo
   }
 
   // Fallback to Firestore checks in parallel
-  const [pbFirestore, tttFirestore] = await Promise.all([
+  const [pbFirestore, sumoFirestore, tttFirestore] = await Promise.all([
     checkPaintballFirestore(cleaned),
+    checkSumoFirestore(cleaned),
     checkTicTacToeFirestore(cleaned),
   ]);
 
@@ -149,6 +186,14 @@ export async function verifyMultiplayerRoomCode(rawCode: string): Promise<RoomCo
     return {
       valid: true,
       gameView: "hamster-paintball",
+      roomCode: cleaned,
+    };
+  }
+
+  if (sumoFirestore) {
+    return {
+      valid: true,
+      gameView: "sumo",
       roomCode: cleaned,
     };
   }

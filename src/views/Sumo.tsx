@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ViewState } from "../types";
 import { FullscreenButton } from "../components/FullscreenButton";
-import { ArrowLeft, Edit3, Trash2, Heart, Plus, Sparkles, BookOpen, Search, Save, X, Play, Folder, Image as ImageIcon, Info, ClipboardList, Copy, Trophy, Shuffle, Volume2, VolumeX, Users, Camera, Type, Check } from "lucide-react";
+import { ArrowLeft, Edit3, Trash2, Heart, Plus, Sparkles, BookOpen, Search, Save, X, Play, Folder, Image as ImageIcon, Info, ClipboardList, Copy, Trophy, Shuffle, Volume2, VolumeX, Users, Camera, Type, Check, Download, Upload, Flame, Shield, Zap } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
 import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput, convertQuestionsContentMode } from "../components/SetupSmartControls";
@@ -21,11 +21,12 @@ import {
   SumoCharacterType,
   SumoCameraMode
 } from "../components/SumoStadiumEnvironment";
+import { SumoRoyaleMultiplayer } from "../components/SumoRoyaleMultiplayer";
 
 let sharedAudioCtx: AudioContext | null = null;
 let soundMutedGlobal = false;
 
-const playSFX = (type: 'push' | 'stun' | 'win' | 'taiko' | 'clack' | 'freeze') => {
+const playSFX = (type: 'push' | 'stun' | 'win' | 'taiko' | 'clack' | 'freeze' | 'combo' | 'heavy' | 'shield') => {
   if (soundMutedGlobal) return;
   try {
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -73,6 +74,48 @@ const playSFX = (type: 'push' | 'stun' | 'win' | 'taiko' | 'clack' | 'freeze') =
       noiseFilter.connect(noiseGain);
       noiseGain.connect(ctx.destination);
       noise.start();
+    } else if (type === 'heavy') {
+      // Double-layered Yokozuna heavy push thunder boom
+      [180, 95].forEach((startFreq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = i === 0 ? 'triangle' : 'sine';
+        osc.frequency.setValueAtTime(startFreq, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(28, ctx.currentTime + 0.42);
+        gain.gain.setValueAtTime(0.38, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.42);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.42);
+      });
+    } else if (type === 'combo') {
+      // Rising power-up chime
+      [440, 587.33, 880].forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.06);
+        gain.gain.setValueAtTime(0.22, ctx.currentTime + idx * 0.06);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + idx * 0.06 + 0.22);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(ctx.currentTime + idx * 0.06);
+        osc.stop(ctx.currentTime + idx * 0.06 + 0.22);
+      });
+    } else if (type === 'shield') {
+      // Metallic Mawashi shield deflection clank
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(920, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(480, ctx.currentTime + 0.22);
+      gain.gain.setValueAtTime(0.28, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.22);
     } else if (type === 'clack') {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -156,7 +199,20 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
       (initialGame.questions && initialGame.questions.length > 0)
     )
   );
-  const [screen, setScreen] = useState<'menu' | 'playing' | 'end' | 'setup' | 'study'>(initialGame && !initialGame.editMode && hasLoadedQuestions ? 'menu' : 'setup');
+  const isInitialStudentJoin = Boolean(initialGame?.roomCode || initialGame?.isStudentJoin);
+  const [royaleRole, setRoyaleRole] = useState<'host' | 'student'>(
+    isInitialStudentJoin ? 'student' : 'host'
+  );
+  const [royaleInitialCode, setRoyaleInitialCode] = useState<string | undefined>(
+    initialGame?.roomCode ? String(initialGame.roomCode).toUpperCase() : undefined
+  );
+  const [screen, setScreen] = useState<'menu' | 'playing' | 'end' | 'setup' | 'study' | 'royale'>(
+    isInitialStudentJoin
+      ? 'royale'
+      : initialGame && !initialGame.editMode && hasLoadedQuestions
+      ? 'menu'
+      : 'setup'
+  );
   const [showModeModal, setShowModeModal] = useState(false);
   const [showCharacterModal, setShowCharacterModal] = useState(false);
   const [leftCharacter, setLeftCharacter] = useState<SumoCharacterType>('rikishi');
@@ -177,6 +233,15 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
 
   useEffect(() => {
     if (initialGame) {
+      if (initialGame.roomCode || initialGame.isStudentJoin) {
+        setRoyaleRole('student');
+        setRoyaleInitialCode(
+          initialGame.roomCode ? String(initialGame.roomCode).toUpperCase() : undefined
+        );
+        setScreen('royale');
+        return;
+      }
+
       const qList = (initialGame.customQuestions && initialGame.customQuestions.length > 0)
         ? initialGame.customQuestions
         : (initialGame.questions && initialGame.questions.length > 0 ? initialGame.questions : [BLANK_QUESTION()]);
@@ -338,13 +403,23 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
     return generateQuestionObj(q);
   };
 
-  const [leftTeam, setLeftTeam] = useState<any>({ score: 0, wins: 0, qIndex: 0, q: null, stunned: false, pushing: false, mistakes: 0, frozen: false });
-  const [rightTeam, setRightTeam] = useState<any>({ score: 0, wins: 0, qIndex: 0, q: null, stunned: false, pushing: false, mistakes: 0, frozen: false });
+  const [leftTeam, setLeftTeam] = useState<any>({ score: 0, wins: 0, qIndex: 0, q: null, stunned: false, pushing: false, mistakes: 0, frozen: false, streak: 0, shield: false });
+  const [rightTeam, setRightTeam] = useState<any>({ score: 0, wins: 0, qIndex: 0, q: null, stunned: false, pushing: false, mistakes: 0, frozen: false, streak: 0, shield: false });
   const [battlePos, setBattlePos] = useState(50);
   const [winner, setWinner] = useState<string | null>(null);
   const [activeKey, setActiveKey] = useState<{ team: 'left' | 'right'; index: number } | null>(null);
   const [isRumbling, setIsRumbling] = useState(false);
   const [soundMuted, setSoundMuted] = useState(false);
+  const [powerCallout, setPowerCallout] = useState<string | null>(null);
+  const powerCalloutTimerRef = useRef<any>(null);
+
+  const triggerPowerCallout = useCallback((msg: string) => {
+    setPowerCallout(msg);
+    if (powerCalloutTimerRef.current) clearTimeout(powerCalloutTimerRef.current);
+    powerCalloutTimerRef.current = setTimeout(() => {
+      setPowerCallout(null);
+    }, 1500);
+  }, []);
 
   useEffect(() => {
     soundMutedGlobal = soundMuted;
@@ -372,15 +447,16 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
     setLeftTeam((prev: any) => {
        const nextIndex = continueMatch ? prev.qIndex : 0;
        const qSource = activeMode === 'split' ? shuffledLeft : questionsDB;
-       return { ...prev, score: 0, qIndex: nextIndex, q: generateQuestionFromList(qSource, nextIndex), stunned: false, pushing: false };
+       return { ...prev, score: 0, qIndex: nextIndex, q: generateQuestionFromList(qSource, nextIndex), stunned: false, pushing: false, streak: 0, shield: false };
     });
     setRightTeam((prev: any) => {
        const nextIndex = continueMatch ? prev.qIndex : 0;
        const qSource = activeMode === 'split' ? shuffledRight : questionsDB;
-       return { ...prev, score: 0, qIndex: nextIndex, q: generateQuestionFromList(qSource, nextIndex), stunned: false, pushing: false };
+       return { ...prev, score: 0, qIndex: nextIndex, q: generateQuestionFromList(qSource, nextIndex), stunned: false, pushing: false, streak: 0, shield: false };
     });
     setBattlePos(50);
     setWinner(null);
+    setPowerCallout(null);
     matchOverRef.current = false;
     setShowStartBattleModal(false);
     setScreen('playing');
@@ -394,29 +470,67 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
 
     const isLeft = teamStr === 'left';
     const teamState = isLeft ? state.leftTeam : state.rightTeam;
+    const oppState = isLeft ? state.rightTeam : state.leftTeam;
     const setTeamState = isLeft ? setLeftTeam : setRightTeam;
+    const setOppState = isLeft ? setRightTeam : setLeftTeam;
+    const teamLabel = isLeft ? 'BLUE' : 'RED';
 
     if (teamState.stunned || teamState.pushing || teamState.frozen) return;
 
     if (selectedIndex === teamState.q.correctIndex) {
-      setTeamState((prev: any) => ({ ...prev, pushing: true, score: prev.score + 1, mistakes: 0 }));
+      const nextStreak = (teamState.streak || 0) + 1;
+      const unlocksShield = nextStreak === 3;
+      const nextShield = Boolean(teamState.shield || unlocksShield);
+
+      setTeamState((prev: any) => ({
+        ...prev,
+        pushing: true,
+        score: prev.score + 1,
+        mistakes: 0,
+        streak: nextStreak,
+        shield: prev.shield || unlocksShield
+      }));
       setIsRumbling(true);
-      setTimeout(() => setIsRumbling(false), 240);
-      playSFX('push');
-      const shiftAmount = 14; 
-      
+      setTimeout(() => setIsRumbling(false), nextStreak >= 3 ? 380 : 240);
+
+      // Compute combo push power: 1x = 14, 2x = 19 (1.35x Tsuppari), 3x+ = 25 (Heavy Yokozuna Push)
+      const rawShift = nextStreak >= 3 ? 25 : nextStreak === 2 ? 19 : 14;
+      let shiftAmount = rawShift;
+
+      // Check if opponent's Iron Mawashi Shield absorbs the push
+      if (oppState.shield) {
+        shiftAmount = 5;
+        setOppState((prev: any) => ({ ...prev, shield: false }));
+        playSFX('shield');
+        triggerPowerCallout(`🛡️ ${isLeft ? 'RED' : 'BLUE'} IRON MAWASHI SHIELD BLOCKED THE PUSH!`);
+      } else if (nextStreak >= 4) {
+        playSFX('heavy');
+        triggerPowerCallout(`⚡ ${teamLabel} ${nextStreak}x YOKOZUNA SHOCKWAVE FURY!`);
+        // Brief shockwave stun on opponent
+        setOppState((prev: any) => ({ ...prev, stunned: true }));
+        setTimeout(() => setOppState((prev: any) => ({ ...prev, stunned: false })), 650);
+      } else if (nextStreak === 3) {
+        playSFX('heavy');
+        triggerPowerCallout(`🛡️ ${teamLabel} 3x STREAK! 2X HEAVY PUSH + SHIELD UNLOCKED!`);
+      } else if (nextStreak === 2) {
+        playSFX('combo');
+        triggerPowerCallout(`🔥 ${teamLabel} 2x COMBO! TSUPPARI HEAVY PUSH!`);
+      } else {
+        playSFX('push');
+      }
+
       if (matchOverRef.current) return;
-      
+
       const nextPos = isLeft ? state.battlePos + shiftAmount : state.battlePos - shiftAmount;
       let matchOver = false;
-      
+
       // When pushed to the end of the arena (past the outer straw boundary), that character LOSES!
       if (nextPos >= 84) {
          matchOverRef.current = true;
          matchOver = true;
          setBattlePos(86);
          setWinner('Blue Team');
-         setLeftTeam(prev => ({ ...prev, wins: prev.wins + 1 }));
+         setLeftTeam(prev => ({ ...prev, wins: prev.wins + 1, shield: nextShield }));
          playSFX('win');
          setTimeout(() => setScreen('end'), 2000);
       } else if (nextPos <= 16) {
@@ -424,7 +538,7 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
          matchOver = true;
          setBattlePos(14);
          setWinner('Red Team');
-         setRightTeam(prev => ({ ...prev, wins: prev.wins + 1 }));
+         setRightTeam(prev => ({ ...prev, wins: prev.wins + 1, shield: nextShield }));
          playSFX('win');
          setTimeout(() => setScreen('end'), 2000);
       } else {
@@ -470,12 +584,12 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
          if (nextMistakes >= 2) {
              playSFX('freeze');
              setTimeout(() => setTeamState((p: any) => ({ ...p, frozen: false, mistakes: 0 })), 3000);
-             return { ...prev, frozen: true, mistakes: 0 };
+             return { ...prev, frozen: true, mistakes: 0, streak: 0 };
          }
          
          playSFX('stun');
          setTimeout(() => setTeamState((p: any) => ({ ...p, stunned: false })), 1000);
-         return { ...prev, stunned: true, mistakes: nextMistakes };
+         return { ...prev, stunned: true, mistakes: nextMistakes, streak: 0 };
       });
 
       if (!matchOverRef.current) {
@@ -501,7 +615,7 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
         });
       }
     }
-  }, []);
+  }, [triggerPowerCallout]);
 
   const getBlueKeyHints = (count: number): string[] => {
     if (count === 2) return ['A', 'D'];
@@ -640,6 +754,27 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
       </span>
     );
   };
+
+  if (screen === 'royale') {
+    return (
+      <SumoRoyaleMultiplayer
+        role={royaleRole}
+        initialRoomCode={royaleInitialCode}
+        gameTitle={activeGame?.title || activeGame?.topic || 'Sumo Royale: Dojo Showdown'}
+        questions={activeGame?.questions || DEFAULT_QUESTIONS}
+        onExit={() => {
+          if (royaleRole === 'student') {
+            try {
+              window.history.replaceState({}, document.title, window.location.pathname);
+            } catch {}
+            onViewChange('home');
+          } else {
+            setScreen('menu');
+          }
+        }}
+      />
+    );
+  }
 
   if (screen === 'setup') {
     return (
@@ -832,6 +967,39 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
             setScreen('study');
           }}
         >
+          {/* MULTIPLAYER SUMO ROYALE: DOJO SHOWDOWN QUICK LAUNCH BANNER */}
+          <div className="mb-3.5 bg-gradient-to-r from-[#7f1d1d] via-[#b91c1c] to-[#b45309] text-white rounded-3xl p-3.5 sm:px-5 sm:py-3.5 border-2 border-amber-400 border-b-4 border-b-[#450a0a] shadow-lg flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-3 text-center sm:text-left">
+              <div className="w-11 h-11 rounded-2xl bg-amber-400 text-slate-950 font-black flex items-center justify-center text-xl shadow border-2 border-white shrink-0">
+                VS
+              </div>
+              <div>
+                <div className="flex items-center justify-center sm:justify-start gap-2">
+                  <span className="font-black text-sm sm:text-base uppercase tracking-wide">
+                    Sumo Royale: Dojo Showdown
+                  </span>
+                  <span className="bg-amber-400 text-slate-950 font-black text-[10px] px-2 py-0.5 rounded-md uppercase">
+                    Multiplayer QR &amp; Link
+                  </span>
+                </div>
+                <p className="text-xs text-amber-100 font-semibold">
+                  Students join via QR code or Game ID in Solo (1v1 VS) or Auto-Balanced Dojo Teams with Starting Energy Lives!
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setRoyaleRole('host');
+                setRoyaleInitialCode(undefined);
+                setScreen('royale');
+              }}
+              className="px-5 py-2.5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs sm:text-sm uppercase tracking-wider border-2 border-white border-b-4 border-b-amber-600 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+            >
+              ⚡ Host Multiplayer VS →
+            </button>
+          </div>
+
           {/* 3D BLUE VS RED SUMO FIGHTER ROSTER */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-stretch">
             {/* BLUE TEAM FIGHTER ROSTER (5 cols) */}
@@ -993,6 +1161,35 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
                     Start Split Battle →
                   </div>
                 </button>
+
+                {/* MULTIPLAYER SUMO ROYALE: DOJO SHOWDOWN (QR & LINK) */}
+                <button
+                  onClick={() => {
+                    setShowStartBattleModal(false);
+                    setRoyaleRole('host');
+                    setRoyaleInitialCode(undefined);
+                    setScreen('royale');
+                  }}
+                  className="sm:col-span-2 group p-5 rounded-3xl border-3 border-red-400 hover:border-red-600 bg-gradient-to-r from-red-50 via-amber-50 to-orange-50 hover:from-red-100 hover:to-amber-100 transition-all shadow-md hover:shadow-xl hover:scale-[1.01] active:scale-[0.99] cursor-pointer flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+                >
+                  <div>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="text-2xl">🏆</span>
+                      <span className="font-black text-base sm:text-lg text-red-950 uppercase">
+                        Sumo Royale: Dojo Showdown (Multiplayer VS)
+                      </span>
+                      <span className="bg-red-700 text-white font-black text-[10px] px-2 py-0.5 rounded-md uppercase">
+                        QR &amp; Game ID
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-700 font-medium leading-relaxed">
+                      Students join on their own devices via <strong className="text-slate-900">QR Code or Link</strong> in <strong className="text-slate-900">Solo (1v1 VS)</strong> or <strong className="text-slate-900">Teams</strong> mode with Starting Energy lives!
+                    </p>
+                  </div>
+                  <div className="inline-flex items-center px-4 py-2.5 rounded-2xl bg-gradient-to-r from-red-600 to-amber-500 text-white text-xs font-black uppercase tracking-wider border-b-4 border-red-900 shrink-0 group-hover:translate-x-1 transition-transform">
+                    Host Royale →
+                  </div>
+                </button>
               </div>
 
               <button
@@ -1134,10 +1331,30 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
                 <div className="bg-white text-blue-700 font-black text-xs sm:text-sm md:text-base px-2 py-0.5 sm:px-3 sm:py-0.5 rounded-full shadow-sm tracking-wide">
                   {leftTeam.wins} WINS
                 </div>
+                {(leftTeam.streak || 0) >= 2 && (
+                  <div className="bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 font-black text-[11px] sm:text-xs px-2 py-0.5 rounded-full shadow-sm border border-white animate-pulse">
+                    🔥 {leftTeam.streak}x
+                  </div>
+                )}
+                {leftTeam.shield && (
+                  <div className="bg-cyan-400 text-slate-950 font-black text-[11px] sm:text-xs px-2 py-0.5 rounded-full shadow-sm border border-white">
+                    🛡️ SHIELD
+                  </div>
+                )}
               </div>
 
               {/* Red Team Banner */}
               <div className="bg-[#cc0000] rounded-2xl md:rounded-3xl px-2.5 sm:px-4 md:px-5 py-1 sm:py-1.5 flex items-center gap-1.5 sm:gap-2.5 shadow-lg shadow-red-500/25 border-b-4 border-[#990000]">
+                {rightTeam.shield && (
+                  <div className="bg-cyan-400 text-slate-950 font-black text-[11px] sm:text-xs px-2 py-0.5 rounded-full shadow-sm border border-white">
+                    🛡️ SHIELD
+                  </div>
+                )}
+                {(rightTeam.streak || 0) >= 2 && (
+                  <div className="bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 font-black text-[11px] sm:text-xs px-2 py-0.5 rounded-full shadow-sm border border-white animate-pulse">
+                    🔥 {rightTeam.streak}x
+                  </div>
+                )}
                 <div className="bg-white text-red-700 font-black text-xs sm:text-sm md:text-base px-2 py-0.5 sm:px-3 sm:py-0.5 rounded-full shadow-sm tracking-wide">
                   {rightTeam.wins} WINS
                 </div>
@@ -1260,6 +1477,11 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
               rightFrozen={rightTeam.frozen}
               leftCharacter={leftCharacter}
               rightCharacter={rightCharacter}
+              leftStreak={leftTeam.streak || 0}
+              rightStreak={rightTeam.streak || 0}
+              leftShield={Boolean(leftTeam.shield)}
+              rightShield={Boolean(rightTeam.shield)}
+              powerCallout={powerCallout}
             />
 
             {/* Grammar Question Centered Directly UNDER the Arena in Single Question Mode */}
@@ -1331,7 +1553,6 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
                     : 'grid-cols-4'
               }`}>
                 {leftTeam.q?.options.map((opt: string, idx: number) => {
-                  const keyHints = getBlueKeyHints(leftTeam.q?.options?.length || 4);
                   const isKeyActive = activeKey?.team === 'left' && activeKey?.index === idx;
                   return (
                     <button
@@ -1342,28 +1563,26 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
                         handleAnswer('left', idx);
                       }}
                       disabled={leftTeam.stunned || leftTeam.frozen}
-                      className={`bg-white hover:bg-blue-50 active:translate-y-2 rounded-xl sm:rounded-2xl md:rounded-3xl p-1.5 sm:p-2.5 md:p-3 flex flex-col items-center justify-between min-h-[56px] sm:min-h-[80px] md:min-h-[108px] lg:min-h-[124px] shadow-[0_3px_0_#cbd5e1] sm:shadow-[0_5px_0_#cbd5e1] md:shadow-[0_7px_0_#94a3b8] active:shadow-[0_2px_0_#94a3b8] transition-all cursor-pointer ${
+                      className={`bg-white hover:bg-blue-50 active:translate-y-2 rounded-xl sm:rounded-2xl md:rounded-3xl p-1.5 sm:p-2.5 md:p-3 flex flex-col items-center justify-center min-h-[56px] sm:min-h-[80px] md:min-h-[108px] lg:min-h-[124px] shadow-[0_3px_0_#cbd5e1] sm:shadow-[0_5px_0_#cbd5e1] md:shadow-[0_7px_0_#94a3b8] active:shadow-[0_2px_0_#94a3b8] transition-all cursor-pointer ${
                         isKeyActive ? 'translate-y-2 shadow-[0_2px_0_#94a3b8] bg-blue-100 ring-4 ring-white' : ''
                       } ${leftTeam.stunned || leftTeam.frozen ? 'opacity-40 cursor-not-allowed' : ''}`}
                     >
-                      <div className="w-4 h-4 sm:w-6 sm:h-6 md:w-7 md:h-7 rounded sm:rounded-lg bg-[#dbeafe] flex items-center justify-center font-black text-[#0055fe] text-[9px] sm:text-xs md:text-sm shadow-xs mb-0.5 sm:mb-1 shrink-0">
-                        {keyHints[idx] || (idx + 1)}
-                      </div>
                       <div className="flex-1 w-full flex flex-col items-center justify-center px-1 overflow-hidden gap-1">
                         {(() => {
                           const parsedOpt = parseOptionContent(typeof opt === 'string' ? opt : '');
+                          const cleanText = (parsedOpt.text || '').replace(/^[A-Da-d][.)]\s+/, '');
                           return (
                             <>
                               {parsedOpt.imageUrl && (
                                 <img
                                   src={parsedOpt.imageUrl}
-                                  alt={parsedOpt.text || `Option ${idx + 1}`}
+                                  alt={cleanText || `Option ${idx + 1}`}
                                   className="max-h-12 sm:max-h-16 w-auto object-contain rounded-lg"
                                 />
                               )}
-                              {parsedOpt.text && (
-                                <span className={`${getOptionFontSize(parsedOpt.text, leftTeam.q?.options?.length || 4)} font-black text-[#0f172a] text-center leading-tight break-words whitespace-normal line-clamp-2`}>
-                                  {parsedOpt.text}
+                              {cleanText && (
+                                <span className={`${getOptionFontSize(cleanText, leftTeam.q?.options?.length || 4)} font-black text-[#0f172a] text-center leading-tight break-words whitespace-normal line-clamp-2`}>
+                                  {cleanText}
                                 </span>
                               )}
                             </>
@@ -1413,7 +1632,6 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
                     : 'grid-cols-4'
               }`}>
                 {rightTeam.q?.options.map((opt: string, idx: number) => {
-                  const keyHints = getRedKeyHints(rightTeam.q?.options?.length || 4);
                   const isKeyActive = activeKey?.team === 'right' && activeKey?.index === idx;
                   return (
                     <button
@@ -1424,28 +1642,26 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
                         handleAnswer('right', idx);
                       }}
                       disabled={rightTeam.stunned || rightTeam.frozen}
-                      className={`bg-white hover:bg-red-50 active:translate-y-2 rounded-xl sm:rounded-2xl md:rounded-3xl p-1.5 sm:p-2.5 md:p-3 flex flex-col items-center justify-between min-h-[56px] sm:min-h-[80px] md:min-h-[108px] lg:min-h-[124px] shadow-[0_3px_0_#cbd5e1] sm:shadow-[0_5px_0_#cbd5e1] md:shadow-[0_7px_0_#94a3b8] active:shadow-[0_2px_0_#94a3b8] transition-all cursor-pointer ${
+                      className={`bg-white hover:bg-red-50 active:translate-y-2 rounded-xl sm:rounded-2xl md:rounded-3xl p-1.5 sm:p-2.5 md:p-3 flex flex-col items-center justify-center min-h-[56px] sm:min-h-[80px] md:min-h-[108px] lg:min-h-[124px] shadow-[0_3px_0_#cbd5e1] sm:shadow-[0_5px_0_#cbd5e1] md:shadow-[0_7px_0_#94a3b8] active:shadow-[0_2px_0_#94a3b8] transition-all cursor-pointer ${
                         isKeyActive ? 'translate-y-2 shadow-[0_2px_0_#94a3b8] bg-red-100 ring-4 ring-white' : ''
                       } ${rightTeam.stunned || rightTeam.frozen ? 'opacity-40 cursor-not-allowed' : ''}`}
                     >
-                      <div className="w-4 h-4 sm:w-6 sm:h-6 md:w-7 md:h-7 rounded sm:rounded-lg bg-[#fee2e2] flex items-center justify-center font-black text-[#cc0000] text-[9px] sm:text-xs md:text-sm shadow-xs mb-0.5 sm:mb-1 shrink-0">
-                        {keyHints[idx] || (idx + 1)}
-                      </div>
                       <div className="flex-1 w-full flex flex-col items-center justify-center px-1 overflow-hidden gap-1">
                         {(() => {
                           const parsedOpt = parseOptionContent(typeof opt === 'string' ? opt : '');
+                          const cleanText = (parsedOpt.text || '').replace(/^[A-Da-d][.)]\s+/, '');
                           return (
                             <>
                               {parsedOpt.imageUrl && (
                                 <img
                                   src={parsedOpt.imageUrl}
-                                  alt={parsedOpt.text || `Option ${idx + 1}`}
+                                  alt={cleanText || `Option ${idx + 1}`}
                                   className="max-h-12 sm:max-h-16 w-auto object-contain rounded-lg"
                                 />
                               )}
-                              {parsedOpt.text && (
-                                <span className={`${getOptionFontSize(parsedOpt.text, rightTeam.q?.options?.length || 4)} font-black text-[#0f172a] text-center leading-tight break-words whitespace-normal line-clamp-2`}>
-                                  {parsedOpt.text}
+                              {cleanText && (
+                                <span className={`${getOptionFontSize(cleanText, rightTeam.q?.options?.length || 4)} font-black text-[#0f172a] text-center leading-tight break-words whitespace-normal line-clamp-2`}>
+                                  {cleanText}
                                 </span>
                               )}
                             </>
@@ -1592,10 +1808,224 @@ function GameEditor({ game, onSave, onCancel, folders }: { game: GameData, onSav
 
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [showBulkPasteModal, setShowBulkPasteModal] = useState(false);
+  const [showAiGeneratorModal, setShowAiGeneratorModal] = useState(false);
+  const [aiGenTopic, setAiGenTopic] = useState(topic || "Prepositions of Place");
+  const [aiGenLevel, setAiGenLevel] = useState(classLevel || "A2 Elementary");
+  const [aiGenCount, setAiGenCount] = useState<number>(10);
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [aiPreviewQuestions, setAiPreviewQuestions] = useState<Question[]>([]);
   const [showVideoGuide, setShowVideoGuide] = useState(false);
   const [copiedPromptInModal, setCopiedPromptInModal] = useState(false);
   const [bulkText, setBulkText] = useState("");
   const [toastMsg, setToastMsg] = useState("");
+  const importFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleGenerateWithAi = async () => {
+    const cleanTopic = (aiGenTopic || topic || "English Grammar").trim();
+    if (!cleanTopic) {
+      setErrorMsg("Please enter a topic for the AI Question Generator.");
+      setTimeout(() => setErrorMsg(""), 3000);
+      return;
+    }
+    setIsGeneratingAi(true);
+    setErrorMsg("");
+    try {
+      const res = await fetch("/api/sumo/ai-questions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: cleanTopic,
+          classLevel: aiGenLevel || classLevel || "Intermediate",
+          count: aiGenCount
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !Array.isArray(data?.questions) || data.questions.length === 0) {
+        throw new Error(data?.error || "Could not generate questions");
+      }
+      const generated: Question[] = data.questions.map((item: any, idx: number) => ({
+        id: Date.now() + idx + Math.random(),
+        text: item.text || "",
+        options: Array.isArray(item.options) && item.options.length >= 2 ? item.options : ["Option 1", "Option 2", "Option 3", "Option 4"],
+        answerIndex: typeof item.answerIndex === "number" ? item.answerIndex : 0
+      }));
+      setAiPreviewQuestions(generated);
+      if (!topic.trim()) setTopic(cleanTopic);
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Failed to generate AI questions. Please try again.");
+      setTimeout(() => setErrorMsg(""), 3500);
+    } finally {
+      setIsGeneratingAi(false);
+    }
+  };
+
+  const handleApplyAiQuestions = (mode: "append" | "replace") => {
+    if (aiPreviewQuestions.length === 0) return;
+    if (mode === "replace") {
+      setQuestions(aiPreviewQuestions);
+    } else {
+      setQuestions((prev) => {
+        if (prev.length === 1 && !prev[0].text.trim()) {
+          return aiPreviewQuestions;
+        }
+        return [...prev, ...aiPreviewQuestions];
+      });
+    }
+    setShowAiGeneratorModal(false);
+    setToastMsg(`✨ Added ${aiPreviewQuestions.length} AI-generated questions!`);
+    setTimeout(() => setToastMsg(""), 3500);
+    setAiPreviewQuestions([]);
+  };
+
+  const handleExportJSON = () => {
+    const valid = questions.filter((q) => q.text.trim() || q.image);
+    const payload = {
+      title: topic.trim() || game?.title || "Sumo Showdown",
+      topic: topic.trim() || "General",
+      classLevel,
+      exportedAt: new Date().toISOString(),
+      questions: valid.map((q) => ({
+        text: q.text,
+        image: q.image,
+        options: q.options,
+        answerIndex: q.answerIndex
+      }))
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const safeName = (topic.trim() || "sumo-questions").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    a.href = url;
+    a.download = `${safeName}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setToastMsg(`Exported ${valid.length} questions as JSON`);
+    setTimeout(() => setToastMsg(""), 3000);
+  };
+
+  const handleExportCSV = () => {
+    const valid = questions.filter((q) => q.text.trim() || q.image);
+    const escapeCsv = (val: string) => `"${String(val || "").replace(/"/g, '""')}"`;
+    const rows = [
+      ["Question", "Option 1", "Option 2", "Option 3", "Option 4", "Correct Option (1-4)"].join(",")
+    ];
+    valid.forEach((q) => {
+      const opts = [q.options[0] || "", q.options[1] || "", q.options[2] || "", q.options[3] || ""];
+      rows.push(
+        [
+          escapeCsv(q.text),
+          escapeCsv(opts[0]),
+          escapeCsv(opts[1]),
+          escapeCsv(opts[2]),
+          escapeCsv(opts[3]),
+          String((q.answerIndex ?? 0) + 1)
+        ].join(",")
+      );
+    });
+    const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const safeName = (topic.trim() || "sumo-questions").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    a.href = url;
+    a.download = `${safeName}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setToastMsg(`Exported ${valid.length} questions as CSV`);
+    setTimeout(() => setToastMsg(""), 3000);
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const raw = await file.text();
+      let imported: Question[] = [];
+      if (file.name.toLowerCase().endsWith(".json")) {
+        const parsed = JSON.parse(raw);
+        const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.questions) ? parsed.questions : [];
+        if (parsed?.topic && !topic.trim()) setTopic(String(parsed.topic));
+        imported = list
+          .filter((item: any) => item && (item.text || item.question))
+          .map((item: any, idx: number) => ({
+            id: Date.now() + idx + Math.random(),
+            text: String(item.text || item.question || "").trim(),
+            image: item.image || undefined,
+            options: Array.isArray(item.options) && item.options.length >= 2
+              ? item.options.map((o: any) => String(o ?? "").replace(/^[A-Da-d][.)]\s+/, "").trim())
+              : ["Option 1", "Option 2", "Option 3", "Option 4"],
+            answerIndex: typeof item.answerIndex === "number" ? item.answerIndex : 0
+          }));
+      } else {
+        // Parse CSV or structured text file
+        const lines = raw.split(/\r?\n/).filter((l) => l.trim());
+        const parseCsvLine = (line: string): string[] => {
+          const out: string[] = [];
+          let cur = "";
+          let inQuotes = false;
+          for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (ch === '"') {
+              if (inQuotes && line[i + 1] === '"') {
+                cur += '"';
+                i++;
+              } else {
+                inQuotes = !inQuotes;
+              }
+            } else if (ch === "," && !inQuotes) {
+              out.push(cur.trim());
+              cur = "";
+            } else {
+              cur += ch;
+            }
+          }
+          out.push(cur.trim());
+          return out;
+        };
+
+        if (lines.length > 0 && lines[0].includes(",")) {
+          const startIdx = /question/i.test(lines[0]) ? 1 : 0;
+          for (let i = startIdx; i < lines.length; i++) {
+            const cols = parseCsvLine(lines[i]);
+            if (!cols[0]) continue;
+            const opts = [cols[1] || "", cols[2] || "", cols[3] || "", cols[4] || ""].filter((o) => o !== "");
+            const ansNum = parseInt(cols[5] || "1", 10);
+            const ansIdx = !isNaN(ansNum) && ansNum >= 1 && ansNum <= Math.max(2, opts.length) ? ansNum - 1 : 0;
+            imported.push({
+              id: Date.now() + i + Math.random(),
+              text: cols[0],
+              options: opts.length >= 2 ? opts : [cols[1] || "Option 1", cols[2] || "Option 2"],
+              answerIndex: ansIdx
+            });
+          }
+        } else {
+          const parsedQuiz = parsePastedQuiz(raw);
+          imported = parsedQuiz.map((item, idx) => ({
+            id: Date.now() + idx + Math.random(),
+            text: item.text || "",
+            options: item.options || ["", ""],
+            answerIndex: item.answerIndex || 0
+          }));
+        }
+      }
+
+      if (imported.length === 0) {
+        setErrorMsg("No valid questions found in the selected file.");
+        setTimeout(() => setErrorMsg(""), 3500);
+      } else {
+        setQuestions((prev) => {
+          if (prev.length === 1 && !prev[0].text.trim()) return imported;
+          return [...prev, ...imported];
+        });
+        setToastMsg(`📥 Imported ${imported.length} questions from ${file.name}!`);
+        setTimeout(() => setToastMsg(""), 3500);
+      }
+    } catch {
+      setErrorMsg("Could not parse the uploaded file. Please use valid CSV or JSON.");
+      setTimeout(() => setErrorMsg(""), 3500);
+    } finally {
+      e.target.value = "";
+    }
+  };
 
   const handleCopyAiPrompt = () => {
     const promptText = `Create 50 fill-in-the-blank questions on the topic of Passive Voice. Each question should have 4 multiple-choice options (A, B, C, and D) and include the correct answer.`;
@@ -1920,36 +2350,210 @@ function GameEditor({ game, onSave, onCancel, folders }: { game: GameData, onSav
         )}
 
         <div className="p-6 flex flex-col gap-6 bg-slate-100 dark:bg-slate-900/50" onPaste={handleBulkPaste}>
-          {/* Smart Paste Banner */}
-          <div className="bg-blue-500/10 dark:bg-blue-500/5 border border-blue-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          {/* AI Generator & Bulk Import/Export Toolbar */}
+          <div className="bg-blue-500/10 dark:bg-blue-500/5 border border-blue-500/20 rounded-2xl p-4 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 font-bold">
                 <Info size={18} />
               </div>
               <p className="text-xs sm:text-sm font-medium">
-                <span className="font-bold">Smart Paste:</span> Paste multiple lines, numbered Q&As, or Excel rows directly into any box below — they will automatically populate!
+                <span className="font-bold">Teacher Toolkit:</span> Generate questions instantly with AI, paste from Excel/Docs, or import &amp; export CSV/JSON decks.
               </p>
             </div>
-            <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto flex-wrap">
+            <div className="flex items-center gap-2 shrink-0 self-end lg:self-auto flex-wrap">
+              <input
+                ref={importFileInputRef}
+                type="file"
+                accept=".csv,.json,.txt"
+                onChange={handleImportFile}
+                className="hidden"
+              />
               <button
                 type="button"
-                onClick={() => setShowVideoGuide(true)}
-                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-purple-500/25 flex items-center gap-1.5 cursor-pointer border border-purple-400/30"
-                title="Watch Video Tutorial: How to Bulk Paste with AI"
+                onClick={() => {
+                  setAiGenTopic(topic || "Prepositions of Place");
+                  setAiGenLevel(classLevel || "A2 Elementary");
+                  setShowAiGeneratorModal(true);
+                }}
+                className="px-4 py-2 bg-gradient-to-r from-amber-500 via-orange-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 active:scale-95 text-white rounded-xl text-xs font-black transition-all shadow-md shadow-orange-500/25 flex items-center gap-1.5 cursor-pointer"
               >
-                <div className="w-4 h-4 rounded-full bg-white text-purple-700 flex items-center justify-center shrink-0">
-                  <Play size={10} className="ml-0.5 fill-current" />
-                </div>
-                <span>How to Bulk Paste</span>
+                <Sparkles size={14} />
+                <span>AI Question Generator</span>
               </button>
               <button
+                type="button"
                 onClick={() => setShowBulkPasteModal(true)}
-                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                className="px-3.5 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
               >
-                <ClipboardList size={14} /> Bulk Paste Modal
+                <ClipboardList size={14} /> Bulk Paste
+              </button>
+              <button
+                type="button"
+                onClick={() => importFileInputRef.current?.click()}
+                className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                title="Import CSV or JSON file"
+              >
+                <Upload size={14} /> Import CSV/JSON
+              </button>
+              <button
+                type="button"
+                onClick={handleExportCSV}
+                className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                title="Export questions to CSV"
+              >
+                <Download size={14} /> Export CSV
+              </button>
+              <button
+                type="button"
+                onClick={handleExportJSON}
+                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                title="Export questions to JSON"
+              >
+                <Download size={14} /> JSON
               </button>
             </div>
           </div>
+
+          {/* AI Question Generator Modal */}
+          {showAiGeneratorModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4">
+              <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl flex flex-col gap-5 border-2 border-amber-400/60 max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-400 to-rose-600 text-white flex items-center justify-center shadow-md">
+                      <Sparkles size={22} />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-black text-slate-900 dark:text-white">
+                        AI Sumo Question Generator
+                      </h3>
+                      <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium">
+                        Instantly generate 4-option Dojo questions for any topic &amp; level
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAiGeneratorModal(false)}
+                    className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                      Topic or Grammar Focus
+                    </label>
+                    <input
+                      type="text"
+                      value={aiGenTopic}
+                      onChange={(e) => setAiGenTopic(e.target.value)}
+                      placeholder="e.g. Past Simple Irregular Verbs, Solar System, Fractions..."
+                      className="w-full px-4 py-2.5 rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white font-bold text-sm focus:border-amber-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                      Class / CEFR Level
+                    </label>
+                    <input
+                      type="text"
+                      value={aiGenLevel}
+                      onChange={(e) => setAiGenLevel(e.target.value)}
+                      placeholder="e.g. A2 / Grade 4"
+                      className="w-full px-3.5 py-2.5 rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white font-bold text-sm focus:border-amber-500 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-500">
+                      Number of Questions:
+                    </span>
+                    {[5, 10, 15, 20].map((cnt) => (
+                      <button
+                        key={cnt}
+                        type="button"
+                        onClick={() => setAiGenCount(cnt)}
+                        className={`px-3 py-1.5 rounded-xl font-black text-xs cursor-pointer transition-all ${
+                          aiGenCount === cnt
+                            ? "bg-amber-500 text-slate-950 shadow-sm"
+                            : "bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200"
+                        }`}
+                      >
+                        {cnt}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={isGeneratingAi}
+                    onClick={handleGenerateWithAi}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 disabled:opacity-50 text-white font-black text-sm shadow-lg flex items-center gap-2 cursor-pointer"
+                  >
+                    <Sparkles size={16} />
+                    <span>{isGeneratingAi ? "Generating Dojo Questions..." : "Generate Questions"}</span>
+                  </button>
+                </div>
+
+                {aiPreviewQuestions.length > 0 && (
+                  <div className="flex flex-col gap-3">
+                    <div className="text-xs font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                      Previewing {aiPreviewQuestions.length} Generated Questions:
+                    </div>
+                    <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
+                      {aiPreviewQuestions.map((pq, idx) => (
+                        <div
+                          key={pq.id}
+                          className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs"
+                        >
+                          <div className="font-bold text-slate-800 dark:text-white mb-1.5">
+                            {idx + 1}. {pq.text}
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                            {pq.options.map((opt, oIdx) => (
+                              <div
+                                key={oIdx}
+                                className={`px-2 py-1 rounded-lg font-semibold truncate ${
+                                  pq.answerIndex === oIdx
+                                    ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40"
+                                    : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
+                                }`}
+                              >
+                                {pq.answerIndex === oIdx ? "✓ " : ""}
+                                {opt}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleApplyAiQuestions("replace")}
+                        className="flex-1 py-3 rounded-xl font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 cursor-pointer"
+                      >
+                        Replace Existing Deck
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyAiQuestions("append")}
+                        className="flex-1 py-3 rounded-xl font-black text-white bg-emerald-600 hover:bg-emerald-500 shadow-lg cursor-pointer"
+                      >
+                        Append {aiPreviewQuestions.length} Questions to Deck
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {questions.map((q, index) => (
             <div key={q.id} className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-300 dark:border-slate-700 shadow-sm relative group">
