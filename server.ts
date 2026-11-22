@@ -1519,99 +1519,147 @@ async function startServer() {
       })()
     );
 
-    // 2. YouTube Watch Page parsing (ytInitialPlayerResponse + ytInitialData -> captions, duration, description, chapters, & chronological storyboard sheets)
+    // 2. YouTube Watch Page + Innertube Player API parsing (captions, duration, description, chapters, & chronological storyboard sheets)
     tasks.push(
       (async () => {
+        const applyPlayerResponse = (pr: any) => {
+          if (!pr || typeof pr !== "object") return;
+          const vd = pr?.videoDetails;
+          if (vd) {
+            const len = parseInt(String(vd.lengthSeconds || "0"), 10);
+            if (len > 0 && durationSec <= 0) durationSec = len;
+            if (vd.title && !title) title = String(vd.title).trim();
+            if (vd.author && !author) author = String(vd.author).trim();
+            if (vd.shortDescription && !description) {
+              description = String(vd.shortDescription).trim().slice(0, 2200);
+            }
+            if (Array.isArray(vd.keywords) && keywords.length === 0) {
+              keywords = vd.keywords
+                .map((k: any) => String(k || "").trim())
+                .filter(Boolean)
+                .slice(0, 18);
+            }
+          }
+          const tracks = pr?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+          if (!captionTrackUrl && Array.isArray(tracks)) {
+            captionTrackUrl = pickCaptionTrackUrl(tracks);
+          }
+          const sb = pr?.storyboards?.playerStoryboardSpecRenderer?.spec;
+          if (!storyboardSpec && typeof sb === "string" && sb.includes("|")) {
+            storyboardSpec = sb;
+          }
+        };
+
         try {
-          const wRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+          const wRes = await fetch(`https://www.youtube.com/watch?v=${videoId}&hl=en`, {
             headers: {
               "Accept-Language": "en-US,en;q=0.9",
               "User-Agent":
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
             },
           });
-          if (!wRes.ok) return;
-          const html = await wRes.text();
+          if (wRes.ok) {
+            const html = await wRes.text();
+            const pr = extractJsonObjectAfterMarker(
+              html,
+              /(?:var\s+)?ytInitialPlayerResponse\s*=\s*/
+            );
+            applyPlayerResponse(pr);
 
-          const pr = extractJsonObjectAfterMarker(
-            html,
-            /(?:var\s+)?ytInitialPlayerResponse\s*=\s*/
-          );
-          if (pr) {
-            const vd = pr?.videoDetails;
-            if (vd) {
-              const len = parseInt(String(vd.lengthSeconds || "0"), 10);
-              if (len > 0 && durationSec <= 0) durationSec = len;
-              if (vd.title && !title) title = String(vd.title).trim();
-              if (vd.author && !author) author = String(vd.author).trim();
-              if (vd.shortDescription && !description) {
-                description = String(vd.shortDescription).trim().slice(0, 2200);
-              }
-              if (Array.isArray(vd.keywords) && keywords.length === 0) {
-                keywords = vd.keywords
-                  .map((k: any) => String(k || "").trim())
-                  .filter(Boolean)
-                  .slice(0, 18);
+            if (durationSec <= 0) {
+              const lenMatch = html.match(/"lengthSeconds":"(\d+)"/);
+              if (lenMatch?.[1]) {
+                const parsed = parseInt(lenMatch[1], 10);
+                if (parsed > 0) durationSec = parsed;
               }
             }
-            const tracks = pr?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-            if (!captionTrackUrl && Array.isArray(tracks)) {
-              captionTrackUrl = pickCaptionTrackUrl(tracks);
+            if (!title) {
+              const ogTitle = html.match(/<meta property="og:title" content="([^"]+)"/i);
+              if (ogTitle?.[1]) title = decodeHtmlEntities(ogTitle[1]);
             }
-            const sb = pr?.storyboards?.playerStoryboardSpecRenderer?.spec;
-            if (typeof sb === "string" && sb.includes("|")) {
-              storyboardSpec = sb;
-            }
-          }
 
-          if (durationSec <= 0) {
-            const lenMatch = html.match(/"lengthSeconds":"(\d+)"/);
-            if (lenMatch?.[1]) {
-              const parsed = parseInt(lenMatch[1], 10);
-              if (parsed > 0) durationSec = parsed;
+            const chapMatches = [
+              ...html.matchAll(
+                /"chapterRenderer":\{"title":\{"simpleText":"([^"]+)"\},"timeRangeStartMillis":(\d+)/g
+              ),
+            ];
+            if (chapMatches.length > 0 && chapters.length === 0) {
+              chapters = chapMatches.slice(0, 30).map((m) => ({
+                title: decodeHtmlEntities(m[1]),
+                sec: Math.round(Number(m[2]) / 1000),
+              }));
             }
-          }
-          if (!title) {
-            const ogTitle = html.match(/<meta property="og:title" content="([^"]+)"/i);
-            if (ogTitle?.[1]) title = decodeHtmlEntities(ogTitle[1]);
-          }
-
-          // Extract chapters from watch HTML if present
-          const chapMatches = [
-            ...html.matchAll(
-              /"chapterRenderer":\{"title":\{"simpleText":"([^"]+)"\},"timeRangeStartMillis":(\d+)/g
-            ),
-          ];
-          if (chapMatches.length > 0 && chapters.length === 0) {
-            chapters = chapMatches.slice(0, 30).map((m) => ({
-              title: decodeHtmlEntities(m[1]),
-              sec: Math.round(Number(m[2]) / 1000),
-            }));
           }
         } catch {}
+
+        // Multi-client Innertube /youtubei/v1/player fallback when captions or storyboards are gated on web HTML
+        if (!captionTrackUrl || !storyboardSpec || durationSec <= 0) {
+          const innertubeClients = [
+            {
+              clientName: "ANDROID",
+              clientVersion: "19.09.37",
+              androidSdkVersion: 30,
+              hl: "en",
+              gl: "US",
+            },
+            {
+              clientName: "IOS",
+              clientVersion: "19.09.3",
+              deviceMake: "Apple",
+              deviceModel: "iPhone14,3",
+              hl: "en",
+              gl: "US",
+            },
+            {
+              clientName: "WEB",
+              clientVersion: "2.20250101.00.00",
+              hl: "en",
+              gl: "US",
+            },
+          ];
+
+          for (const clientCtx of innertubeClients) {
+            if (captionTrackUrl && storyboardSpec && durationSec > 0) break;
+            try {
+              const pRes = await fetch("https://www.youtube.com/youtubei/v1/player?prettyPrint=false", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Accept-Language": "en-US,en;q=0.9",
+                },
+                body: JSON.stringify({
+                  videoId,
+                  context: { client: clientCtx },
+                }),
+              });
+              if (pRes.ok) {
+                const pData = await pRes.json();
+                applyPlayerResponse(pData);
+              }
+            } catch {}
+          }
+        }
 
         // Fetch and parse timestamped captions if available
         const subTasks: Promise<void>[] = [];
         if (captionTrackUrl) {
           subTasks.push(
             (async () => {
-              try {
-                const capUrl = captionTrackUrl.includes("fmt=")
-                  ? captionTrackUrl
-                  : `${captionTrackUrl}&fmt=json3`;
-                const cRes = await fetch(capUrl);
-                if (!cRes.ok) return;
-                const rawText = await cRes.text();
+              const parseCaptionPayload = (rawText: string) => {
                 const entries: Array<{ sec: number; text: string }> = [];
-                if (rawText.trim().startsWith("{")) {
+                const trimmed = rawText.trim();
+                if (!trimmed) return entries;
+                if (trimmed.startsWith("{")) {
                   try {
-                    const jsonData: any = JSON.parse(rawText);
+                    const jsonData: any = JSON.parse(trimmed);
                     const events = Array.isArray(jsonData?.events) ? jsonData.events : [];
                     events.forEach((ev: any) => {
                       const segs = Array.isArray(ev?.segs) ? ev.segs : [];
                       const line = decodeHtmlEntities(
                         segs.map((s: any) => s?.utf8 || "").join("")
-                      );
+                      )
+                        .replace(/\s+/g, " ")
+                        .trim();
                       if (line && !/^\[.*\]$/.test(line)) {
                         entries.push({
                           sec: Math.round((Number(ev?.tStartMs) || 0) / 1000),
@@ -1622,17 +1670,46 @@ async function startServer() {
                   } catch {}
                 } else {
                   const xmlMatches = [
-                    ...rawText.matchAll(/<text start="([^"]+)"[^>]*>([\s\S]*?)<\/text>/g),
+                    ...trimmed.matchAll(/<(?:text|p)\b[^>]*(?:start|t)="([^"]+)"[^>]*>([\s\S]*?)<\/(?:text|p)>/g),
                   ];
                   xmlMatches.forEach((m) => {
-                    const line = decodeHtmlEntities(m[2].replace(/<[^>]+>/g, " "));
+                    const rawTime = parseFloat(m[1]) || 0;
+                    const secVal = m[0].includes('t="') ? Math.round(rawTime / 1000) : Math.round(rawTime);
+                    const line = decodeHtmlEntities(m[2].replace(/<[^>]+>/g, " "))
+                      .replace(/\s+/g, " ")
+                      .trim();
                     if (line && !/^\[.*\]$/.test(line)) {
                       entries.push({
-                        sec: Math.round(parseFloat(m[1]) || 0),
+                        sec: secVal,
                         text: line,
                       });
                     }
                   });
+                }
+                return entries;
+              };
+
+              try {
+                const candidateUrls = [
+                  captionTrackUrl.includes("fmt=") ? captionTrackUrl : `${captionTrackUrl}&fmt=json3`,
+                  captionTrackUrl.replace(/&fmt=[^&]+/g, ""),
+                ];
+                let entries: Array<{ sec: number; text: string }> = [];
+                for (const u of candidateUrls) {
+                  try {
+                    const cRes = await fetch(u, {
+                      headers: {
+                        "Accept-Language": "en-US,en;q=0.9",
+                        "User-Agent":
+                          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                      },
+                    });
+                    if (cRes.ok) {
+                      const rawText = await cRes.text();
+                      entries = parseCaptionPayload(rawText);
+                      if (entries.length > 0) break;
+                    }
+                  } catch {}
                 }
 
                 if (entries.length > 0) {
@@ -4040,25 +4117,492 @@ async function startServer() {
     ].join("\n");
   };
 
-  // Fast Video Metadata Preview Endpoint (title, real duration, transcript status)
+  // Helper to build scene-accurate questions directly from timestamped transcript or scene timeline lines
+  const buildQuestionsFromVerifiedTranscript = (
+    transcriptSource: string,
+    sceneSummaryText: string,
+    topic: string,
+    level: string,
+    types: string[],
+    count: number,
+    videoTitle: string,
+    videoDuration: number
+  ) => {
+    const rawLines = (transcriptSource || "")
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l.length >= 12);
+
+    const parsedSegments: Array<{ sec: number; text: string }> = [];
+    rawLines.forEach((line, idx) => {
+      const m = line.match(/^\[?(\d{1,2}):(\d{2})(?::(\d{2}))?\]?\s*[-–:]?\s*(.+)$/);
+      if (m) {
+        const hasHours = Boolean(m[3]);
+        const sec = hasHours
+          ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3])
+          : Number(m[1]) * 60 + Number(m[2]);
+        const cleanText = m[4].replace(/\s+/g, " ").trim();
+        if (cleanText.split(/\s+/).length >= 3) {
+          parsedSegments.push({ sec: Math.max(3, sec), text: cleanText });
+        }
+      } else {
+        const cleanText = line.replace(/^[-*•\d.)\s]+/, "").trim();
+        if (cleanText.split(/\s+/).length >= 4) {
+          const estSec = Math.max(
+            4,
+            Math.round(((idx + 1) / (rawLines.length + 1)) * Math.max(30, videoDuration * 0.9))
+          );
+          parsedSegments.push({ sec: estSec, text: cleanText });
+        }
+      }
+    });
+
+    if (parsedSegments.length === 0 && sceneSummaryText.trim()) {
+      const summarySentences = sceneSummaryText
+        .split(/(?<=[.!?])\s+/)
+        .map((s) => s.trim())
+        .filter((s) => s.split(/\s+/).length >= 4);
+      summarySentences.forEach((sent, idx) => {
+        const estSec = Math.max(
+          4,
+          Math.round(((idx + 1) / (summarySentences.length + 1)) * Math.max(30, videoDuration * 0.9))
+        );
+        parsedSegments.push({ sec: estSec, text: sent });
+      });
+    }
+
+    if (parsedSegments.length === 0) return [];
+
+    const stopWords = new Set([
+      "the",
+      "and",
+      "that",
+      "this",
+      "with",
+      "from",
+      "have",
+      "has",
+      "had",
+      "will",
+      "would",
+      "could",
+      "should",
+      "what",
+      "when",
+      "where",
+      "which",
+      "there",
+      "their",
+      "they",
+      "them",
+      "then",
+      "than",
+      "into",
+      "onto",
+      "over",
+      "under",
+      "about",
+      "after",
+      "before",
+      "because",
+      "while",
+      "where",
+      "were",
+      "been",
+      "being",
+      "very",
+      "just",
+      "also",
+      "some",
+      "more",
+    ]);
+
+    // Collect pool of candidate vocabulary words across the transcript for realistic distractors
+    const allContentWords = Array.from(
+      new Set(
+        parsedSegments
+          .flatMap((seg) =>
+            seg.text
+              .replace(/[^a-zA-Z\s'-]/g, " ")
+              .split(/\s+/)
+              .map((w) => w.trim())
+          )
+          .filter((w) => w.length >= 4 && !stopWords.has(w.toLowerCase()))
+      )
+    );
+
+    const backupDistractorPool = [
+      "carefully",
+      "quickly",
+      "quietly",
+      "outside",
+      "together",
+      "window",
+      "table",
+      "kitchen",
+      "garden",
+      "morning",
+      "friend",
+      "teacher",
+    ];
+
+    const selectedSegments: Array<{ sec: number; text: string }> = [];
+    for (let i = 0; i < count; i++) {
+      const segIdx =
+        parsedSegments.length <= count
+          ? i % parsedSegments.length
+          : Math.min(
+              parsedSegments.length - 1,
+              Math.floor(((i + 0.5) / count) * parsedSegments.length)
+            );
+      selectedSegments.push(parsedSegments[segIdx]);
+    }
+
+    return selectedSegments
+      .map((seg, idx) => {
+        const assignedType = types[idx % types.length] || "Multiple Choice";
+        const sentence = seg.text.endsWith(".") || seg.text.endsWith("!") || seg.text.endsWith("?")
+          ? seg.text
+          : `${seg.text}.`;
+        const words = sentence
+          .replace(/[.?!]+$/, "")
+          .split(/\s+/)
+          .filter(Boolean);
+
+        // Pick a meaningful target word in the segment
+        const candidateTargets = words.filter((w) => {
+          const clean = w.replace(/[^a-zA-Z'-]/g, "");
+          return clean.length >= 4 && !stopWords.has(clean.toLowerCase());
+        });
+        const rawTarget =
+          candidateTargets[Math.floor(candidateTargets.length / 2)] ||
+          words[words.length - 1] ||
+          "scene";
+        const targetWord = rawTarget.replace(/[^a-zA-Z0-9'-]/g, "");
+        if (!targetWord) return null;
+
+        const distractors = allContentWords
+          .filter((w) => w.toLowerCase() !== targetWord.toLowerCase())
+          .slice(idx * 2)
+          .concat(backupDistractorPool)
+          .filter((w, i, arr) =>
+            w.toLowerCase() !== targetWord.toLowerCase() &&
+            arr.findIndex((x) => x.toLowerCase() === w.toLowerCase()) === i
+          )
+          .slice(0, 3);
+
+        const timeTag = formatTimestampTag(seg.sec);
+        const sceneContext = `[${timeTag}] ${sentence}`;
+
+        if (assignedType === "True or False") {
+          const makeTrue = idx % 2 === 0;
+          const statement = makeTrue
+            ? `At ${timeTag} in the video: ${sentence}`
+            : `At ${timeTag} in the video: ${sentence.replace(
+                new RegExp(`\\b${targetWord.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i"),
+                distractors[0] || "nothing"
+              )}`;
+          return {
+            id: idx + 1,
+            timeTrigger: seg.sec,
+            sceneContext,
+            type: "True or False",
+            xp: 100,
+            question: statement,
+            answer: makeTrue ? "True" : "False",
+            options: [
+              { text: "True", isCorrect: makeTrue },
+              { text: "False", isCorrect: !makeTrue },
+            ],
+            explanation: makeTrue
+              ? `True — at ${timeTag}, "${sentence}" happens in the video.`
+              : `False — at ${timeTag}, the video actually shows/says: "${sentence}"`,
+          };
+        }
+
+        const escapedTarget = targetWord.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const blankedSentence = sentence.replace(new RegExp(`\\b${escapedTarget}\\b`), "____");
+        const rawOptions = [
+          { text: targetWord, isCorrect: true },
+          ...distractors.map((d) => ({ text: d, isCorrect: false })),
+        ];
+        // Deterministic rotation of options
+        const rotatedOptions = rawOptions.map(
+          (_, oIdx) => rawOptions[(oIdx + idx) % rawOptions.length]
+        );
+
+        if (assignedType === "Fill in the Blanks") {
+          return {
+            id: idx + 1,
+            timeTrigger: seg.sec,
+            sceneContext,
+            type: "Fill in the Blanks",
+            xp: 100,
+            question: blankedSentence.includes("____")
+              ? blankedSentence
+              : `${sentence.replace(/[.?!]+$/, "")} (____).`,
+            answer: targetWord,
+            acceptedAnswers: [targetWord, targetWord.toLowerCase()],
+            options: rotatedOptions,
+            explanation: `From the video at ${timeTag}: "${sentence}"`,
+          };
+        }
+
+        return {
+          id: idx + 1,
+          timeTrigger: seg.sec,
+          sceneContext,
+          type: assignedType,
+          xp: 100,
+          question: blankedSentence.includes("____")
+            ? `Complete the line from the video at ${timeTag}: "${blankedSentence}"`
+            : `What happens or is said at ${timeTag} in "${videoTitle || "the video"}"?`,
+          answer: targetWord,
+          options: rotatedOptions,
+          explanation: `At ${timeTag} in the video: "${sentence}"`,
+        };
+      })
+      .filter(Boolean) as any[];
+  };
+
+  // Comprehensive Video Metadata, Transcript & Visual Scene Summary Endpoint
   app.post("/api/scan-video-info", async (req, res) => {
     try {
-      const { videoUrl } = req.body || {};
+      const { videoUrl, clientFrames, videoTitle, videoDuration } = req.body || {};
       const scanned = await scanYouTubeVideoDeepContext(
         typeof videoUrl === "string" ? videoUrl : "",
-        { skipFrames: true }
+        { skipFrames: false }
       );
+
+      const resolvedTitle =
+        scanned.title ||
+        (typeof videoTitle === "string" && videoTitle.trim() && !/^https?:\/\//i.test(videoTitle.trim())
+          ? videoTitle.trim()
+          : "") ||
+        "Video Lesson";
+      const resolvedDuration = Math.max(
+        10,
+        Number(scanned.durationSec) || Number(videoDuration) || 180
+      );
+
+      // Parse any uploaded local video frames sent by the client
+      const parsedClientFrames: Array<{
+        sec: number | null;
+        mimeType: string;
+        data: string;
+      }> = [];
+      if (Array.isArray(clientFrames)) {
+        clientFrames.slice(0, 12).forEach((rawFrame: any) => {
+          const rawUrl =
+            typeof rawFrame === "string"
+              ? rawFrame
+              : typeof rawFrame?.dataUrl === "string"
+              ? rawFrame.dataUrl
+              : "";
+          if (!rawUrl) return;
+          const m = rawUrl.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,([A-Za-z0-9+/=]+)$/);
+          if (m?.[1] && m?.[2] && m[2].length < 750000) {
+            const secVal =
+              typeof rawFrame?.sec === "number" && Number.isFinite(rawFrame.sec)
+                ? Math.max(0, Math.round(rawFrame.sec))
+                : null;
+            parsedClientFrames.push({
+              sec: secVal,
+              mimeType: m[1],
+              data: m[2],
+            });
+          }
+        });
+      }
+
+      let transcriptText = (scanned.transcript || "").trim();
+      let sceneSummary = "";
+      let sourceType: "captions" | "visual_ai" | "scene_metadata" = transcriptText
+        ? "captions"
+        : "scene_metadata";
+
+      // Build visual parts for Gemini if we need a scene summary or visual timeline
+      const visualParts: any[] = [];
+      if (scanned.storyboardSheets.length > 0) {
+        scanned.storyboardSheets.slice(0, 3).forEach((sheet, idx) => {
+          visualParts.push(
+            {
+              text: `[YouTube Storyboard Grid #${idx + 1} covering ${formatTimestampTag(
+                sheet.startSec
+              )} to ${formatTimestampTag(sheet.endSec)}]:`,
+            },
+            { inlineData: { mimeType: sheet.mimeType, data: sheet.data } }
+          );
+        });
+      } else if (parsedClientFrames.length > 0) {
+        parsedClientFrames.slice(0, 10).forEach((cf, idx) => {
+          const tLabel = cf.sec !== null ? formatTimestampTag(cf.sec) : `Frame #${idx + 1}`;
+          visualParts.push(
+            { text: `[Video Frame at ${tLabel}]:` },
+            { inlineData: { mimeType: cf.mimeType, data: cf.data } }
+          );
+        });
+      } else if (scanned.frameParts.length > 0) {
+        scanned.frameParts.slice(0, 4).forEach((fp, idx) => {
+          visualParts.push({ text: `[Video Preview Frame #${idx + 1}]:` }, fp);
+        });
+      }
+
+      // If no spoken transcript was found (or if we want an AI scene summary), try Gemini analysis
+      if (hasValidGeminiKey() && (!transcriptText || visualParts.length > 0)) {
+        try {
+          const ai = getAiClient();
+          const metaContext = [
+            `Video Title: "${resolvedTitle}"${scanned.author ? ` (Channel: ${scanned.author})` : ""}`,
+            `Duration: ${resolvedDuration} seconds (${formatTimestampTag(resolvedDuration)})`,
+            scanned.keywords.length > 0 ? `Keywords: ${scanned.keywords.slice(0, 15).join(", ")}` : "",
+            scanned.chapters.length > 0
+              ? `Chapters:\n${scanned.chapters
+                  .map((c) => `[${formatTimestampTag(c.sec)}] ${c.title}`)
+                  .join("\n")}`
+              : "",
+            scanned.description ? `Description:\n${scanned.description.slice(0, 1200)}` : "",
+            transcriptText
+              ? `Extracted Captions Transcript:\n${transcriptText.slice(0, 4500)}`
+              : "No spoken captions track available — inspect the attached video storyboard/frames and metadata carefully.",
+          ]
+            .filter(Boolean)
+            .join("\n\n");
+
+          const scanPrompt = transcriptText
+            ? `You are an expert ESL video analyzer. Based on the video metadata, frames, and captions below, write a concise 2-3 sentence "sceneSummary" describing who is in the video, the setting, and the main events in chronological order.\n\n${metaContext}`
+            : `You are an expert ESL visual video analyzer. This video does not have an embedded subtitle file (or is a visual cartoon / uploaded clip). Inspect every attached storyboard grid / video frame and the metadata below, then produce:
+1. "sceneSummary": A clear 2-3 sentence overview of the characters, setting, and storyline actually visible in this video.
+2. "visualTimeline": A chronological, timestamped scene-by-scene breakdown (8 to 14 lines across 0:05 to ${formatTimestampTag(
+                Math.max(10, resolvedDuration - 5)
+              )}), formatted as "[M:SS] Concrete description of what the character(s) visibly do or say in this scene". Use accurate character pronouns (He/She/They/It) matching the real visuals.
+
+${metaContext}`;
+
+          const runScanModel = async (modelName: string) => {
+            const resp = await ai.models.generateContent({
+              model: modelName,
+              contents: [...visualParts, { text: scanPrompt }],
+              config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                  type: Type.OBJECT,
+                  properties: {
+                    sceneSummary: { type: Type.STRING },
+                    visualTimeline: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING },
+                    },
+                  },
+                  required: ["sceneSummary"],
+                },
+              },
+            });
+            const cleaned = (resp.text || "{}")
+              .replace(/^```(?:json)?\s*/i, "")
+              .replace(/\s*```$/i, "")
+              .trim();
+            return JSON.parse(cleaned || "{}");
+          };
+
+          let parsedScan: any = null;
+          try {
+            parsedScan = await runScanModel("gemini-3.1-flash-lite");
+          } catch {
+            try {
+              parsedScan = await runScanModel("gemini-4-hydrogen");
+            } catch {}
+          }
+
+          if (parsedScan) {
+            if (typeof parsedScan.sceneSummary === "string" && parsedScan.sceneSummary.trim()) {
+              sceneSummary = parsedScan.sceneSummary.trim();
+            }
+            if (
+              !transcriptText &&
+              Array.isArray(parsedScan.visualTimeline) &&
+              parsedScan.visualTimeline.length > 0
+            ) {
+              transcriptText = parsedScan.visualTimeline
+                .map((line: any) => String(line || "").trim())
+                .filter(Boolean)
+                .join("\n");
+              if (transcriptText) {
+                sourceType = "visual_ai";
+              }
+            }
+          }
+        } catch {}
+      }
+
+      // Deterministic fallback if transcriptText or sceneSummary is still empty
+      if (!transcriptText) {
+        if (scanned.chapters.length > 0) {
+          transcriptText = scanned.chapters
+            .map((c) => `[${formatTimestampTag(c.sec)}] ${c.title}`)
+            .join("\n");
+        } else {
+          const dynamicScenes = extractDynamicScenesFromVideo(
+            resolvedTitle,
+            scanned.description,
+            scanned.chapters,
+            "He",
+            "",
+            scanned.keywords
+          ).slice(0, 8);
+          const step = Math.max(5, Math.floor((resolvedDuration * 0.88) / (dynamicScenes.length + 1)));
+          transcriptText = dynamicScenes
+            .map((sc, i) => {
+              const sec = Math.min(resolvedDuration - 2, Math.max(4, (i + 1) * step));
+              return `[${formatTimestampTag(sec)}] He ${sc.verbPast} ${sc.obj} (${sc.location}).`;
+            })
+            .join("\n");
+        }
+      }
+
+      if (!sceneSummary) {
+        const firstDescLine = (scanned.description || "")
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .find((l) => l.length > 25 && !/https?:\/\//i.test(l));
+        sceneSummary =
+          firstDescLine ||
+          `"${resolvedTitle}"${scanned.author ? ` by ${scanned.author}` : ""} (${formatTimestampTag(
+            resolvedDuration
+          )}). Review or edit the extracted transcript & scene timeline below before generating your quiz questions.`;
+      }
+
+      const framesCount =
+        scanned.storyboardSheets.length > 0
+          ? scanned.storyboardSheets.length
+          : parsedClientFrames.length || scanned.frameParts.length;
+
       res.json({
         videoId: scanned.videoId,
-        title: scanned.title,
+        title: scanned.title || resolvedTitle,
         author: scanned.author,
-        durationSec: scanned.durationSec,
+        durationSec: scanned.durationSec || resolvedDuration,
         hasTranscript: Boolean(scanned.transcript),
+        transcriptText,
+        sceneSummary,
+        sourceType,
         chaptersCount: scanned.chapters.length,
+        framesCount,
+        chapters: scanned.chapters,
         keywords: scanned.keywords,
       });
     } catch {
-      res.json({ videoId: "", title: "", durationSec: 0, hasTranscript: false });
+      res.json({
+        videoId: "",
+        title: "",
+        durationSec: 0,
+        hasTranscript: false,
+        transcriptText: "",
+        sceneSummary: "",
+        sourceType: "scene_metadata",
+        chaptersCount: 0,
+        framesCount: 0,
+      });
     }
   });
 
@@ -4072,10 +4616,16 @@ async function startServer() {
       videoDuration,
       videoUrl,
       clientFrames,
+      verifiedTranscript,
+      sceneSummary,
     } = req.body || {};
 
     const cleanTopic = typeof topic === "string" ? topic.trim() : "";
     const cleanLevel = typeof level === "string" && level.trim() ? level.trim() : "Movers";
+    const cleanVerifiedTranscript =
+      typeof verifiedTranscript === "string" ? verifiedTranscript.trim() : "";
+    const cleanSceneSummary =
+      typeof sceneSummary === "string" ? sceneSummary.trim() : "";
     const requestedTypes: string[] =
       Array.isArray(types) && types.length > 0
         ? types
@@ -4086,6 +4636,8 @@ async function startServer() {
     const scanned = await scanYouTubeVideoDeepContext(
       typeof videoUrl === "string" ? videoUrl : ""
     );
+
+    const effectiveTranscript = cleanVerifiedTranscript || scanned.transcript || "";
 
     const resolvedVideoTitle =
       scanned.title ||
@@ -4129,28 +4681,44 @@ async function startServer() {
         });
     };
 
-    const generateBuiltInVideoQuestions = () =>
-      normalizeAscendingTimestamps(
-        buildFallbackVideoQuizQuestions(
-          cleanTopic,
-          cleanLevel,
-          requestedTypes,
-          targetCount,
-          resolvedVideoTitle,
-          resolvedDuration,
-          scanned.description,
-          scanned.chapters,
-          scanned.transcript,
-          scanned.keywords
-        )
+    const generateBuiltInVideoQuestions = () => {
+      const directTranscriptQs =
+        !cleanTopic && (effectiveTranscript || cleanSceneSummary)
+          ? buildQuestionsFromVerifiedTranscript(
+              effectiveTranscript,
+              cleanSceneSummary,
+              cleanTopic,
+              cleanLevel,
+              requestedTypes,
+              targetCount,
+              resolvedVideoTitle,
+              resolvedDuration
+            )
+          : [];
+      if (directTranscriptQs.length >= targetCount) {
+        return normalizeAscendingTimestamps(directTranscriptQs.slice(0, targetCount));
+      }
+      const fallbackQs = buildFallbackVideoQuizQuestions(
+        cleanTopic,
+        cleanLevel,
+        requestedTypes,
+        targetCount,
+        resolvedVideoTitle,
+        resolvedDuration,
+        [cleanSceneSummary, scanned.description].filter(Boolean).join("\n"),
+        scanned.chapters,
+        effectiveTranscript,
+        scanned.keywords
       );
+      return normalizeAscendingTimestamps([...directTranscriptQs, ...fallbackQs].slice(0, targetCount));
+    };
 
     if (!hasValidGeminiKey()) {
       return res.json({
         questions: generateBuiltInVideoQuestions(),
         videoTitle: resolvedVideoTitle,
         videoDuration: resolvedDuration,
-        hasTranscript: Boolean(scanned.transcript),
+        hasTranscript: Boolean(effectiveTranscript),
         usedStoryboard: false,
         usedVisualFramesCount: 0,
         usedBuiltInGenerator: true,
@@ -4233,7 +4801,8 @@ async function startServer() {
 
     const hasVisualOrTranscriptEvidence =
       labeledVisualParts.length > 0 ||
-      Boolean(scanned.transcript) ||
+      Boolean(effectiveTranscript) ||
+      Boolean(cleanSceneSummary) ||
       Boolean(scanned.description) ||
       scanned.chapters.length > 0;
 
@@ -4421,6 +4990,14 @@ async function startServer() {
       const videoEvidenceBlock = [
         `Video Title: "${resolvedVideoTitle || "Uploaded Video"}"${resolvedAuthor ? ` (Channel: ${resolvedAuthor})` : ""}`,
         `Video Duration: ${durationSec} seconds (${formatTimestampTag(durationSec)})`,
+        cleanSceneSummary
+          ? `Teacher-Verified Video Scene Summary (PRIMARY CONTEXT):\n${cleanSceneSummary}`
+          : "",
+        cleanVerifiedTranscript
+          ? `Teacher-Verified Timestamped Transcript & Scene Breakdown (HIGHEST PRIORITY GROUND TRUTH — EVERY QUESTION MUST DIRECTLY MATCH THESE SCENES & DIALOGUE LINES):\n${cleanVerifiedTranscript}`
+          : scanned.transcript
+          ? `Timestamped Video Transcript / Spoken Dialogue (MATCH REAL EVENTS & EXACT TIMESTAMPS):\n${scanned.transcript}`
+          : "No spoken captions track was found; rely directly on the attached timestamped video frames / storyboard grids above, plus title/description.",
         scanned.keywords.length > 0 ? `Video Tags/Keywords: ${scanned.keywords.join(", ")}` : "",
         scanned.chapters.length > 0
           ? `Chapters/Scenes:\n${scanned.chapters.map((c) => `- [${formatTimestampTag(c.sec)} / ${c.sec}s] ${c.title}`).join("\n")}`
@@ -4428,9 +5005,6 @@ async function startServer() {
         scanned.description
           ? `Video Description:\n${scanned.description.slice(0, 1500)}`
           : "",
-        scanned.transcript
-          ? `Timestamped Video Transcript / Spoken Dialogue (MATCH REAL EVENTS & EXACT TIMESTAMPS):\n${scanned.transcript}`
-          : "No spoken captions track was found; rely directly on the attached timestamped video frames / storyboard grids above, plus title/description.",
       ]
         .filter(Boolean)
         .join("\n\n");
@@ -4449,7 +5023,7 @@ async function startServer() {
                 .join("\n")}\n`
             : "";
 
-        return `You are an expert Cambridge ESL curriculum designer & visual video analyst. Inspect EVERY attached video frame / storyboard image carefully before writing a single word.
+        return `You are an expert Cambridge ESL curriculum designer & visual video analyst. Inspect EVERY attached video frame / storyboard image and the Teacher-Verified Transcript & Scene Breakdown carefully before writing a single word.
 
 ${topicRules}
 
@@ -4463,22 +5037,22 @@ ${videoEvidenceBlock}
 === END VIDEO EVIDENCE ===
 ${avoidBlock}
 STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
-1. STRICT VISUAL & TRANSCRIPT MATCHING (ZERO HALLUCINATION): Every question MUST directly match what is ACTUALLY visible in the attached timestamped video frames/storyboard or spoken in the transcript at that exact "timeTrigger". NEVER invent objects, clothing, pets, rooms, or actions (e.g., do not make up bags, pianos, umbrellas, or trains unless you actually see or hear them in this video!).
-2. INSPECT CHARACTER GENDER & PRONOUNS ACCURATELY: Look closely at who is on screen in the frame(s) near each "timeTrigger". Match the pronoun to the real person/character you see:
+1. STRICT VISUAL & TRANSCRIPT MATCHING (ZERO HALLUCINATION): Every question MUST directly match what is ACTUALLY stated in the Teacher-Verified Transcript / Scene Breakdown or visible in the attached timestamped video frames/storyboard at that exact "timeTrigger". NEVER invent objects, clothing, pets, rooms, or actions that do not appear in the video evidence above.
+2. INSPECT CHARACTER GENDER & PRONOUNS ACCURATELY: Look closely at who is on screen in the frame(s) or transcript near each "timeTrigger". Match the pronoun to the real person/character:
    - Boy / man -> "He", "his", "him"
    - Girl / woman -> "She", "her"
    - Multiple people -> "They", "their", "them"
    - Animal / object -> "It", "its"
    NEVER guess the opposite gender or randomly alternate "He" and "She" for the same character!
    NEVER use vague placeholders like "the main character", "someone", "something", or "a funny object".
-3. SET "sceneContext" FIRST: Start with the timestamp and concrete visible/spoken evidence, e.g. "[0:18] Boy in yellow shirt walks beside green plant and steps". Then write a question that matches that exact scene!
-4. ZERO REPETITIVE OR VAGUE QUESTIONS: Spread questions across the whole timeline (${winMin}s to ${winMax}s) so each question observes a distinct moment, action, or visible object.
+3. SET "sceneContext" FIRST: Start with the timestamp and concrete visible/spoken evidence from the transcript or frame, e.g. "[0:18] Boy in yellow shirt walks beside green plant and steps". Then write a question that matches that exact scene!
+4. ZERO REPETITIVE OR VAGUE QUESTIONS: Spread questions across the whole timeline (${winMin}s to ${winMax}s) so each question observes a distinct moment, dialogue line, action, or visible object.
 5. GRAMMAR & TOPIC PRECISION: Every question MUST accurately test ${cleanTopic ? `"${cleanTopic}"` : "video comprehension & level-appropriate English grammar"} using natural, idiomatic English for Cambridge ${cleanLevel}.
 6. UNAMBIGUOUS SINGLE ANSWER: Exactly ONE option may be marked "isCorrect": true (matching "answer"). The 3 distractors MUST be clearly wrong in that sentence.
 7. CLEAN QUESTION FORMATS (cycle evenly across ${requestedTypes.join(", ")}):
-   - "Fill in the Blanks": Write a natural complete sentence with EXACTLY ONE blank "____" (never two blanks!), plus a brief cue in parentheses when helpful (e.g. "He walks past ____ (a / an) green plant."), with "answer", "acceptedAnswers", and 4 "options".
+   - "Fill in the Blanks": Write a natural complete sentence from or about the scene with EXACTLY ONE blank "____" (never two blanks!), plus a brief cue in parentheses when helpful (e.g. "He walks past ____ (a / an) green plant."), with "answer", "acceptedAnswers", and 4 "options".
    - "Multiple Choice" / "Grammar Choice": Provide 4 clear options with exactly 1 "isCorrect": true. Keep stems concise (1 sentence, 6–16 words), NO meta-instructions like "Choose the correct...".
-   - "True or False": Write a clear true/false statement about what visibly happens in the video at that timestamp, with EXACTLY 2 options: "True" and "False".
+   - "True or False": Write a clear true/false statement about what visibly happens or is said in the video at that timestamp, with EXACTLY 2 options: "True" and "False".
    - "Vocabulary Meaning": Pick a real visible object/action/word from the video at that timestamp and ask for its simple ${cleanLevel}-level meaning with 4 options.
 8. TIMESTAMPS: Assign strictly ascending "timeTrigger" integer seconds between ${winMin} and ${winMax} aligned directly with the observed frame/storyboard/transcript timestamps.`;
       };
@@ -4629,13 +5203,11 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
         let lastErr: any = null;
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
-            // Try free-tier lightweight model first
             return await runModel("gemini-3.1-flash-lite", primaryParts, false);
           } catch (err: any) {
             lastErr = err;
             const info = extractCleanGeminiError(err);
             if (info.status === 402 || info.status === 401 || info.status === 403) {
-              // Project prepayment credits or auth unavailable — fall back immediately to built-in video generator
               break;
             }
             try {
@@ -4692,7 +5264,6 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
         });
       }
 
-      // Top up any shortfall with another Gemini pass, then built-in video generator if still short
       if (sanitized.length > 0 && sanitized.length < targetCount) {
         try {
           const remainingNeeded = Math.min(20, targetCount - sanitized.length);
@@ -4723,7 +5294,7 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
         questions: finalQuestions,
         videoTitle: resolvedVideoTitle,
         videoDuration: resolvedDuration,
-        hasTranscript: Boolean(scanned.transcript),
+        hasTranscript: Boolean(effectiveTranscript),
         usedStoryboard: scanned.storyboardSheets.length > 0,
         usedVisualFramesCount:
           scanned.storyboardSheets.length > 0
@@ -4732,7 +5303,7 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
       });
     } catch (err: any) {
       console.warn(
-        "Gemini API unavailable for Video Quiz (falling back to built-in video generator):",
+        "Gemini API unavailable for Video Quiz (falling back to transcript/scene video generator):",
         err?.message || err
       );
       const builtInQuestions = generateBuiltInVideoQuestions();
@@ -4740,7 +5311,7 @@ STRICT VISUAL GROUNDING, PRONOUN & GRAMMAR RULES:
         questions: builtInQuestions,
         videoTitle: resolvedVideoTitle,
         videoDuration: resolvedDuration,
-        hasTranscript: Boolean(scanned.transcript),
+        hasTranscript: Boolean(effectiveTranscript),
         usedStoryboard: scanned.storyboardSheets.length > 0,
         usedVisualFramesCount:
           scanned.storyboardSheets.length > 0

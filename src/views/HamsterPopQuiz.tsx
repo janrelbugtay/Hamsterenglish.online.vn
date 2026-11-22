@@ -45,9 +45,9 @@ const customStyles = `
   .animate-vq-fade { animation: vqFadeUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 
   .vq-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
-  .vq-scrollbar::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.03); border-radius: 8px; }
-  .vq-scrollbar::-webkit-scrollbar-thumb { background: rgba(245, 158, 11, 0.35); border-radius: 8px; }
-  .vq-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(245, 158, 11, 0.6); }
+  .vq-scrollbar::-webkit-scrollbar-track { background: rgba(79, 70, 229, 0.06); border-radius: 8px; }
+  .vq-scrollbar::-webkit-scrollbar-thumb { background: rgba(79, 70, 229, 0.32); border-radius: 8px; }
+  .vq-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(79, 70, 229, 0.55); }
 `;
 
 const CEFR_LEVELS = ['Starters', 'Movers', 'Flyers', 'KET', 'B1', 'B2'];
@@ -1403,7 +1403,7 @@ const generateDynamicQuestions = (config: any) => {
   });
 };
 
-const THINKING_DURATION_MS = 30000;
+const THINKING_DURATION_MS = 4500;
 
 function ThinkingAnalysisOverlay({
   elapsedMs,
@@ -1421,63 +1421,64 @@ function ThinkingAnalysisOverlay({
   const clampedElapsed = Math.min(totalMs, Math.max(0, elapsedMs));
   const pct = Math.min(100, Math.round((clampedElapsed / totalMs) * 100));
   const remainingSec = Math.max(0, Math.ceil((totalMs - clampedElapsed) / 1000));
-  const stepIndex = clampedElapsed < 10000 ? 0 : clampedElapsed < 20000 ? 1 : 2;
+  const stepIndex =
+    clampedElapsed < totalMs * 0.34 ? 0 : clampedElapsed < totalMs * 0.68 ? 1 : 2;
 
   const steps = [
     {
-      title: '1. Scanning Video Transcript & Visual Frames',
-      desc: 'Mapping timestamps, scene shifts, and spoken context across the full video.',
+      title: '1. Scanning Verified Transcript & Visual Frames',
+      desc: 'Mapping exact timestamps, scene shifts, and spoken dialogue across the video.',
     },
     {
-      title: '2. Deep Scene & Pronoun Analysis',
-      desc: 'Replacing vague terms with natural pronouns (he/she/they) grounded in each clip.',
+      title: '2. Deep Scene & Character Pronoun Analysis',
+      desc: 'Matching real characters and actions (he/she/they) grounded in each timestamped clip.',
     },
     {
-      title: '3. Grammar & Uniqueness Audit',
-      desc: `Eliminating repetitive templates and verifying ${questionCount} distinct ${
+      title: '3. Grammar & Scene-Match Audit',
+      desc: `Verifying ${questionCount} distinct, scene-accurate ${
         topic ? `${topic} ` : ''
       }questions.`,
     },
   ];
 
   return (
-    <div className="fixed inset-0 z-[120] bg-[#07060C]/90 backdrop-blur-md flex items-center justify-center p-4 animate-vq-fade">
-      <div className="w-full max-w-lg bg-[#141122] border border-amber-400/40 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5">
+    <div className="fixed inset-0 z-[120] bg-slate-900/45 backdrop-blur-sm flex items-center justify-center p-4 animate-vq-fade">
+      <div className="w-full max-w-lg bg-white border-2 border-indigo-200 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-11 h-11 rounded-2xl bg-amber-400/15 border border-amber-400/40 flex items-center justify-center text-amber-400 shrink-0">
+            <div className="w-11 h-11 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 shrink-0">
               <Loader2 size={22} className="animate-spin" />
             </div>
             <div className="min-w-0">
-              <h3 className="vq-display text-lg sm:text-xl font-black text-white leading-tight">
-                Deep Video Thinking Mode
+              <h3 className="vq-display text-lg sm:text-xl font-black text-slate-900 leading-tight">
+                Generating Scene-Matched Quiz
               </h3>
-              <p className="text-xs text-slate-400 truncate">
-                {videoTitle ? `Analyzing "${videoTitle}"` : 'Analyzing video scenes & grammar'}
+              <p className="text-xs text-slate-500 truncate">
+                {videoTitle ? `Analyzing "${videoTitle}"` : 'Analyzing video transcript, scenes & grammar'}
               </p>
             </div>
           </div>
 
-          <div className="px-3.5 py-2 rounded-2xl bg-amber-400/15 border border-amber-400/40 text-center shrink-0">
-            <div className="vq-mono text-lg sm:text-xl font-black text-amber-300 leading-none">
+          <div className="px-3.5 py-2 rounded-2xl bg-amber-50 border border-amber-300 text-center shrink-0">
+            <div className="vq-mono text-lg sm:text-xl font-black text-amber-700 leading-none">
               {remainingSec}s
             </div>
-            <div className="text-[10px] font-bold text-amber-200/80 uppercase tracking-wider mt-0.5">
-              thinking
+            <div className="text-[10px] font-bold text-amber-700/80 uppercase tracking-wider mt-0.5">
+              matching
             </div>
           </div>
         </div>
 
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-xs font-bold">
-            <span className="text-slate-300">
-              Generating {questionCount} non-repetitive {topic ? `${topic} ` : ''}questions
+            <span className="text-slate-700">
+              Building {questionCount} accurate {topic ? `${topic} ` : ''}questions from video scenes
             </span>
-            <span className="vq-mono text-amber-300">{pct}%</span>
+            <span className="vq-mono text-indigo-600">{pct}%</span>
           </div>
-          <div className="h-2.5 w-full rounded-full bg-white/10 overflow-hidden">
+          <div className="h-2.5 w-full rounded-full bg-slate-100 border border-slate-200 overflow-hidden">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-amber-400 via-amber-300 to-emerald-400 transition-all duration-200"
+              className="h-full rounded-full bg-gradient-to-r from-indigo-600 via-indigo-500 to-emerald-500 transition-all duration-200"
               style={{ width: `${pct}%` }}
             />
           </div>
@@ -1492,24 +1493,24 @@ function ThinkingAnalysisOverlay({
                 key={st.title}
                 className={`p-3 rounded-2xl border transition-colors flex items-start gap-3 ${
                   isDone
-                    ? 'bg-emerald-500/10 border-emerald-400/35 text-emerald-200'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
                     : isActive
-                    ? 'bg-amber-400/10 border-amber-400/45 text-white'
-                    : 'bg-white/[0.03] border-white/10 text-slate-500'
+                    ? 'bg-indigo-50 border-indigo-300 text-slate-900'
+                    : 'bg-[#FAF7F0] border-[#E6E0D4] text-slate-400'
                 }`}
               >
                 <div className="mt-0.5 shrink-0">
                   {isDone ? (
-                    <CheckCircle size={16} className="text-emerald-400" />
+                    <CheckCircle size={16} className="text-emerald-600" />
                   ) : isActive ? (
-                    <Sparkles size={16} className="text-amber-400 animate-pulse" />
+                    <Sparkles size={16} className="text-indigo-600 animate-pulse" />
                   ) : (
-                    <Clock size={16} className="text-slate-500" />
+                    <Clock size={16} className="text-slate-400" />
                   )}
                 </div>
                 <div className="min-w-0">
                   <div className="text-xs font-extrabold">{st.title}</div>
-                  <div className="text-[11px] opacity-80 leading-relaxed mt-0.5">{st.desc}</div>
+                  <div className="text-[11px] opacity-85 leading-relaxed mt-0.5">{st.desc}</div>
                 </div>
               </div>
             );
@@ -1648,6 +1649,8 @@ export function HamsterPopQuiz({
       ? {
           topic: initialGame.topic || initialGame.name || initialGame.title || '',
           videoTitle: initialGame.lessonConfig?.videoTitle || '',
+          verifiedTranscript: initialGame.lessonConfig?.verifiedTranscript || '',
+          sceneSummary: initialGame.lessonConfig?.sceneSummary || '',
           level: normalizeEnglishLevel(initialGame.classLevel || initialGame.className),
           count: initialGame.lessonConfig?.count || (initialMappedQuestions?.length || 5),
           className: initialGame.className || '',
@@ -1658,6 +1661,8 @@ export function HamsterPopQuiz({
       : {
           topic: '', // Do NOT automatically load a quiz topic
           videoTitle: '',
+          verifiedTranscript: '',
+          sceneSummary: '',
           level: 'Movers',
           count: 5,
           className: '',
@@ -1708,6 +1713,8 @@ export function HamsterPopQuiz({
       setLessonConfig({
         topic: initialGame.topic || initialGame.name || initialGame.title || '',
         videoTitle: initialGame.lessonConfig?.videoTitle || '',
+        verifiedTranscript: initialGame.lessonConfig?.verifiedTranscript || '',
+        sceneSummary: initialGame.lessonConfig?.sceneSummary || '',
         level: normalizeEnglishLevel(initialGame.classLevel || initialGame.className),
         count: initialGame.lessonConfig?.count || mapped.length || 5,
         className: initialGame.className || '',
@@ -1933,7 +1940,7 @@ export function HamsterPopQuiz({
       setThinkingState((prev) =>
         prev ? { ...prev, elapsedMs: Date.now() - startedAt } : prev
       );
-    }, 250);
+    }, 200);
 
     try {
       const workPromise = (async () => {
@@ -1966,6 +1973,8 @@ export function HamsterPopQuiz({
             count: desiredCount,
             videoDuration: Number(config.videoDuration) || capturedLocalDuration || 0,
             videoUrl: cleanUrl.startsWith('blob:') ? localVideoName : cleanUrl,
+            verifiedTranscript: (config.verifiedTranscript || '').trim(),
+            sceneSummary: (config.sceneSummary || '').trim(),
             ...(capturedClientFrames.length > 0 ? { clientFrames: capturedClientFrames } : {}),
           }),
         });
@@ -2056,10 +2065,10 @@ export function HamsterPopQuiz({
   return (
     <div
       id="game-container"
-      className="w-full min-h-full flex-1 text-slate-100 vq-body overflow-y-auto overflow-x-hidden bg-[#0B0A12] relative selection:bg-amber-400 selection:text-slate-950 flex flex-col"
+      className="w-full min-h-full flex-1 text-slate-900 vq-body overflow-y-auto overflow-x-hidden bg-[#FAF7F0] relative selection:bg-indigo-600 selection:text-white flex flex-col"
       style={{
         backgroundImage:
-          'radial-gradient(circle at 18% 10%, rgba(245, 158, 11, 0.08), transparent 40%), radial-gradient(circle at 82% 16%, rgba(99, 102, 241, 0.08), transparent 44%)',
+          'radial-gradient(circle at 15% 12%, rgba(79, 70, 229, 0.08), transparent 42%), radial-gradient(circle at 85% 15%, rgba(245, 158, 11, 0.10), transparent 45%)',
       }}
     >
       <style>{customStyles}</style>
@@ -2073,13 +2082,13 @@ export function HamsterPopQuiz({
         />
       )}
 
-      {/* Clean Top Navigation Bar */}
-      <header className="sticky top-0 z-40 w-full bg-[#0E0C17]/95 backdrop-blur-md border-b border-white/10 px-3 sm:px-5 h-13 flex items-center justify-between gap-3 shrink-0">
+      {/* Clean Bright Classroom Top Navigation Bar */}
+      <header className="sticky top-0 z-40 w-full bg-white/95 backdrop-blur-md border-b border-[#E6E0D4] px-3 sm:px-5 h-14 flex items-center justify-between gap-3 shrink-0 shadow-xs">
         <div className="flex items-center gap-2.5 shrink-0 min-w-0">
           <button
             onClick={() => onViewChange('games')}
             title="Back to Games"
-            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-slate-300 hover:text-white transition-colors cursor-pointer shrink-0"
+            className="w-9 h-9 rounded-xl bg-[#FAF7F0] hover:bg-indigo-50 border border-[#E6E0D4] hover:border-indigo-300 flex items-center justify-center text-slate-700 hover:text-indigo-700 transition-colors cursor-pointer shrink-0"
           >
             <ArrowLeft size={17} />
           </button>
@@ -2092,23 +2101,23 @@ export function HamsterPopQuiz({
               }}
               alt="Video Quiz"
               referrerPolicy="no-referrer"
-              className="w-8 h-8 rounded-lg object-cover border border-amber-400/40 shadow-sm shrink-0"
+              className="w-8 h-8 rounded-lg object-cover border border-indigo-200 shadow-xs shrink-0"
             />
-            <span className="vq-display text-base sm:text-lg font-extrabold tracking-tight text-white truncate">
-              Video <span className="text-amber-400">Quiz</span>
+            <span className="vq-display text-base sm:text-lg font-extrabold tracking-tight text-slate-900 truncate">
+              Video <span className="text-indigo-600">Quiz</span>
             </span>
           </div>
         </div>
 
         {/* Mode Switcher */}
         {!isLockedPlayMode && (
-          <div className="flex items-center gap-1 p-1 rounded-xl bg-white/5 border border-white/10">
+          <div className="flex items-center gap-1 p-1 rounded-xl bg-[#FAF7F0] border border-[#E6E0D4]">
             <button
               onClick={() => setCurrentView('setup')}
-              className={`px-3.5 py-1 rounded-lg text-xs font-bold transition-colors whitespace-nowrap cursor-pointer ${
+              className={`px-4 py-1.5 rounded-lg text-xs font-extrabold transition-colors whitespace-nowrap cursor-pointer ${
                 currentView === 'setup'
-                  ? 'bg-amber-400 text-slate-950 shadow-xs'
-                  : 'text-slate-300 hover:text-white'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
               }`}
             >
               Setup
@@ -2123,10 +2132,10 @@ export function HamsterPopQuiz({
                 setOpenEditorOnMount(false);
                 setCurrentView('player');
               }}
-              className={`px-3.5 py-1 rounded-lg text-xs font-bold transition-colors whitespace-nowrap cursor-pointer ${
+              className={`px-4 py-1.5 rounded-lg text-xs font-extrabold transition-colors whitespace-nowrap cursor-pointer ${
                 currentView === 'player'
-                  ? 'bg-amber-400 text-slate-950 shadow-xs'
-                  : 'text-slate-300 hover:text-white'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
               }`}
             >
               Player
@@ -2134,17 +2143,17 @@ export function HamsterPopQuiz({
           </div>
         )}
 
-        {/* Audio Toggle (Score lives cleanly inside the stage top-right so it stays visible in fullscreen too) */}
+        {/* Audio Toggle */}
         <div className="flex items-center gap-2 shrink-0">
           {currentView === 'setup' && questions.length > 0 && (
-            <span className="hidden sm:inline text-xs font-bold text-slate-300 vq-mono whitespace-nowrap mr-1">
+            <span className="hidden sm:inline text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-lg vq-mono whitespace-nowrap mr-1">
               {questions.length} {questions.length === 1 ? 'Q' : 'Qs'} ready
             </span>
           )}
           <button
             onClick={toggleMute}
             title={isMuted ? 'Unmute Sound' : 'Mute Sound'}
-            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-slate-300 hover:text-white transition-colors cursor-pointer"
+            className="w-9 h-9 rounded-xl bg-[#FAF7F0] hover:bg-indigo-50 border border-[#E6E0D4] hover:border-indigo-300 flex items-center justify-center text-slate-700 hover:text-indigo-700 transition-colors cursor-pointer"
           >
             {isMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}
           </button>
@@ -2232,6 +2241,18 @@ function SetupStudioView({
   const [detectedDurationSec, setDetectedDurationSec] = useState<number>(
     Number(initialConfig?.videoDuration) || 0
   );
+  const [extractedTranscript, setExtractedTranscript] = useState<string>(
+    initialConfig?.verifiedTranscript || ''
+  );
+  const [extractedSceneSummary, setExtractedSceneSummary] = useState<string>(
+    initialConfig?.sceneSummary || ''
+  );
+  const [transcriptSourceType, setTranscriptSourceType] = useState<
+    'captions' | 'visual_ai' | 'scene_metadata'
+  >('captions');
+  const [showTranscriptPanel, setShowTranscriptPanel] = useState<boolean>(
+    Boolean(initialConfig?.verifiedTranscript || initialConfig?.sceneSummary)
+  );
   const [scanMeta, setScanMeta] = useState<{
     hasTranscript?: boolean;
     chaptersCount?: number;
@@ -2247,7 +2268,6 @@ function SetupStudioView({
     initialConfig?.selectedTypes || ['Fill in the Blanks', 'Multiple Choice', 'Grammar Choice']
   );
 
-  // Allow typing ANY number of questions freely (not limited to 10!)
   const initialCountNum = Math.max(1, Math.min(100, Number(initialConfig?.count) || 5));
   const [quizCountInput, setQuizCountInput] = useState<string>(String(initialCountNum));
   const resolvedQuizCount = Math.max(1, Math.min(100, parseInt(quizCountInput, 10) || 5));
@@ -2260,6 +2280,9 @@ function SetupStudioView({
       setUrlInput('');
       setDetectedVideoTitle('');
       setDetectedDurationSec(0);
+      setExtractedTranscript('');
+      setExtractedSceneSummary('');
+      setShowTranscriptPanel(false);
       setScanMeta(null);
       setProcessedSourceKey('');
     } else if (!videoUrl.startsWith('blob:')) {
@@ -2293,7 +2316,7 @@ function SetupStudioView({
     canonicalActiveSource && processedSourceKey && processedSourceKey === canonicalActiveSource
   );
 
-  // Explicit user-triggered video processing (not automatic!)
+  // Explicit user-triggered video processing: extracts transcript + scene summary and displays preview panel
   const handleProcessVideo = async () => {
     if (!activeVideoSource) {
       setSetupError('Please paste a video URL or upload a local video file first.');
@@ -2315,10 +2338,6 @@ function SetupStudioView({
           fileSlug.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ').trim() ||
           'Uploaded Video';
         setDetectedVideoTitle(cleanLocalTitle);
-        setScanMeta({
-          hasTranscript: false,
-          framesCount: localScan.frames.length,
-        });
         if (typeof onProcessedLocalScan === 'function') {
           onProcessedLocalScan({
             sourceUrl: targetSource,
@@ -2326,6 +2345,54 @@ function SetupStudioView({
             durationSec: localScan.durationSec,
           });
         }
+
+        // Send captured frames to /api/scan-video-info to extract visual scene summary & timeline
+        let gotServerTimeline = false;
+        try {
+          const scanRes = await fetch('/api/scan-video-info', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              videoUrl: cleanLocalTitle,
+              videoTitle: cleanLocalTitle,
+              videoDuration: localScan.durationSec,
+              clientFrames: localScan.frames,
+            }),
+          });
+          if (scanRes.ok) {
+            const info = await scanRes.json();
+            if (typeof info?.transcriptText === 'string' && info.transcriptText.trim()) {
+              setExtractedTranscript(info.transcriptText.trim());
+              gotServerTimeline = true;
+            }
+            if (typeof info?.sceneSummary === 'string' && info.sceneSummary.trim()) {
+              setExtractedSceneSummary(info.sceneSummary.trim());
+            }
+            if (info?.sourceType) {
+              setTranscriptSourceType(info.sourceType);
+            }
+          }
+        } catch {}
+
+        if (!gotServerTimeline) {
+          const fallbackLines = localScan.frames.map(
+            (f, idx) =>
+              `[${formatSeconds(f.sec)}] Scene #${idx + 1} captured from "${cleanLocalTitle}" at ${formatSeconds(f.sec)}.`
+          );
+          setExtractedTranscript(fallbackLines.join('\n'));
+          setExtractedSceneSummary(
+            `Uploaded video "${cleanLocalTitle}" (${formatSeconds(
+              localScan.durationSec || 120
+            )}) with ${localScan.frames.length} visual scene frames captured.`
+          );
+          setTranscriptSourceType('visual_ai');
+        }
+
+        setScanMeta({
+          hasTranscript: true,
+          framesCount: localScan.frames.length,
+        });
+        setShowTranscriptPanel(true);
         setProcessedSourceKey(canonicalActiveSource);
         return;
       }
@@ -2351,10 +2418,21 @@ function SetupStudioView({
           if (Number(info?.durationSec) > 0) {
             setDetectedDurationSec(Number(info.durationSec));
           }
+          if (typeof info?.transcriptText === 'string' && info.transcriptText.trim()) {
+            setExtractedTranscript(info.transcriptText.trim());
+          }
+          if (typeof info?.sceneSummary === 'string' && info.sceneSummary.trim()) {
+            setExtractedSceneSummary(info.sceneSummary.trim());
+          }
+          if (info?.sourceType) {
+            setTranscriptSourceType(info.sourceType);
+          }
           setScanMeta({
-            hasTranscript: Boolean(info?.hasTranscript),
+            hasTranscript: Boolean(info?.hasTranscript || info?.transcriptText),
             chaptersCount: Number(info?.chaptersCount) || 0,
+            framesCount: Number(info?.framesCount) || 0,
           });
+          setShowTranscriptPanel(true);
         }
       } catch {}
 
@@ -2377,7 +2455,7 @@ function SetupStudioView({
 
       setProcessedSourceKey(canonicalActiveSource);
     } catch {
-      setSetupError('Could not scan this video automatically. You can still generate questions.');
+      setSetupError('Could not scan this video automatically. You can still paste scene notes or generate questions.');
     } finally {
       setIsScanningVideoTitle(false);
     }
@@ -2399,22 +2477,29 @@ function SetupStudioView({
           : isSameVideoAsInitial
           ? initialConfig?.videoDuration
           : 0,
-      topic: topic.trim(), // Keep empty if user didn't enter a topic
+      topic: topic.trim(),
       videoTitle:
         detectedVideoTitle ||
         (localVideoName ? localVideoName.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ') : ''),
+      verifiedTranscript: extractedTranscript.trim(),
+      sceneSummary: extractedSceneSummary.trim(),
       level: normalizeEnglishLevel(level),
       selectedTypes,
       count: resolvedQuizCount,
     };
   };
 
+  const transcriptLineCount = extractedTranscript
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean).length;
+
   return (
     <div className="flex-1 flex flex-col justify-center max-w-5xl mx-auto w-full animate-vq-fade">
-      <div className="bg-[#13111E] border border-white/10 rounded-3xl p-5 sm:p-8 shadow-2xl space-y-6">
+      <div className="bg-white border border-[#E6E0D4] rounded-3xl p-5 sm:p-8 shadow-xl space-y-6">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row items-center gap-5 pb-5 border-b border-white/10">
-          <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden shrink-0 border-2 border-amber-400/50 shadow-lg bg-[#0B0914]">
+        <div className="flex flex-col sm:flex-row items-center gap-5 pb-5 border-b border-[#E6E0D4]">
+          <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden shrink-0 border-2 border-indigo-200 shadow-md bg-indigo-50">
             <img
               src="/images/video-quiz-card-v3.jpg?v=3"
               onError={(e) => {
@@ -2427,40 +2512,54 @@ function SetupStudioView({
           </div>
 
           <div className="flex-1 text-center sm:text-left">
-            <h1 className="vq-display text-2xl sm:text-3xl font-black text-white tracking-tight mb-1">
-              Interactive <span className="text-amber-400">Video Quiz</span>
+            <h1 className="vq-display text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mb-1">
+              Interactive <span className="text-indigo-600">Video Quiz</span>
             </h1>
-            <p className="text-xs sm:text-sm text-slate-400 max-w-2xl">
-              Paste a video URL or upload a video file, click <strong>Process Video</strong> to scan its scenes &amp; transcript, then auto-generate accurate, non-repetitive questions. You can click and edit any generated question inside the player.
+            <p className="text-xs sm:text-sm text-slate-600 max-w-2xl leading-relaxed">
+              Paste a video URL or upload a video file, click <strong className="text-indigo-700">Process Video</strong> to preview its extracted transcript &amp; scene breakdown, then auto-generate 100% scene-accurate questions.
             </p>
           </div>
         </div>
 
         {/* Main Setup Form Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left Column: Video Source, Topic, How Many Questions, English Level */}
+          {/* Left Column: Video Source, Extracted Transcript & Scene Preview, Topic, Count, Level */}
           <div className="lg:col-span-7 space-y-5">
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-bold text-slate-300">
-                  Video Source (URL or Local File)
+                <label className="text-xs font-extrabold text-slate-700">
+                  Video Source (YouTube URL or Local Video File)
                 </label>
-                {activeVideoSource && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUrlInput('');
-                      setDetectedVideoTitle('');
-                      setDetectedDurationSec(0);
-                      setScanMeta(null);
-                      setProcessedSourceKey('');
-                      onClearVideo();
-                    }}
-                    className="text-xs font-semibold text-rose-400 hover:text-rose-300 flex items-center gap-1 cursor-pointer"
-                  >
-                    <X size={13} /> Clear Video
-                  </button>
-                )}
+                <div className="flex items-center gap-3">
+                  {activeVideoSource && !showTranscriptPanel && (
+                    <button
+                      type="button"
+                      onClick={() => setShowTranscriptPanel(true)}
+                      className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
+                    >
+                      <Edit3 size={12} /> Transcript &amp; Scenes
+                    </button>
+                  )}
+                  {activeVideoSource && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUrlInput('');
+                        setDetectedVideoTitle('');
+                        setDetectedDurationSec(0);
+                        setExtractedTranscript('');
+                        setExtractedSceneSummary('');
+                        setShowTranscriptPanel(false);
+                        setScanMeta(null);
+                        setProcessedSourceKey('');
+                        onClearVideo();
+                      }}
+                      className="text-xs font-bold text-rose-600 hover:text-rose-700 flex items-center gap-1 cursor-pointer"
+                    >
+                      <X size={13} /> Clear Video
+                    </button>
+                  )}
+                </div>
               </div>
 
               <input
@@ -2473,6 +2572,9 @@ function SetupStudioView({
                   if (file) {
                     setDetectedVideoTitle('');
                     setDetectedDurationSec(0);
+                    setExtractedTranscript('');
+                    setExtractedSceneSummary('');
+                    setShowTranscriptPanel(false);
                     setScanMeta(null);
                     setProcessedSourceKey('');
                     onSelectLocalFile(file);
@@ -2482,21 +2584,21 @@ function SetupStudioView({
               />
 
               {isBlobUrl ? (
-                <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-400/40 text-white">
+                <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-slate-900">
                   <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div className="w-9 h-9 rounded-lg bg-emerald-400/20 text-emerald-300 flex items-center justify-center shrink-0">
+                    <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
                       <FileVideo size={18} />
                     </div>
                     <div className="min-w-0">
-                      <div className="text-xs font-extrabold text-emerald-300 truncate">
+                      <div className="text-xs font-extrabold text-emerald-900 truncate">
                         {localVideoName || 'Uploaded Video File'}
                       </div>
-                      <div className="text-[11px] text-slate-400">
+                      <div className="text-[11px] text-emerald-700">
                         {isCurrentSourceProcessed
                           ? `Processed${detectedDurationSec > 0 ? ` · ${formatSeconds(detectedDurationSec)}` : ''}${
-                              scanMeta?.framesCount ? ` · ${scanMeta.framesCount} visual frames ready` : ' · Ready'
+                              scanMeta?.framesCount ? ` · ${scanMeta.framesCount} visual frames & scene summary ready` : ' · Ready'
                             }`
-                          : 'Click Process Video to analyze frames & duration'}
+                          : 'Click Process Video to analyze frames, scenes & duration'}
                       </div>
                     </div>
                   </div>
@@ -2505,7 +2607,7 @@ function SetupStudioView({
                       type="button"
                       disabled={isScanningVideoTitle}
                       onClick={handleProcessVideo}
-                      className="px-3.5 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-slate-950 text-xs font-extrabold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                      className="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs font-extrabold flex items-center gap-1.5 cursor-pointer whitespace-nowrap shadow-xs"
                     >
                       {isScanningVideoTitle ? (
                         <>
@@ -2527,7 +2629,7 @@ function SetupStudioView({
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-xs font-bold text-white cursor-pointer whitespace-nowrap"
+                      className="px-3 py-2 rounded-lg bg-white hover:bg-slate-100 border border-emerald-300 text-xs font-bold text-slate-700 cursor-pointer whitespace-nowrap"
                     >
                       Change File
                     </button>
@@ -2536,7 +2638,7 @@ function SetupStudioView({
               ) : (
                 <div className="flex flex-col sm:flex-row gap-2">
                   <div className="relative flex-1 flex items-center">
-                    <Video size={17} className="absolute left-3.5 text-amber-400 pointer-events-none" />
+                    <Video size={17} className="absolute left-3.5 text-indigo-600 pointer-events-none" />
                     <input
                       ref={urlInputRef}
                       type="text"
@@ -2548,14 +2650,17 @@ function SetupStudioView({
                         setVideoUrl(nextVal);
                         setDetectedVideoTitle('');
                         setDetectedDurationSec(0);
+                        setExtractedTranscript('');
+                        setExtractedSceneSummary('');
+                        setShowTranscriptPanel(false);
                         setScanMeta(null);
                         setProcessedSourceKey('');
                         if (setupError) setSetupError('');
                       }}
-                      className={`w-full pl-10 pr-4 py-3 rounded-xl bg-[#0E0B1A] border focus:outline-none text-sm font-medium text-white placeholder:text-slate-500 transition-colors ${
+                      className={`w-full pl-10 pr-4 py-3 rounded-xl bg-[#FAF7F0] border focus:bg-white focus:outline-none text-sm font-semibold text-slate-900 placeholder:text-slate-400 transition-colors ${
                         setupError
-                          ? 'border-rose-500 focus:border-rose-400'
-                          : 'border-white/15 focus:border-amber-400'
+                          ? 'border-rose-400 focus:border-rose-500'
+                          : 'border-[#D8D0C5] focus:border-indigo-600'
                       }`}
                     />
                   </div>
@@ -2564,10 +2669,10 @@ function SetupStudioView({
                     type="button"
                     disabled={isScanningVideoTitle || !activeVideoSource}
                     onClick={handleProcessVideo}
-                    className={`px-4 py-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                    className={`px-4 py-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 shadow-xs ${
                       isCurrentSourceProcessed
-                        ? 'bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 hover:bg-emerald-500/30'
-                        : 'bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950'
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        : 'bg-amber-500 hover:bg-amber-600 disabled:opacity-45 text-slate-950'
                     }`}
                   >
                     {isScanningVideoTitle ? (
@@ -2591,9 +2696,9 @@ function SetupStudioView({
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-slate-200 hover:text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                    className="px-4 py-3 rounded-xl bg-[#FAF7F0] hover:bg-indigo-50 border border-[#D8D0C5] hover:border-indigo-300 text-slate-700 hover:text-indigo-700 text-xs font-extrabold flex items-center justify-center gap-2 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                   >
-                    <Upload size={15} className="text-amber-400" />
+                    <Upload size={15} className="text-indigo-600" />
                     Upload Video
                   </button>
                 </div>
@@ -2601,62 +2706,130 @@ function SetupStudioView({
 
               {activeVideoSource && !isBlobUrl && (isScanningVideoTitle || isCurrentSourceProcessed || ytPreviewId) && (
                 <div
-                  className={`mt-2.5 p-2.5 rounded-xl border flex items-center gap-3 ${
+                  className={`mt-2.5 p-3 rounded-xl border flex items-center justify-between gap-3 ${
                     isCurrentSourceProcessed
-                      ? 'bg-emerald-500/10 border-emerald-400/35'
-                      : 'bg-amber-400/10 border-amber-400/30'
+                      ? 'bg-emerald-50/90 border-emerald-200'
+                      : 'bg-amber-50/90 border-amber-200'
                   }`}
                 >
-                  {ytPreviewId && (
-                    <img
-                      src={`https://i.ytimg.com/vi/${ytPreviewId}/hqdefault.jpg`}
-                      alt="Video Preview"
-                      referrerPolicy="no-referrer"
-                      className="w-16 h-10 rounded-lg object-cover border border-white/20 shrink-0"
-                    />
-                  )}
-                  <div className="min-w-0 flex-1 text-left">
-                    <div
-                      className={`text-[11px] font-bold flex items-center gap-1.5 flex-wrap ${
-                        isCurrentSourceProcessed ? 'text-emerald-300' : 'text-amber-300'
-                      }`}
-                    >
-                      {isScanningVideoTitle ? (
-                        <>
-                          <Loader2 size={12} className="animate-spin shrink-0" />
-                          <span>Processing video transcript, duration &amp; scenes...</span>
-                        </>
-                      ) : isCurrentSourceProcessed ? (
-                        <>
-                          <CheckCircle size={12} className="shrink-0" />
-                          <span>
-                            Processed
-                            {detectedDurationSec > 0 ? ` · ${formatSeconds(detectedDurationSec)}` : ''}
-                            {scanMeta?.hasTranscript
-                              ? ' · Transcript & Scenes ready'
-                              : ' · Video Info & Frames ready'}
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <Clock size={12} className="shrink-0" />
-                          <span>Not processed yet — click Process Video to scan title, duration &amp; captions</span>
-                        </>
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    {ytPreviewId && (
+                      <img
+                        src={`https://i.ytimg.com/vi/${ytPreviewId}/hqdefault.jpg`}
+                        alt="Video Preview"
+                        referrerPolicy="no-referrer"
+                        className="w-16 h-10 rounded-lg object-cover border border-slate-300 shrink-0 shadow-2xs"
+                      />
+                    )}
+                    <div className="min-w-0 flex-1 text-left">
+                      <div
+                        className={`text-[11px] font-extrabold flex items-center gap-1.5 flex-wrap ${
+                          isCurrentSourceProcessed ? 'text-emerald-700' : 'text-amber-800'
+                        }`}
+                      >
+                        {isScanningVideoTitle ? (
+                          <>
+                            <Loader2 size={12} className="animate-spin shrink-0" />
+                            <span>Extracting video transcript, duration &amp; visual scenes...</span>
+                          </>
+                        ) : isCurrentSourceProcessed ? (
+                          <>
+                            <CheckCircle size={13} className="shrink-0 text-emerald-600" />
+                            <span>
+                              Processed
+                              {detectedDurationSec > 0 ? ` · ${formatSeconds(detectedDurationSec)}` : ''}
+                              {transcriptLineCount > 0
+                                ? ` · ${transcriptLineCount} timestamped scene/dialogue lines ready`
+                                : ' · Video Info & Scenes ready'}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <Clock size={12} className="shrink-0 text-amber-600" />
+                            <span>Click Process Video to extract the transcript &amp; scene summary before generating</span>
+                          </>
+                        )}
+                      </div>
+                      {detectedVideoTitle && (
+                        <div className="text-xs font-extrabold text-slate-900 truncate mt-0.5">
+                          {detectedVideoTitle}
+                        </div>
                       )}
                     </div>
-                    {detectedVideoTitle && (
-                      <div className="text-xs font-extrabold text-white truncate">
-                        {detectedVideoTitle}
-                      </div>
-                    )}
+                  </div>
+
+                  {isCurrentSourceProcessed && (
+                    <button
+                      type="button"
+                      onClick={() => setShowTranscriptPanel((prev) => !prev)}
+                      className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-indigo-50 border border-emerald-300 text-indigo-700 text-[11px] font-extrabold shrink-0 cursor-pointer transition-colors"
+                    >
+                      {showTranscriptPanel ? 'Hide Transcript' : 'Review Transcript'}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Interactive Extracted Video Transcript & Scene Summary Preview / Editor */}
+              {(showTranscriptPanel || isCurrentSourceProcessed) && (
+                <div className="mt-3 rounded-2xl border-2 border-indigo-200 bg-[#FAF7F0] p-3.5 sm:p-4 space-y-3 shadow-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[11px] font-extrabold">
+                        <Sparkles size={12} />
+                        Extracted Video Transcript &amp; Scene Summary
+                      </span>
+                      <span className="text-[11px] font-bold text-slate-600">
+                        {transcriptSourceType === 'captions'
+                          ? 'Official Captions + Scene Summary'
+                          : transcriptSourceType === 'visual_ai'
+                          ? 'AI Visual Scene Breakdown'
+                          : 'Timestamped Scene Timeline'}
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-semibold text-indigo-700">
+                      Editable — questions will strictly match this content
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-extrabold text-slate-700 mb-1">
+                      Video Scene Summary (Characters, Setting &amp; Storyline)
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={extractedSceneSummary}
+                      onChange={(e) => setExtractedSceneSummary(e.target.value)}
+                      placeholder="Brief overview of who is in the video, where they are, and what happens..."
+                      className="w-full px-3 py-2 rounded-xl bg-white border border-[#D8D0C5] focus:border-indigo-600 focus:outline-none text-xs font-medium text-slate-800 placeholder:text-slate-400 leading-relaxed vq-scrollbar"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-extrabold text-slate-700">
+                        Timestamped Dialogue &amp; Visual Scene Breakdown ({transcriptLineCount}{' '}
+                        {transcriptLineCount === 1 ? 'line' : 'lines'})
+                      </label>
+                      <span className="text-[10px] font-bold text-slate-500 vq-mono">
+                        Format: [M:SS] Spoken dialogue or visible action
+                      </span>
+                    </div>
+                    <textarea
+                      rows={5}
+                      value={extractedTranscript}
+                      onChange={(e) => setExtractedTranscript(e.target.value)}
+                      placeholder="[0:10] Character walks into the room and opens a blue book..."
+                      className="w-full px-3 py-2 rounded-xl bg-white border border-[#D8D0C5] focus:border-indigo-600 focus:outline-none text-xs font-medium text-slate-800 placeholder:text-slate-400 leading-relaxed vq-mono vq-scrollbar"
+                    />
                   </div>
                 </div>
               )}
 
               {setupError && (
-                <div className="mt-2.5 p-3 rounded-xl bg-rose-500/10 border border-rose-500/40 text-xs text-rose-200 space-y-2">
-                  <div className="flex items-start gap-2 font-semibold leading-relaxed">
-                    <AlertCircle size={15} className="shrink-0 text-rose-400 mt-0.5" />
+                <div className="mt-2.5 p-3 rounded-xl bg-rose-50 border border-rose-300 text-xs text-rose-800 space-y-2">
+                  <div className="flex items-start gap-2 font-bold leading-relaxed">
+                    <AlertCircle size={15} className="shrink-0 text-rose-600 mt-0.5" />
                     <span>{setupError}</span>
                   </div>
                   {activeVideoSource && typeof onOpenManualPlayer === 'function' && (
@@ -2664,7 +2837,7 @@ function SetupStudioView({
                       <button
                         type="button"
                         onClick={() => onOpenManualPlayer(buildPayload())}
-                        className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 border border-white/15 text-white text-[11px] font-bold transition-colors cursor-pointer"
+                        className="px-3 py-1.5 rounded-lg bg-white hover:bg-rose-100 border border-rose-300 text-rose-800 text-[11px] font-extrabold transition-colors cursor-pointer"
                       >
                         Open Video Player &amp; Add Questions Manually
                       </button>
@@ -2677,14 +2850,14 @@ function SetupStudioView({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-bold text-slate-300">
-                    Grammar / Quiz Topic <span className="text-slate-500 font-normal">(Optional)</span>
+                  <label className="text-xs font-extrabold text-slate-700">
+                    Grammar / Quiz Topic <span className="text-slate-400 font-normal">(Optional)</span>
                   </label>
                   {topic && (
                     <button
                       type="button"
                       onClick={() => setTopic('')}
-                      className="text-[11px] font-bold text-slate-400 hover:text-white cursor-pointer"
+                      className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
                     >
                       Clear
                     </button>
@@ -2695,7 +2868,7 @@ function SetupStudioView({
                   placeholder="Type topic or leave blank to scan video..."
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl bg-[#0E0B1A] border border-white/15 focus:border-amber-400 focus:outline-none text-sm font-semibold text-white placeholder:text-slate-500 transition-colors"
+                  className="w-full px-4 py-3 rounded-xl bg-[#FAF7F0] border border-[#D8D0C5] focus:bg-white focus:border-indigo-600 focus:outline-none text-sm font-semibold text-slate-900 placeholder:text-slate-400 transition-colors"
                 />
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   {POPULAR_GRAMMAR_TOPICS.map((presetTopic) => {
@@ -2705,10 +2878,10 @@ function SetupStudioView({
                         key={presetTopic}
                         type="button"
                         onClick={() => setTopic(isSelected ? '' : presetTopic)}
-                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition-colors cursor-pointer ${
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold border transition-colors cursor-pointer ${
                           isSelected
-                            ? 'bg-amber-400/20 border-amber-400 text-amber-300'
-                            : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-2xs'
+                            : 'bg-[#FAF7F0] border-[#E6E0D4] text-slate-600 hover:text-indigo-700 hover:border-indigo-300'
                         }`}
                       >
                         {presetTopic}
@@ -2719,8 +2892,8 @@ function SetupStudioView({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-2">
-                  How Many Questions <span className="text-slate-500 font-normal">(Type any number)</span>
+                <label className="block text-xs font-extrabold text-slate-700 mb-2">
+                  How Many Questions <span className="text-slate-400 font-normal">(Type any number)</span>
                 </label>
                 <div className="flex items-center gap-2">
                   <input
@@ -2742,18 +2915,18 @@ function SetupStudioView({
                         setQuizCountInput('5');
                       }
                     }}
-                    className="w-20 px-3 py-3 rounded-xl bg-[#0E0B1A] border border-white/15 focus:border-amber-400 focus:outline-none text-sm font-extrabold text-amber-400 text-center vq-mono"
+                    className="w-20 px-3 py-3 rounded-xl bg-[#FAF7F0] border border-[#D8D0C5] focus:bg-white focus:border-indigo-600 focus:outline-none text-sm font-extrabold text-indigo-700 text-center vq-mono"
                   />
-                  <div className="flex-1 grid grid-cols-5 gap-1 p-1 rounded-xl bg-[#0E0B1A] border border-white/15">
+                  <div className="flex-1 grid grid-cols-5 gap-1 p-1 rounded-xl bg-[#FAF7F0] border border-[#D8D0C5]">
                     {QUESTION_COUNT_PRESETS.map((cnt) => (
                       <button
                         key={cnt}
                         type="button"
                         onClick={() => setQuizCountInput(String(cnt))}
-                        className={`py-2 rounded-lg text-xs font-bold transition-colors whitespace-nowrap cursor-pointer ${
+                        className={`py-2 rounded-lg text-xs font-extrabold transition-colors whitespace-nowrap cursor-pointer ${
                           resolvedQuizCount === cnt
-                            ? 'bg-amber-400 text-slate-950'
-                            : 'text-slate-300 hover:text-white'
+                            ? 'bg-indigo-600 text-white shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-white'
                         }`}
                       >
                         {cnt}
@@ -2766,7 +2939,7 @@ function SetupStudioView({
 
             {/* English Level Selector */}
             <div>
-              <label className="block text-xs font-bold text-slate-300 mb-2">
+              <label className="block text-xs font-extrabold text-slate-700 mb-2">
                 English Level
               </label>
               <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
@@ -2777,8 +2950,8 @@ function SetupStudioView({
                     onClick={() => setLevel(l)}
                     className={`px-3 py-2.5 rounded-xl text-xs font-extrabold transition-colors whitespace-nowrap cursor-pointer border text-center ${
                       level === l
-                        ? 'bg-amber-400 text-slate-950 border-amber-400 shadow-xs'
-                        : 'bg-[#0E0B1A] text-slate-300 border-white/10 hover:border-white/25'
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                        : 'bg-[#FAF7F0] text-slate-700 border-[#D8D0C5] hover:border-indigo-300 hover:bg-indigo-50/40'
                     }`}
                   >
                     {l}
@@ -2791,7 +2964,7 @@ function SetupStudioView({
           {/* Right Column: Question Types & Launch Action */}
           <div className="lg:col-span-5 flex flex-col justify-between space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-300 mb-2">
+              <label className="block text-xs font-extrabold text-slate-700 mb-2">
                 Question Formats
               </label>
               <div className="grid grid-cols-2 gap-2">
@@ -2804,22 +2977,33 @@ function SetupStudioView({
                       onClick={() => toggleType(type)}
                       className={`p-2.5 rounded-xl border text-left transition-colors flex items-center gap-2 cursor-pointer ${
                         active
-                          ? 'bg-amber-400/12 border-amber-400/60 text-white'
-                          : 'bg-[#0C0A15] border-white/10 text-slate-400 hover:text-slate-200 hover:border-white/20'
+                          ? 'bg-indigo-50 border-indigo-500 text-indigo-950 shadow-2xs'
+                          : 'bg-[#FAF7F0] border-[#E6E0D4] text-slate-600 hover:text-slate-900 hover:border-[#D8D0C5]'
                       }`}
                     >
                       <div
                         className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${
-                          active ? 'bg-amber-400 text-slate-950' : 'bg-white/10'
+                          active ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-300'
                         }`}
                       >
                         {active && <Check size={12} strokeWidth={3} />}
                       </div>
-                      <span className="text-xs font-bold truncate">{type}</span>
+                      <span className="text-xs font-extrabold truncate">{type}</span>
                     </button>
                   );
                 })}
               </div>
+            </div>
+
+            {/* Quick Tip Card */}
+            <div className="p-3.5 rounded-2xl bg-[#FAF7F0] border border-[#E6E0D4] space-y-1.5">
+              <div className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                <CheckCircle size={14} className="text-emerald-600 shrink-0" />
+                <span>100% Scene-Matched Questions</span>
+              </div>
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                Click <strong>Process Video</strong> first to inspect the extracted dialogue &amp; visual scenes. Every generated question is anchored to a real timestamp in your video.
+              </p>
             </div>
 
             {/* Auto-Generate Button */}
@@ -2835,12 +3019,12 @@ function SetupStudioView({
                   }
                   onStartLesson(buildPayload());
                 }}
-                className="w-full py-4 px-5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-slate-950 font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg transition-colors cursor-pointer"
+                className="w-full py-4 px-5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 transition-colors cursor-pointer"
               >
                 {isGenerating ? (
                   <>
                     <Loader2 size={18} className="animate-spin" />
-                    Thinking &amp; Generating {resolvedQuizCount} Questions...
+                    Analyzing &amp; Generating {resolvedQuizCount} Questions...
                   </>
                 ) : (
                   <>
@@ -2850,9 +3034,9 @@ function SetupStudioView({
                   </>
                 )}
               </button>
-              <p className="text-[11px] text-slate-400 text-center flex items-center justify-center gap-1.5">
-                <Clock size={12} className="text-amber-400 shrink-0" />
-                <span>Takes ~30 seconds of deep thinking to avoid repetitive or vague questions.</span>
+              <p className="text-[11px] text-slate-500 text-center flex items-center justify-center gap-1.5">
+                <Clock size={12} className="text-indigo-600 shrink-0" />
+                <span>Uses verified video transcript &amp; scene frames to prevent mismatched questions.</span>
               </p>
             </div>
           </div>
@@ -3552,6 +3736,8 @@ function PlayerView({
               ? videoDuration
               : capturedLocalDuration || config?.videoDuration || 180,
             videoUrl: videoUrl.startsWith('blob:') ? localVideoName : videoUrl,
+            verifiedTranscript: (config?.verifiedTranscript || '').trim(),
+            sceneSummary: (config?.sceneSummary || '').trim(),
             ...(capturedClientFrames.length > 0 ? { clientFrames: capturedClientFrames } : {}),
           }),
         });
@@ -3611,7 +3797,7 @@ function PlayerView({
       setVideoEnded(false);
       setShowEndScore(false);
       const sourceLabel = data?.hasTranscript
-        ? 'Analyzed transcript & storyboard'
+        ? 'Analyzed verified transcript & scenes'
         : data?.usedStoryboard
         ? 'Analyzed video storyboard scenes'
         : capturedClientFrames.length > 0
@@ -3650,14 +3836,14 @@ function PlayerView({
       )}
 
       {toastMessage && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-emerald-500 text-slate-950 px-5 py-2.5 rounded-xl font-extrabold text-sm shadow-2xl flex items-center gap-2 animate-vq-pop">
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-extrabold text-sm shadow-xl flex items-center gap-2 animate-vq-pop">
           <CheckCircle size={18} />
           <span>{toastMessage}</span>
         </div>
       )}
 
       {errorToast && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-rose-600 text-white px-5 py-2.5 rounded-xl font-extrabold text-sm shadow-2xl flex items-center gap-2 max-w-xl animate-vq-pop">
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-rose-600 text-white px-5 py-2.5 rounded-xl font-extrabold text-sm shadow-xl flex items-center gap-2 max-w-xl animate-vq-pop">
           <AlertCircle size={18} className="shrink-0" />
           <span>{errorToast}</span>
         </div>
@@ -3693,30 +3879,30 @@ function PlayerView({
         />
       )}
 
-      {/* UNIFIED CINEMA VIDEO & QUESTION STAGE (Fullscreen matches crisp edge-to-edge cinema layout!) */}
+      {/* UNIFIED CLASSROOM VIDEO & QUESTION STAGE */}
       <div
         ref={stageContainerRef}
-        className={`w-full flex flex-col overflow-hidden shadow-2xl ${
+        className={`w-full flex flex-col overflow-hidden shadow-xl ${
           isStageFullscreen
-            ? 'fixed inset-0 z-50 rounded-none border-none h-screen w-screen bg-black'
-            : 'bg-[#13111E] border border-white/10 rounded-2xl'
+            ? 'fixed inset-0 z-50 rounded-none border-none h-screen w-screen bg-[#FAF7F0]'
+            : 'bg-white border border-[#E6E0D4] rounded-2xl'
         }`}
       >
-        {/* Standard Mode Header Bar (Hidden in Fullscreen so video expands full-bleed like iSLCollective cinema mode!) */}
+        {/* Standard Mode Header Bar */}
         {!isStageFullscreen && (
-          <div className="px-4 py-2.5 border-b border-white/10 flex flex-wrap items-center justify-between gap-2.5 bg-[#0E0C17] shrink-0">
+          <div className="px-4 py-2.5 border-b border-[#E6E0D4] flex flex-wrap items-center justify-between gap-2.5 bg-white shrink-0">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="vq-display font-extrabold text-white text-sm sm:text-base lg:text-lg truncate">
+              <span className="vq-display font-extrabold text-slate-900 text-sm sm:text-base lg:text-lg truncate">
                 {config?.topic || config?.videoTitle || localVideoName || 'Video Quiz'}
               </span>
-              <span aria-hidden="true" className="text-white/25">·</span>
-              <span className="text-amber-300 text-xs sm:text-sm font-bold whitespace-nowrap">
+              <span aria-hidden="true" className="text-slate-300">·</span>
+              <span className="px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-extrabold whitespace-nowrap">
                 {normalizeEnglishLevel(config?.level)}
               </span>
               {sortedQuestions.length > 0 && (
                 <>
-                  <span aria-hidden="true" className="text-white/25 hidden md:inline">·</span>
-                  <span className="hidden md:inline text-xs font-semibold text-slate-400 vq-mono whitespace-nowrap">
+                  <span aria-hidden="true" className="text-slate-300 hidden md:inline">·</span>
+                  <span className="hidden md:inline text-xs font-bold text-slate-500 vq-mono whitespace-nowrap">
                     {answeredCount}/{sortedQuestions.length} answered
                   </span>
                 </>
@@ -3728,7 +3914,7 @@ function PlayerView({
                 type="button"
                 onClick={handleResetQuiz}
                 title="Reset Video & Questions"
-                className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap"
+                className="px-2.5 py-1.5 rounded-xl bg-[#FAF7F0] hover:bg-slate-100 border border-[#E6E0D4] text-slate-700 hover:text-slate-900 text-xs font-extrabold flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap"
               >
                 <RotateCcw size={13} />
                 <span className="hidden sm:inline">Reset</span>
@@ -3740,7 +3926,7 @@ function PlayerView({
                     type="button"
                     onClick={handleAutoGenerateTopicQuestions}
                     disabled={isGeneratingMore}
-                    className="px-2.5 py-1.5 rounded-xl bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-300 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap"
+                    className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-xs font-extrabold flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap"
                     title="Scan video & auto-generate questions"
                   >
                     {isGeneratingMore ? (
@@ -3754,9 +3940,9 @@ function PlayerView({
                   <button
                     type="button"
                     onClick={() => setShowEditModal(true)}
-                    className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                    className="px-2.5 py-1.5 rounded-xl bg-[#FAF7F0] hover:bg-indigo-50 border border-[#E6E0D4] hover:border-indigo-200 text-slate-700 hover:text-indigo-700 text-xs font-extrabold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
                   >
-                    <Settings size={13} className="text-amber-400" />
+                    <Settings size={13} className="text-indigo-600" />
                     <span className="hidden sm:inline">Edit Questions</span>
                   </button>
 
@@ -3764,7 +3950,7 @@ function PlayerView({
                     type="button"
                     disabled={isSaving}
                     onClick={() => setShowSaveModal(true)}
-                    className="px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-slate-950 font-extrabold text-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer whitespace-nowrap"
+                    className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer whitespace-nowrap"
                   >
                     {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Folder size={13} />}
                     <span>{isSaving ? 'Saving...' : 'Save'}</span>
@@ -3776,7 +3962,7 @@ function PlayerView({
                 type="button"
                 onClick={toggleStageFullscreen}
                 title="Fullscreen Video & Quiz"
-                className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                className="px-2.5 py-1.5 rounded-xl bg-[#FAF7F0] hover:bg-indigo-50 border border-[#E6E0D4] hover:border-indigo-200 text-slate-800 hover:text-indigo-700 text-xs font-extrabold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
               >
                 <Maximize2 size={14} />
                 <span className="hidden sm:inline">Fullscreen</span>
@@ -3785,9 +3971,9 @@ function PlayerView({
               {/* Prominent Live Score Badge on Top Right */}
               <div
                 title="Live Score"
-                className="px-3.5 py-1.5 rounded-xl bg-emerald-500/20 border-2 border-emerald-400/75 text-white font-black text-sm sm:text-base vq-mono flex items-center gap-1.5 shadow-[0_0_16px_rgba(16,185,129,0.28)] whitespace-nowrap"
+                className="px-3.5 py-1.5 rounded-xl bg-emerald-50 border-2 border-emerald-500 text-emerald-900 font-black text-sm sm:text-base vq-mono flex items-center gap-1.5 shadow-xs whitespace-nowrap"
               >
-                <CheckCircle size={16} className="text-emerald-400 shrink-0" />
+                <CheckCircle size={16} className="text-emerald-600 shrink-0" />
                 <span>
                   {correctCount}/{sortedQuestions.length}
                 </span>
@@ -3799,7 +3985,7 @@ function PlayerView({
         {/* Cinema Video Viewport */}
         <div
           id="vq-video-stage"
-          className={`relative w-full bg-black flex items-center justify-center overflow-hidden transition-all duration-200 ${
+          className={`relative w-full bg-slate-900 flex items-center justify-center overflow-hidden transition-all duration-200 ${
             isStageFullscreen
               ? 'flex-1 min-h-[200px]'
               : activeQuiz
@@ -3899,18 +4085,15 @@ function PlayerView({
                     setHasRealDuration(true);
                   }
                   if (state === 1) {
-                    // PLAYING
                     if (!activeQuiz || isReplayingClip) {
                       setShowEndScore(false);
                       setIsPlaying(true);
                     }
                   } else if (state === 2) {
-                    // PAUSED
                     if (!isSeekingRef.current && Date.now() > seekGuardUntilRef.current) {
                       setIsPlaying(false);
                     }
                   } else if (state === 0) {
-                    // ENDED
                     const endSec = realDur > 0 ? realDur : effectiveDuration;
                     lastEvaluatedTimeRef.current = endSec;
                     setCurrentTime(endSec);
@@ -3998,7 +4181,7 @@ function PlayerView({
             )}
           </div>
 
-          {/* Transparent Interactive Layer over YouTube iframe so play/pause stays 100% synced and hides conflicting YouTube shelves */}
+          {/* Transparent Interactive Layer over YouTube iframe */}
           {useYouTubeIframe && playerStatus === 'ready' && !activeQuiz && !showEndScore && (
             <div
               onClick={handleTogglePlayPause}
@@ -4007,10 +4190,10 @@ function PlayerView({
             />
           )}
 
-          {/* Fullscreen Top-Left Title Scrim & Top-Right Circular Score Badge (matches iSLCollective photo!) */}
+          {/* Fullscreen Top-Left Title Scrim & Top-Right Circular Score Badge */}
           {isStageFullscreen && (
             <>
-              <div className="pointer-events-none absolute top-0 left-0 right-0 z-20 px-4 pt-3 pb-10 bg-gradient-to-b from-black/80 via-black/35 to-transparent flex items-start justify-between gap-4">
+              <div className="pointer-events-none absolute top-0 left-0 right-0 z-20 px-4 pt-3 pb-10 bg-gradient-to-b from-black/75 via-black/30 to-transparent flex items-start justify-between gap-4">
                 <div className="min-w-0 max-w-2xl">
                   <div className="text-white font-bold text-sm sm:text-base truncate drop-shadow">
                     {stageTitleDisplay}
@@ -4023,14 +4206,13 @@ function PlayerView({
                 </div>
               </div>
 
-              {/* Circular Top-Right Score Badge matching reference photo */}
               <button
                 type="button"
                 onClick={() => {
                   if (!activeQuiz) setShowEndScore(true);
                 }}
                 title="View Score Summary"
-                className="absolute top-3 right-3 sm:top-4 sm:right-5 z-25 w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white/95 text-slate-950 border-[3.5px] border-emerald-500 shadow-[0_8px_28px_rgba(0,0,0,0.55)] flex flex-col items-center justify-center cursor-pointer hover:scale-105 transition-transform"
+                className="absolute top-3 right-3 sm:top-4 sm:right-5 z-25 w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white/95 text-slate-950 border-[3.5px] border-emerald-500 shadow-[0_8px_28px_rgba(0,0,0,0.45)] flex flex-col items-center justify-center cursor-pointer hover:scale-105 transition-transform"
               >
                 <span className="text-[10px] sm:text-[11px] font-bold text-slate-600 leading-none tracking-tight">
                   Score
@@ -4046,26 +4228,26 @@ function PlayerView({
             </>
           )}
 
-          {/* Accurate Video Loading Screen Overlay */}
+          {/* Video Loading Screen Overlay */}
           {playerStatus === 'loading' && (
-            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#0B0A12] overflow-hidden">
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#FAF7F0] overflow-hidden">
               {ytVideoId && (
                 <img
                   src={`https://i.ytimg.com/vi/${ytVideoId}/hqdefault.jpg`}
                   alt=""
                   referrerPolicy="no-referrer"
-                  className="absolute inset-0 w-full h-full object-cover opacity-25 blur-sm scale-105 pointer-events-none"
+                  className="absolute inset-0 w-full h-full object-cover opacity-20 blur-sm scale-105 pointer-events-none"
                 />
               )}
               <div className="relative z-10 flex flex-col items-center gap-3 px-6 text-center max-w-md">
-                <div className="w-16 h-16 rounded-full bg-[#13111E]/90 border-2 border-amber-400/50 flex items-center justify-center shadow-2xl">
-                  <Loader2 size={32} className="text-amber-400 animate-spin" />
+                <div className="w-16 h-16 rounded-full bg-white border-2 border-indigo-200 flex items-center justify-center shadow-lg">
+                  <Loader2 size={32} className="text-indigo-600 animate-spin" />
                 </div>
-                <div className="vq-display text-lg sm:text-xl font-extrabold text-white">
+                <div className="vq-display text-lg sm:text-xl font-extrabold text-slate-900">
                   Loading Video...
                 </div>
                 {stageTitleDisplay && (
-                  <div className="text-xs sm:text-sm font-medium text-slate-300 line-clamp-2">
+                  <div className="text-xs sm:text-sm font-semibold text-slate-600 line-clamp-2">
                     {stageTitleDisplay}
                   </div>
                 )}
@@ -4075,16 +4257,16 @@ function PlayerView({
 
           {/* Clean Video Error & Recovery Overlay */}
           {playerStatus === 'error' && (
-            <div className="absolute inset-0 z-25 flex items-center justify-center bg-[#0B0A12]/95 p-5">
-              <div className="w-full max-w-md bg-[#13111E] border border-rose-500/40 rounded-2xl p-6 text-center space-y-4 shadow-2xl">
-                <div className="w-12 h-12 rounded-full bg-rose-500/15 border border-rose-400/40 text-rose-400 flex items-center justify-center mx-auto">
+            <div className="absolute inset-0 z-25 flex items-center justify-center bg-[#FAF7F0]/95 p-5">
+              <div className="w-full max-w-md bg-white border border-rose-300 rounded-2xl p-6 text-center space-y-4 shadow-xl">
+                <div className="w-12 h-12 rounded-full bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto">
                   <AlertCircle size={24} />
                 </div>
                 <div>
-                  <h3 className="vq-display text-lg font-extrabold text-white">
+                  <h3 className="vq-display text-lg font-extrabold text-slate-900">
                     Video Could Not Load
                   </h3>
-                  <p className="text-xs sm:text-sm text-slate-300 mt-1">
+                  <p className="text-xs sm:text-sm text-slate-600 mt-1">
                     {playerErrorMsg || 'Unable to stream this video inside the player.'}
                   </p>
                 </div>
@@ -4096,7 +4278,7 @@ function PlayerView({
                       setPlayerStatus('loading');
                       setPlayerReloadKey((k) => k + 1);
                     }}
-                    className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs flex items-center gap-1.5 cursor-pointer"
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs flex items-center gap-1.5 cursor-pointer"
                   >
                     <RefreshCw size={14} />
                     Retry Video
@@ -4106,7 +4288,7 @@ function PlayerView({
                       href={`https://www.youtube.com/watch?v=${ytVideoId}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-white font-bold text-xs flex items-center gap-1.5"
+                      className="px-4 py-2 rounded-xl bg-[#FAF7F0] hover:bg-slate-100 border border-[#D8D0C5] text-slate-800 font-bold text-xs flex items-center gap-1.5"
                     >
                       <ExternalLink size={14} />
                       Open on YouTube
@@ -4116,7 +4298,7 @@ function PlayerView({
                     <button
                       type="button"
                       onClick={onBackToSetup}
-                      className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 font-bold text-xs cursor-pointer"
+                      className="px-4 py-2 rounded-xl bg-[#FAF7F0] hover:bg-slate-100 border border-[#D8D0C5] text-slate-700 font-bold text-xs cursor-pointer"
                     >
                       Change Video
                     </button>
@@ -4135,31 +4317,31 @@ function PlayerView({
               <button
                 type="button"
                 aria-label="Play video"
-                className="w-20 h-20 rounded-full bg-amber-400 group-hover:bg-amber-300 text-slate-950 flex items-center justify-center shadow-[0_0_40px_rgba(245,158,11,0.55)] transition-transform duration-200 group-hover:scale-105 cursor-pointer"
+                className="w-20 h-20 rounded-full bg-indigo-600 group-hover:bg-indigo-500 text-white flex items-center justify-center shadow-[0_0_40px_rgba(79,70,229,0.55)] transition-transform duration-200 group-hover:scale-105 cursor-pointer border-4 border-white"
               >
                 <Play fill="currentColor" size={36} className="ml-1" />
               </button>
             </div>
           )}
 
-          {/* End-of-Video Score Summary Display */}
+          {/* End-of-Video Score Summary Display (Bright Classroom Light Card) */}
           {showEndScore && !activeQuiz && (
-            <div className="absolute inset-0 z-30 bg-[#0B0A12]/95 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 overflow-y-auto vq-scrollbar animate-vq-fade">
-              <div className="w-full max-w-2xl bg-[#13111E] border border-white/15 rounded-2xl p-5 sm:p-7 shadow-2xl space-y-5 my-auto">
+            <div className="absolute inset-0 z-30 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 overflow-y-auto vq-scrollbar animate-vq-fade">
+              <div className="w-full max-w-2xl bg-white border-2 border-[#E6E0D4] rounded-3xl p-5 sm:p-7 shadow-2xl space-y-5 my-auto">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-center gap-3.5">
-                    <div className="w-12 h-12 rounded-xl bg-amber-400/15 border border-amber-400/40 text-amber-400 flex items-center justify-center shrink-0">
+                    <div className="w-12 h-12 rounded-xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center shrink-0">
                       <Trophy size={24} />
                     </div>
                     <div>
-                      <div className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+                      <div className="text-xs font-bold text-slate-500 flex items-center gap-1.5">
                         <span>Video Complete</span>
                         <span aria-hidden="true">·</span>
-                        <span className="text-amber-300 font-bold">
+                        <span className="text-indigo-600 font-extrabold">
                           {normalizeEnglishLevel(config?.level)}
                         </span>
                       </div>
-                      <h2 className="vq-display text-2xl sm:text-3xl font-black text-white tracking-tight">
+                      <h2 className="vq-display text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
                         {scorePercent >= 80
                           ? 'Great Job!'
                           : scorePercent >= 50
@@ -4173,27 +4355,27 @@ function PlayerView({
                     type="button"
                     onClick={() => setShowEndScore(false)}
                     aria-label="Close score summary"
-                    className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                    className="p-2 rounded-xl bg-[#FAF7F0] hover:bg-slate-100 border border-[#E6E0D4] text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
                   >
                     <X size={18} />
                   </button>
                 </div>
 
                 {/* Big Final Score Readout */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-5 rounded-2xl bg-[#0E0C17] border border-white/10">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-5 rounded-2xl bg-[#FAF7F0] border border-[#E6E0D4]">
                   <div>
-                    <div className="text-xs font-bold text-slate-400">Final Score</div>
-                    <div className="vq-display vq-mono text-4xl sm:text-5xl font-black text-white mt-0.5">
+                    <div className="text-xs font-extrabold text-slate-500">Final Score</div>
+                    <div className="vq-display vq-mono text-4xl sm:text-5xl font-black text-slate-900 mt-0.5">
                       {correctCount}
-                      <span className="text-slate-500 text-2xl sm:text-3xl font-bold">
+                      <span className="text-slate-400 text-2xl sm:text-3xl font-bold">
                         {' '}
                         / {totalQuestionsCount}
                       </span>
                     </div>
                   </div>
                   <div className="sm:text-right">
-                    <div className="text-xs font-bold text-slate-400">Accuracy</div>
-                    <div className="vq-display vq-mono text-3xl sm:text-4xl font-black text-amber-400 mt-0.5">
+                    <div className="text-xs font-extrabold text-slate-500">Accuracy</div>
+                    <div className="vq-display vq-mono text-3xl sm:text-4xl font-black text-indigo-600 mt-0.5">
                       {scorePercent}%
                     </div>
                   </div>
@@ -4201,29 +4383,29 @@ function PlayerView({
 
                 {/* Clean Breakdown Row */}
                 <div className="grid grid-cols-3 gap-3">
-                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-400/30">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-300">
+                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
+                    <div className="flex items-center gap-1.5 text-xs font-extrabold text-emerald-700">
                       <CheckCircle size={14} className="shrink-0" />
                       <span>Correct</span>
                     </div>
-                    <div className="vq-mono text-xl sm:text-2xl font-black text-white mt-1">
+                    <div className="vq-mono text-xl sm:text-2xl font-black text-emerald-900 mt-1">
                       {correctCount}
                     </div>
                   </div>
 
-                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-400/30">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-rose-300">
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200">
+                    <div className="flex items-center gap-1.5 text-xs font-extrabold text-rose-700">
                       <XCircle size={14} className="shrink-0" />
                       <span>Incorrect</span>
                     </div>
-                    <div className="vq-mono text-xl sm:text-2xl font-black text-white mt-1">
+                    <div className="vq-mono text-xl sm:text-2xl font-black text-rose-900 mt-1">
                       {incorrectCount}
                     </div>
                   </div>
 
-                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
-                    <div className="text-xs font-bold text-slate-400">Unanswered</div>
-                    <div className="vq-mono text-xl sm:text-2xl font-black text-slate-200 mt-1">
+                  <div className="p-3 rounded-xl bg-[#FAF7F0] border border-[#E6E0D4]">
+                    <div className="text-xs font-extrabold text-slate-500">Unanswered</div>
+                    <div className="vq-mono text-xl sm:text-2xl font-black text-slate-800 mt-1">
                       {unansweredCount}
                     </div>
                   </div>
@@ -4239,24 +4421,24 @@ function PlayerView({
                       return (
                         <div
                           key={q.id}
-                          className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-[#0E0C17] border border-white/10 text-xs sm:text-sm"
+                          className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-[#FAF7F0] border border-[#E6E0D4] text-xs sm:text-sm"
                         >
                           <div className="mt-0.5 shrink-0">
                             {rec?.isCorrect === true ? (
-                              <CheckCircle size={16} className="text-emerald-400" />
+                              <CheckCircle size={16} className="text-emerald-600" />
                             ) : rec?.isCorrect === false ? (
-                              <XCircle size={16} className="text-rose-400" />
+                              <XCircle size={16} className="text-rose-600" />
                             ) : (
-                              <span className="inline-block w-4 h-4 rounded-full border border-slate-500" />
+                              <span className="inline-block w-4 h-4 rounded-full border border-slate-400" />
                             )}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="font-semibold text-white leading-snug">
-                              <span className="vq-mono text-amber-300 mr-1.5">{idx + 1}.</span>
+                            <div className="font-bold text-slate-900 leading-snug">
+                              <span className="vq-mono text-indigo-600 mr-1.5">{idx + 1}.</span>
                               {q.question}
                             </div>
                             {displayAns && (
-                              <div className="text-xs text-emerald-300 font-bold mt-0.5">
+                              <div className="text-xs text-emerald-700 font-extrabold mt-0.5">
                                 Answer: {displayAns}
                               </div>
                             )}
@@ -4273,7 +4455,7 @@ function PlayerView({
                     <button
                       type="button"
                       onClick={onBackToSetup}
-                      className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-slate-200 text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                      className="px-4 py-2.5 rounded-xl bg-[#FAF7F0] hover:bg-slate-100 border border-[#D8D0C5] text-slate-700 text-xs sm:text-sm font-extrabold flex items-center gap-1.5 transition-colors cursor-pointer"
                     >
                       <ArrowLeft size={15} />
                       Back to Setup
@@ -4282,14 +4464,14 @@ function PlayerView({
                   <button
                     type="button"
                     onClick={() => setShowEndScore(false)}
-                    className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-white text-xs sm:text-sm font-bold transition-colors cursor-pointer"
+                    className="px-4 py-2.5 rounded-xl bg-[#FAF7F0] hover:bg-slate-100 border border-[#D8D0C5] text-slate-800 text-xs sm:text-sm font-extrabold transition-colors cursor-pointer"
                   >
                     Review Video
                   </button>
                   <button
                     type="button"
                     onClick={handleResetQuiz}
-                    className="px-5 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs sm:text-sm font-extrabold flex items-center gap-1.5 shadow-md transition-colors cursor-pointer"
+                    className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-extrabold flex items-center gap-1.5 shadow-md transition-colors cursor-pointer"
                   >
                     <RotateCcw size={15} />
                     Play Again
@@ -4302,13 +4484,13 @@ function PlayerView({
           {showConfetti && <Confetti />}
         </div>
 
-        {/* ACTIVE QUESTION DOCK — Shown cleanly above the bottom cinema bar in Fullscreen, or right below in standard view */}
+        {/* ACTIVE QUESTION DOCK — Bright Classroom Light Surface */}
         {activeQuiz && (
           <div
-            className={`w-full border-t-2 border-amber-400/65 shrink-0 ${
+            className={`w-full border-t-2 border-indigo-500 shrink-0 ${
               isStageFullscreen
-                ? 'bg-[#0B0A12]/95 backdrop-blur-md max-h-[52vh] overflow-y-auto vq-scrollbar'
-                : 'bg-[#151225]'
+                ? 'bg-[#FAF7F0]/98 backdrop-blur-md max-h-[52vh] overflow-y-auto vq-scrollbar'
+                : 'bg-[#FAF7F0]'
             }`}
           >
             <BelowVideoQuestionDock
@@ -4343,12 +4525,12 @@ function PlayerView({
           </div>
         )}
 
-        {/* Bottom Cinema Scrubber with Numbered Question Checkpoints & Transport Bar (matches reference photo!) */}
+        {/* Bottom Scrubber with Numbered Question Checkpoints & Transport Bar */}
         <div
           className={`flex flex-col shrink-0 ${
             isStageFullscreen
-              ? 'bg-black/95 border-t border-white/10 px-3 sm:px-5 pt-2 pb-2 gap-1.5'
-              : 'bg-[#0E0C17] border-t border-white/10 px-4 py-2.5 gap-2'
+              ? 'bg-white/95 border-t border-[#E6E0D4] px-3 sm:px-5 pt-2 pb-2 gap-1.5'
+              : 'bg-white border-t border-[#E6E0D4] px-4 py-2.5 gap-2'
           }`}
         >
           {/* Scrubber Bar with Numbered Circular Dots */}
@@ -4358,17 +4540,11 @@ function PlayerView({
               const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
               seekVideoTo(ratio * effectiveDuration);
             }}
-            className={`relative rounded-full cursor-pointer flex items-center my-1 ${
-              isStageFullscreen ? 'h-4 bg-white/15' : 'h-4 bg-white/10'
-            }`}
+            className="relative rounded-full cursor-pointer flex items-center my-1 h-4 bg-slate-200 border border-slate-300/80"
           >
             {/* Progress Fill */}
             <div
-              className={`h-full rounded-full transition-all duration-150 pointer-events-none ${
-                isStageFullscreen
-                  ? 'bg-emerald-500'
-                  : 'bg-gradient-to-r from-emerald-500 to-emerald-400'
-              }`}
+              className="h-full rounded-full transition-all duration-150 pointer-events-none bg-gradient-to-r from-indigo-600 to-emerald-500"
               style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
             />
 
@@ -4383,16 +4559,16 @@ function PlayerView({
               const isDense = sortedQuestions.length > 22;
 
               let markerClass =
-                'bg-white text-slate-950 border-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.65)] hover:scale-120';
+                'bg-white text-slate-900 border-indigo-600 shadow-sm hover:scale-120';
               if (isAct) {
                 markerClass =
-                  'bg-amber-400 text-slate-950 border-white scale-125 ring-4 ring-amber-400/45 z-20';
+                  'bg-amber-400 text-slate-950 border-slate-900 scale-125 ring-4 ring-amber-400/45 z-20';
               } else if (rec?.isCorrect === true) {
                 markerClass =
-                  'bg-emerald-400 text-slate-950 border-slate-950 shadow-[0_0_8px_rgba(16,185,129,0.9)] hover:scale-120';
+                  'bg-emerald-500 text-white border-emerald-700 shadow-xs hover:scale-120';
               } else if (rec?.isCorrect === false) {
                 markerClass =
-                  'bg-rose-500 text-white border-slate-950 shadow-[0_0_8px_rgba(244,63,94,0.9)] hover:scale-120';
+                  'bg-rose-500 text-white border-rose-700 shadow-xs hover:scale-120';
               }
 
               return (
@@ -4416,13 +4592,13 @@ function PlayerView({
             })}
           </div>
 
-          {/* Compact Cinema Transport Bar */}
+          {/* Compact Classroom Transport Bar */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 sm:gap-2.5">
               <button
                 type="button"
                 onClick={handleTogglePlayPause}
-                className="w-8 h-8 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                className="w-8 h-8 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center transition-colors cursor-pointer shrink-0 shadow-2xs"
                 title={isPlaying ? 'Pause' : 'Play'}
               >
                 {isPlaying ? (
@@ -4435,7 +4611,7 @@ function PlayerView({
               <button
                 type="button"
                 onClick={() => seekVideoTo(currentTime - 5)}
-                className="h-8 px-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-200 hover:text-white flex items-center gap-1 text-[11px] font-bold transition-colors cursor-pointer shrink-0"
+                className="h-8 px-2 rounded-lg bg-[#FAF7F0] hover:bg-indigo-50 border border-[#E6E0D4] text-slate-700 hover:text-indigo-700 flex items-center gap-1 text-[11px] font-extrabold transition-colors cursor-pointer shrink-0"
                 title="Rewind 5 seconds"
               >
                 <SkipBack size={13} />
@@ -4445,13 +4621,13 @@ function PlayerView({
               <button
                 type="button"
                 onClick={() => seekVideoTo(currentTime + 5)}
-                className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                className="w-8 h-8 rounded-lg bg-[#FAF7F0] hover:bg-indigo-50 border border-[#E6E0D4] text-slate-700 hover:text-indigo-700 flex items-center justify-center transition-colors cursor-pointer shrink-0"
                 title="Forward 5 seconds"
               >
                 <SkipForward size={13} />
               </button>
 
-              {/* Mute + Volume Slider matching reference photo */}
+              {/* Mute + Volume Slider */}
               <div className="flex items-center gap-1.5 pl-1">
                 <button
                   type="button"
@@ -4464,7 +4640,7 @@ function PlayerView({
                     }
                   }}
                   title={playerMuted ? 'Unmute' : 'Mute'}
-                  className="w-7 h-7 rounded-lg hover:bg-white/10 text-slate-200 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+                  className="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-700 hover:text-indigo-700 flex items-center justify-center transition-colors cursor-pointer"
                 >
                   {playerMuted || volume === 0 ? <VolumeX size={15} /> : <Volume2 size={15} />}
                 </button>
@@ -4482,12 +4658,12 @@ function PlayerView({
                     }
                   }}
                   aria-label="Volume"
-                  className="hidden sm:block w-16 md:w-20 h-1.5 accent-sky-400 cursor-pointer"
+                  className="hidden sm:block w-16 md:w-20 h-1.5 accent-indigo-600 cursor-pointer"
                 />
               </div>
 
               {/* Tabular Elapsed / Total Time Readout */}
-              <span className="vq-mono text-xs sm:text-sm font-bold text-slate-200 whitespace-nowrap ml-1">
+              <span className="vq-mono text-xs sm:text-sm font-extrabold text-slate-700 whitespace-nowrap ml-1">
                 {formatSeconds(currentTime)} / {formatSeconds(effectiveDuration)}
               </span>
             </div>
@@ -4497,7 +4673,7 @@ function PlayerView({
                 <button
                   type="button"
                   onClick={() => setShowEndScore(true)}
-                  className="px-2.5 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/40 text-emerald-300 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                  className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-extrabold text-xs flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
                 >
                   <Trophy size={13} />
                   <span>View Score</span>
@@ -4508,7 +4684,7 @@ function PlayerView({
                 <button
                   type="button"
                   onClick={handleReplayQuestionScene}
-                  className="px-2.5 py-1.5 rounded-lg bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-300 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                  className="px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 font-extrabold text-xs flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
                 >
                   <RotateCcw size={13} />
                   <span>Replay (-5s)</span>
@@ -4521,7 +4697,7 @@ function PlayerView({
                     type="button"
                     onClick={handleResetQuiz}
                     title="Reset Quiz"
-                    className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs font-bold flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                    className="px-2.5 py-1.5 rounded-lg bg-[#FAF7F0] hover:bg-slate-100 border border-[#E6E0D4] text-slate-700 hover:text-slate-900 text-xs font-extrabold flex items-center gap-1 cursor-pointer whitespace-nowrap"
                   >
                     <RotateCcw size={13} />
                     <span className="hidden sm:inline">Reset</span>
@@ -4531,7 +4707,7 @@ function PlayerView({
                     onClick={toggleStageFullscreen}
                     title="Exit Fullscreen"
                     aria-label="Exit Fullscreen"
-                    className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                    className="w-8 h-8 rounded-lg bg-[#FAF7F0] hover:bg-indigo-50 border border-[#E6E0D4] text-slate-800 flex items-center justify-center transition-colors cursor-pointer shrink-0"
                   >
                     <Minimize2 size={16} />
                   </button>
@@ -4544,14 +4720,14 @@ function PlayerView({
 
       {/* CLICKABLE GENERATED QUESTION NUMBERS BAR */}
       {!isStageFullscreen && sortedQuestions.length > 0 && (
-        <div className="w-full bg-[#13111E] border border-white/10 rounded-2xl p-4 sm:p-5 shadow-xl space-y-3">
+        <div className="w-full bg-white border border-[#E6E0D4] rounded-2xl p-4 sm:p-5 shadow-md space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Sparkles size={15} className="text-amber-400 shrink-0" />
-              <span className="text-xs sm:text-sm font-extrabold text-white">
+              <Sparkles size={15} className="text-indigo-600 shrink-0" />
+              <span className="text-xs sm:text-sm font-extrabold text-slate-900">
                 Generated Questions ({sortedQuestions.length})
               </span>
-              <span className="text-[11px] sm:text-xs text-slate-400">
+              <span className="text-[11px] sm:text-xs text-slate-500">
                 Click any number to open{!isPlayOnlyMode ? ' & edit' : ''} that question
               </span>
             </div>
@@ -4559,7 +4735,7 @@ function PlayerView({
               <button
                 type="button"
                 onClick={() => setActiveQuiz(null)}
-                className="text-xs font-bold text-slate-400 hover:text-white cursor-pointer"
+                className="text-xs font-bold text-slate-500 hover:text-slate-900 cursor-pointer"
               >
                 Close Question
               </button>
@@ -4571,16 +4747,16 @@ function PlayerView({
               const rec = resultsMap[q.id];
               const isAct = activeQuiz?.id === q.id;
               let btnClass =
-                'bg-[#0C0A15] border-white/15 text-slate-200 hover:border-amber-400 hover:text-amber-300';
+                'bg-[#FAF7F0] border-[#D8D0C5] text-slate-800 hover:border-indigo-500 hover:text-indigo-700 hover:bg-indigo-50';
               if (isAct) {
                 btnClass =
-                  'bg-amber-400 border-amber-300 text-slate-950 shadow-md ring-2 ring-amber-400/40';
+                  'bg-indigo-600 border-indigo-600 text-white shadow-sm ring-2 ring-indigo-500/30';
               } else if (rec?.isCorrect === true) {
                 btnClass =
-                  'bg-emerald-500/20 border-emerald-400/60 text-emerald-300 hover:bg-emerald-500/30';
+                  'bg-emerald-50 border-emerald-400 text-emerald-800 hover:bg-emerald-100';
               } else if (rec?.isCorrect === false) {
                 btnClass =
-                  'bg-rose-500/20 border-rose-400/60 text-rose-300 hover:bg-rose-500/30';
+                  'bg-rose-50 border-rose-400 text-rose-800 hover:bg-rose-100';
               }
 
               return (
@@ -4603,8 +4779,7 @@ function PlayerView({
 }
 
 /**
- * Large Classroom-Readable Below-Video Interactive Question Dock
- * Supports both Fill in the Blanks (student types missing word) and Multiple Choice (A/B/C/D).
+ * Large Classroom-Readable Below-Video Interactive Question Dock (Bright Classroom Light Theme)
  */
 function BelowVideoQuestionDock({
   quiz,
@@ -4843,7 +5018,6 @@ function BelowVideoQuestionDock({
     ? blankCorrect
     : Boolean(quiz.options?.[selected!]?.isCorrect);
 
-  // Format question with live fill-in preview when it contains ____
   const renderFormattedQuestion = () => {
     const qStr = normalizeBlankQuestionText(String(quiz.question || ''));
     if (!qStr.includes('___')) return qStr;
@@ -4861,11 +5035,11 @@ function BelowVideoQuestionDock({
             className={`inline-block mx-1.5 px-3.5 py-0.5 rounded-xl border-b-[3px] font-black transition-colors ${
               showExplanation
                 ? isFinalCorrect
-                  ? 'bg-emerald-500/25 border-emerald-400 text-emerald-300'
-                  : 'bg-amber-400/25 border-amber-400 text-amber-200'
+                  ? 'bg-emerald-100 border-emerald-600 text-emerald-900'
+                  : 'bg-amber-100 border-amber-500 text-amber-900'
                 : typedBlank.trim()
-                ? 'bg-amber-400/20 border-amber-400 text-amber-300'
-                : 'bg-white/10 border-amber-400/80 text-amber-300'
+                ? 'bg-indigo-100 border-indigo-600 text-indigo-900'
+                : 'bg-indigo-50 border-indigo-500 text-indigo-700'
             }`}
           >
             {previewText}
@@ -4878,9 +5052,9 @@ function BelowVideoQuestionDock({
 
   if (isEditing) {
     return (
-      <div className="w-full p-5 sm:p-6 animate-vq-pop text-white max-w-6xl mx-auto space-y-4">
+      <div className="w-full p-5 sm:p-6 animate-vq-pop text-slate-900 max-w-6xl mx-auto space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-xs sm:text-sm font-extrabold text-amber-300">
+          <div className="flex items-center gap-2 text-xs sm:text-sm font-extrabold text-indigo-700">
             <Edit3 size={15} />
             <span>Editing Question {questionNumber || 1} of {totalQuestions || 1}</span>
           </div>
@@ -4888,7 +5062,7 @@ function BelowVideoQuestionDock({
             <button
               type="button"
               onClick={() => setIsEditing(false)}
-              className="px-3.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-slate-300 text-xs font-bold cursor-pointer"
+              className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-[#D8D0C5] text-slate-700 text-xs font-extrabold cursor-pointer"
             >
               Cancel
             </button>
@@ -4896,7 +5070,7 @@ function BelowVideoQuestionDock({
               type="button"
               onClick={handleSaveInlineEdit}
               disabled={!editQuestion.trim()}
-              className="px-4 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
             >
               <Check size={14} strokeWidth={3} />
               Save Changes
@@ -4905,25 +5079,25 @@ function BelowVideoQuestionDock({
         </div>
 
         <div className="flex flex-col sm:flex-row gap-2.5">
-          <div className="flex items-center gap-1.5 bg-[#0C0A15] border border-white/15 rounded-xl px-3 py-2 shrink-0">
-            <Clock size={14} className="text-amber-400" />
-            <span className="text-xs font-bold text-slate-400">Time:</span>
+          <div className="flex items-center gap-1.5 bg-white border border-[#D8D0C5] rounded-xl px-3 py-2 shrink-0">
+            <Clock size={14} className="text-indigo-600" />
+            <span className="text-xs font-bold text-slate-600">Time:</span>
             <input
               type="text"
               value={editTime}
               onChange={(e) => setEditTime(e.target.value)}
               placeholder="0:15"
-              className="w-16 bg-transparent text-xs font-extrabold text-amber-300 vq-mono focus:outline-none text-center"
+              className="w-16 bg-transparent text-xs font-extrabold text-indigo-700 vq-mono focus:outline-none text-center"
             />
           </div>
 
           <select
             value={editType}
             onChange={(e) => setEditType(e.target.value)}
-            className="px-3 py-2 rounded-xl bg-[#0C0A15] border border-white/15 text-xs font-bold text-white focus:border-amber-400 focus:outline-none"
+            className="px-3 py-2 rounded-xl bg-white border border-[#D8D0C5] text-xs font-bold text-slate-800 focus:border-indigo-600 focus:outline-none"
           >
             {QUESTION_TYPES.map((t) => (
-              <option key={t} value={t} className="bg-[#13111E] text-white">
+              <option key={t} value={t} className="bg-white text-slate-900">
                 {t}
               </option>
             ))}
@@ -4934,7 +5108,7 @@ function BelowVideoQuestionDock({
             value={editQuestion}
             onChange={(e) => setEditQuestion(e.target.value)}
             placeholder="Edit question sentence..."
-            className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#0C0A15] border border-white/15 focus:border-amber-400 focus:outline-none text-sm font-semibold text-white"
+            className="flex-1 px-3.5 py-2.5 rounded-xl bg-white border border-[#D8D0C5] focus:border-indigo-600 focus:outline-none text-sm font-semibold text-slate-900"
           />
 
           {editType === 'Fill in the Blanks' && (
@@ -4943,7 +5117,7 @@ function BelowVideoQuestionDock({
               onClick={() =>
                 setEditQuestion((prev) => `${prev}${prev.endsWith(' ') || !prev ? '' : ' '}____ `)
               }
-              className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-amber-300 text-xs font-extrabold cursor-pointer shrink-0"
+              className="px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-xs font-extrabold cursor-pointer shrink-0"
             >
               + Insert ____
             </button>
@@ -4951,8 +5125,8 @@ function BelowVideoQuestionDock({
         </div>
 
         {editType === 'Fill in the Blanks' ? (
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-400/40">
-            <span className="text-xs font-extrabold text-emerald-300 shrink-0">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-emerald-50 border border-emerald-300">
+            <span className="text-xs font-extrabold text-emerald-800 shrink-0">
               Correct Missing Word(s):
             </span>
             <input
@@ -4960,12 +5134,12 @@ function BelowVideoQuestionDock({
               value={editBlankAnswer}
               onChange={(e) => setEditBlankAnswer(e.target.value)}
               placeholder="Correct answer..."
-              className="flex-1 bg-transparent text-sm font-bold text-white placeholder:text-slate-400 focus:outline-none"
+              className="flex-1 bg-transparent text-sm font-bold text-emerald-950 placeholder:text-emerald-600/60 focus:outline-none"
             />
           </div>
         ) : editType === 'True or False' ? (
           <div className="flex items-center gap-2.5">
-            <span className="text-xs font-bold text-slate-300">Correct Answer:</span>
+            <span className="text-xs font-bold text-slate-700">Correct Answer:</span>
             {(['True', 'False'] as const).map((tf, idx) => (
               <button
                 key={tf}
@@ -4973,8 +5147,8 @@ function BelowVideoQuestionDock({
                 onClick={() => setEditCorrectIdx(idx)}
                 className={`px-4 py-2 rounded-xl text-xs font-extrabold border cursor-pointer ${
                   editCorrectIdx === idx
-                    ? 'bg-emerald-400 text-slate-950 border-emerald-300'
-                    : 'bg-[#0C0A15] text-slate-300 border-white/15'
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-white text-slate-700 border-[#D8D0C5]'
                 }`}
               >
                 {tf}
@@ -4990,8 +5164,8 @@ function BelowVideoQuestionDock({
                   key={letter}
                   className={`flex items-center gap-2 px-2.5 py-2 rounded-xl border ${
                     isRight
-                      ? 'bg-emerald-500/10 border-emerald-400/50'
-                      : 'bg-[#0C0A15] border-white/10'
+                      ? 'bg-emerald-50 border-emerald-400'
+                      : 'bg-white border-[#D8D0C5]'
                   }`}
                 >
                   <button
@@ -5000,8 +5174,8 @@ function BelowVideoQuestionDock({
                     title="Click to mark as correct answer"
                     className={`w-6 h-6 rounded-lg text-xs font-black flex items-center justify-center shrink-0 cursor-pointer ${
                       isRight
-                        ? 'bg-emerald-400 text-slate-950'
-                        : 'bg-white/10 text-slate-400 hover:text-white'
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-slate-100 text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     {letter}
@@ -5015,7 +5189,7 @@ function BelowVideoQuestionDock({
                       setEditOptions(next);
                     }}
                     placeholder={`Choice ${letter}${isRight ? ' (Correct)' : ''}`}
-                    className="w-full bg-transparent text-xs font-medium text-white focus:outline-none"
+                    className="w-full bg-transparent text-xs font-semibold text-slate-900 focus:outline-none"
                   />
                 </div>
               );
@@ -5028,22 +5202,27 @@ function BelowVideoQuestionDock({
           value={editExplanation}
           onChange={(e) => setEditExplanation(e.target.value)}
           placeholder="Optional explanation shown after answering..."
-          className="w-full px-3.5 py-2 rounded-xl bg-[#0C0A15] border border-white/10 focus:border-amber-400 focus:outline-none text-xs text-slate-200"
+          className="w-full px-3.5 py-2 rounded-xl bg-white border border-[#D8D0C5] focus:border-indigo-600 focus:outline-none text-xs text-slate-800"
         />
       </div>
     );
   }
 
   return (
-    <div className="w-full p-5 sm:p-7 animate-vq-pop text-white max-w-6xl mx-auto">
-      {/* Unboxed Question Metadata & Quick Actions */}
+    <div className="w-full p-5 sm:p-7 animate-vq-pop text-slate-900 max-w-6xl mx-auto">
+      {/* Question Metadata & Quick Actions */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div className="flex items-center gap-2 text-xs sm:text-sm font-bold">
-          <span className="text-amber-400 vq-mono font-extrabold uppercase tracking-wider">
+          <span className="px-2.5 py-1 rounded-lg bg-indigo-600 text-white vq-mono font-extrabold uppercase tracking-wider">
             Question {questionNumber || 1} of {totalQuestions || 1}
           </span>
-          <span aria-hidden="true" className="text-white/25">·</span>
-          <span className="text-slate-300">{quiz?.type || 'Question'}</span>
+          <span aria-hidden="true" className="text-slate-300">·</span>
+          <span className="text-slate-600 font-extrabold">{quiz?.type || 'Question'}</span>
+          {quiz?.sceneContext && (
+            <span className="hidden md:inline-block text-xs font-semibold text-slate-500 truncate max-w-md">
+              ({quiz.sceneContext})
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
@@ -5051,7 +5230,7 @@ function BelowVideoQuestionDock({
             <button
               type="button"
               onClick={openInlineEditor}
-              className="px-3.5 py-1.5 rounded-xl bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-300 text-xs sm:text-sm font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+              className="px-3.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-xs sm:text-sm font-extrabold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
             >
               <Edit3 size={14} />
               Edit
@@ -5061,7 +5240,7 @@ function BelowVideoQuestionDock({
           <button
             type="button"
             onClick={onReplayScene}
-            className="px-3.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-amber-300 text-xs sm:text-sm font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+            className="px-3.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 text-xs sm:text-sm font-extrabold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
           >
             <RotateCcw size={14} />
             {isReplayingClip ? 'Replaying...' : 'Replay (-5s)'}
@@ -5070,16 +5249,16 @@ function BelowVideoQuestionDock({
           <button
             type="button"
             onClick={() => speakText(quiz.question)}
-            className="px-3.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-xs sm:text-sm font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+            className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-[#D8D0C5] text-slate-700 text-xs sm:text-sm font-extrabold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
           >
-            <Volume2 size={14} className="text-amber-400" />
+            <Volume2 size={14} className="text-indigo-600" />
             Read Aloud
           </button>
 
           <button
             type="button"
             onClick={onSkip}
-            className="px-3 py-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 text-xs sm:text-sm font-semibold cursor-pointer whitespace-nowrap"
+            className="px-3 py-1.5 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-200/60 text-xs sm:text-sm font-bold cursor-pointer whitespace-nowrap"
           >
             Skip
           </button>
@@ -5088,7 +5267,7 @@ function BelowVideoQuestionDock({
 
       {/* Big Classroom-Readable Question Heading */}
       <h2
-        className={`vq-display font-extrabold text-white leading-snug tracking-tight mb-5 [text-wrap:balance] ${
+        className={`vq-display font-extrabold text-slate-900 leading-snug tracking-tight mb-5 [text-wrap:balance] ${
           isFullscreen
             ? 'text-2xl sm:text-3xl lg:text-4xl'
             : 'text-xl sm:text-2xl md:text-[28px] lg:text-[32px]'
@@ -5118,9 +5297,9 @@ function BelowVideoQuestionDock({
               className={`w-full px-5 py-4 rounded-2xl border-2 text-lg sm:text-xl lg:text-2xl font-extrabold focus:outline-none transition-colors ${
                 showExplanation
                   ? blankCorrect
-                    ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200'
-                    : 'bg-rose-500/20 border-rose-400 text-rose-200'
-                  : 'bg-[#0C0A15] border-white/20 focus:border-amber-400 text-white placeholder:text-slate-500'
+                    ? 'bg-emerald-50 border-emerald-500 text-emerald-900'
+                    : 'bg-rose-50 border-rose-500 text-rose-900'
+                  : 'bg-white border-[#D8D0C5] focus:border-indigo-600 text-slate-900 placeholder:text-slate-400 shadow-xs'
               }`}
             />
           </div>
@@ -5130,7 +5309,7 @@ function BelowVideoQuestionDock({
               type="button"
               disabled={!typedBlank.trim()}
               onClick={handleSubmitFillInBlank}
-              className="px-8 py-4 rounded-2xl bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 font-extrabold text-base sm:text-lg flex items-center justify-center gap-2 cursor-pointer shrink-0 shadow-lg whitespace-nowrap"
+              className="px-8 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white font-extrabold text-base sm:text-lg flex items-center justify-center gap-2 cursor-pointer shrink-0 shadow-md whitespace-nowrap"
             >
               <Check size={20} strokeWidth={3} />
               Check Answer
@@ -5147,20 +5326,20 @@ function BelowVideoQuestionDock({
         >
           {(quiz.options || []).map((opt: any, idx: number) => {
             let btnStyle =
-              'bg-[#0C0A15] border-white/15 text-slate-100 hover:border-amber-400 hover:bg-white/[0.06]';
-            let badgeStyle = 'bg-white/10 text-amber-300';
+              'bg-white border-[#D8D0C5] text-slate-900 hover:border-indigo-600 hover:bg-indigo-50/60 shadow-xs';
+            let badgeStyle = 'bg-indigo-50 border border-indigo-200 text-indigo-700';
 
             if (showExplanation) {
               if (opt.isCorrect) {
                 btnStyle =
-                  'bg-emerald-500/20 border-emerald-400 text-white shadow-[0_0_24px_rgba(16,185,129,0.22)]';
-                badgeStyle = 'bg-emerald-400 text-slate-950';
+                  'bg-emerald-50 border-emerald-500 text-emerald-950 shadow-md';
+                badgeStyle = 'bg-emerald-600 text-white';
               } else if (selected === idx) {
-                btnStyle = 'bg-rose-500/20 border-rose-400 text-rose-200';
-                badgeStyle = 'bg-rose-500 text-white';
+                btnStyle = 'bg-rose-50 border-rose-500 text-rose-900';
+                badgeStyle = 'bg-rose-600 text-white';
               } else {
-                btnStyle = 'bg-[#0C0A15]/50 border-white/5 text-slate-500 opacity-55';
-                badgeStyle = 'bg-white/5 text-slate-500';
+                btnStyle = 'bg-white/60 border-slate-200 text-slate-400 opacity-65';
+                badgeStyle = 'bg-slate-100 text-slate-400';
               }
             }
 
@@ -5188,27 +5367,27 @@ function BelowVideoQuestionDock({
 
       {/* Instant Answer Explanation & Continue Bar */}
       {showExplanation && (
-        <div className="mt-5 pt-4 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3.5 animate-vq-fade">
+        <div className="mt-5 pt-4 border-t border-[#E6E0D4] flex flex-col sm:flex-row items-center justify-between gap-3.5 animate-vq-fade">
           <div className="flex items-start gap-3 text-left">
             {isFinalCorrect ? (
-              <CheckCircle size={22} className="text-emerald-400 shrink-0 mt-0.5" />
+              <CheckCircle size={22} className="text-emerald-600 shrink-0 mt-0.5" />
             ) : (
-              <XCircle size={22} className="text-rose-400 shrink-0 mt-0.5" />
+              <XCircle size={22} className="text-rose-600 shrink-0 mt-0.5" />
             )}
-            <div className="text-sm sm:text-base text-slate-200 leading-relaxed">
+            <div className="text-sm sm:text-base text-slate-800 leading-relaxed">
               <span
                 className={`font-extrabold mr-2 ${
-                  isFinalCorrect ? 'text-emerald-400' : 'text-rose-400'
+                  isFinalCorrect ? 'text-emerald-700' : 'text-rose-700'
                 }`}
               >
                 {isFinalCorrect ? 'Correct!' : 'Not quite.'}
               </span>
               {isFillInBlank && !isFinalCorrect && resolvedBlankAnswer && (
-                <span className="text-amber-300 font-bold mr-2">
+                <span className="text-indigo-700 font-extrabold mr-2">
                   Correct answer: &ldquo;{resolvedBlankAnswer}&rdquo;.
                 </span>
               )}
-              <span className="text-slate-300">{quiz.explanation}</span>
+              <span className="text-slate-600">{quiz.explanation}</span>
             </div>
           </div>
 
@@ -5225,7 +5404,7 @@ function BelowVideoQuestionDock({
                 responseTimeSec: timeTaken,
               });
             }}
-            className="w-full sm:w-auto px-7 py-3.5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-sm sm:text-base flex items-center justify-center gap-2 shrink-0 cursor-pointer whitespace-nowrap shadow-lg"
+            className="w-full sm:w-auto px-7 py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-sm sm:text-base flex items-center justify-center gap-2 shrink-0 cursor-pointer whitespace-nowrap shadow-md"
           >
             Continue Video
             <ArrowRight size={18} />
@@ -5310,20 +5489,20 @@ function SaveQuizModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 animate-vq-pop">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-xs animate-vq-pop">
       <form
         onSubmit={handleSubmit}
-        className="bg-[#13111E] border border-white/15 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col text-white"
+        className="bg-white border border-[#E6E0D4] w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col text-slate-900"
       >
-        <div className="px-6 py-4 bg-[#0E0C17] border-b border-white/10 flex justify-between items-center">
-          <h2 className="vq-display text-lg font-extrabold text-white flex items-center gap-2">
-            <Folder size={18} className="text-amber-400" />
+        <div className="px-6 py-4 bg-[#FAF7F0] border-b border-[#E6E0D4] flex justify-between items-center">
+          <h2 className="vq-display text-lg font-extrabold text-slate-900 flex items-center gap-2">
+            <Folder size={18} className="text-indigo-600" />
             Save Video Quiz
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white rounded-lg cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-slate-800 rounded-lg cursor-pointer"
           >
             <XCircle size={20} />
           </button>
@@ -5331,7 +5510,7 @@ function SaveQuizModal({
 
         <div className="p-6 space-y-4 overflow-y-auto max-h-[75vh] vq-scrollbar">
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1.5">
+            <label className="block text-xs font-extrabold text-slate-700 mb-1.5">
               Quiz Title
             </label>
             <input
@@ -5340,13 +5519,13 @@ function SaveQuizModal({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Mr. Bean Video Quiz"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[#0C0A15] border border-white/15 focus:border-amber-400 focus:outline-none text-sm font-semibold text-white"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#FAF7F0] border border-[#D8D0C5] focus:bg-white focus:border-indigo-600 focus:outline-none text-sm font-semibold text-slate-900"
             />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1.5">
+              <label className="block text-xs font-extrabold text-slate-700 mb-1.5">
                 Class / Level
               </label>
               <input
@@ -5354,17 +5533,17 @@ function SaveQuizModal({
                 value={className}
                 onChange={(e) => setClassName(e.target.value)}
                 placeholder="e.g. Movers · B1"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#0C0A15] border border-white/15 focus:border-amber-400 focus:outline-none text-xs font-semibold text-white"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#FAF7F0] border border-[#D8D0C5] focus:bg-white focus:border-indigo-600 focus:outline-none text-xs font-semibold text-slate-900"
               />
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-bold text-slate-300">Folder</label>
+                <label className="text-xs font-extrabold text-slate-700">Folder</label>
                 <button
                   type="button"
                   onClick={() => setIsCreatingFolder(!isCreatingFolder)}
-                  className="text-[11px] font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer"
+                  className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
                 >
                   <FolderPlus size={12} />
                   {isCreatingFolder ? 'Cancel' : 'New Folder'}
@@ -5378,13 +5557,13 @@ function SaveQuizModal({
                     value={newFolderName}
                     onChange={(e) => setNewFolderName(e.target.value)}
                     placeholder="Folder name..."
-                    className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-[#0C0A15] border border-amber-400/50 text-xs font-semibold text-white focus:outline-none"
+                    className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-[#FAF7F0] border border-indigo-400 text-xs font-semibold text-slate-900 focus:outline-none"
                   />
                   <button
                     type="button"
                     disabled={creatingFolderBusy || !newFolderName.trim()}
                     onClick={handleCreateNewFolder}
-                    className="px-3 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-slate-950 text-xs font-extrabold cursor-pointer shrink-0"
+                    className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-extrabold cursor-pointer shrink-0"
                   >
                     Add
                   </button>
@@ -5393,7 +5572,7 @@ function SaveQuizModal({
                 <select
                   value={selectedFolderId}
                   onChange={(e) => setSelectedFolderId(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-[#0C0A15] border border-white/15 focus:border-amber-400 focus:outline-none text-xs font-semibold text-white"
+                  className="w-full px-3 py-2.5 rounded-xl bg-[#FAF7F0] border border-[#D8D0C5] focus:bg-white focus:border-indigo-600 focus:outline-none text-xs font-semibold text-slate-900"
                 >
                   <option value="">No Folder (All Games)</option>
                   {folders.map((f) => (
@@ -5408,7 +5587,7 @@ function SaveQuizModal({
 
           {/* Visibility Selector */}
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1.5">
+            <label className="block text-xs font-extrabold text-slate-700 mb-1.5">
               Visibility
             </label>
             <div className="grid grid-cols-2 gap-2.5">
@@ -5417,14 +5596,14 @@ function SaveQuizModal({
                 onClick={() => setIsPublic(true)}
                 className={`p-3 rounded-xl border text-left flex items-center gap-2.5 transition-colors cursor-pointer ${
                   isPublic
-                    ? 'bg-amber-400/15 border-amber-400 text-white'
-                    : 'bg-[#0C0A15] border-white/10 text-slate-400 hover:text-slate-200'
+                    ? 'bg-indigo-50 border-indigo-500 text-indigo-950'
+                    : 'bg-[#FAF7F0] border-[#E6E0D4] text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <Globe size={16} className={isPublic ? 'text-amber-400 shrink-0' : 'text-slate-500 shrink-0'} />
+                <Globe size={16} className={isPublic ? 'text-indigo-600 shrink-0' : 'text-slate-400 shrink-0'} />
                 <div className="min-w-0">
                   <div className="text-xs font-extrabold truncate">Public Library</div>
-                  <div className="text-[10px] text-slate-400 truncate">Shared with teachers</div>
+                  <div className="text-[10px] text-slate-500 truncate">Shared with teachers</div>
                 </div>
               </button>
 
@@ -5433,23 +5612,23 @@ function SaveQuizModal({
                 onClick={() => setIsPublic(false)}
                 className={`p-3 rounded-xl border text-left flex items-center gap-2.5 transition-colors cursor-pointer ${
                   !isPublic
-                    ? 'bg-amber-400/15 border-amber-400 text-white'
-                    : 'bg-[#0C0A15] border-white/10 text-slate-400 hover:text-slate-200'
+                    ? 'bg-indigo-50 border-indigo-500 text-indigo-950'
+                    : 'bg-[#FAF7F0] border-[#E6E0D4] text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <Lock size={16} className={!isPublic ? 'text-amber-400 shrink-0' : 'text-slate-500 shrink-0'} />
+                <Lock size={16} className={!isPublic ? 'text-indigo-600 shrink-0' : 'text-slate-400 shrink-0'} />
                 <div className="min-w-0">
                   <div className="text-xs font-extrabold truncate">Private</div>
-                  <div className="text-[10px] text-slate-400 truncate">Only in My Games</div>
+                  <div className="text-[10px] text-slate-500 truncate">Only in My Games</div>
                 </div>
               </button>
             </div>
           </div>
 
           {isBlobUrl && (
-            <div className="p-3.5 rounded-2xl bg-[#0C0A15] border border-amber-400/30 space-y-2">
-              <div className="flex items-start gap-2 text-xs text-amber-300">
-                <AlertCircle size={15} className="shrink-0 mt-0.5" />
+            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 space-y-2">
+              <div className="flex items-start gap-2 text-xs text-amber-900">
+                <AlertCircle size={15} className="shrink-0 mt-0.5 text-amber-600" />
                 <span>
                   You uploaded a local video file (<strong>{localVideoName}</strong>). Your questions will be saved, or you can paste an online video URL below to link permanently:
                 </span>
@@ -5459,24 +5638,24 @@ function SaveQuizModal({
                 value={webUrlFallback}
                 onChange={(e) => setWebUrlFallback(e.target.value)}
                 placeholder="Optional: https://youtube.com/watch?v=..."
-                className="w-full px-3 py-2 rounded-lg bg-[#13111E] border border-white/15 text-xs text-white focus:border-amber-400 focus:outline-none"
+                className="w-full px-3 py-2 rounded-lg bg-white border border-amber-300 text-xs text-slate-900 focus:border-indigo-600 focus:outline-none"
               />
             </div>
           )}
         </div>
 
-        <div className="px-6 py-4 bg-[#120E22] border-t border-white/10 flex justify-end gap-3">
+        <div className="px-6 py-4 bg-[#FAF7F0] border-t border-[#E6E0D4] flex justify-end gap-3">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl text-xs font-bold text-slate-300 hover:bg-white/5 cursor-pointer"
+            className="px-4 py-2 rounded-xl text-xs font-extrabold text-slate-600 hover:bg-slate-200/60 cursor-pointer"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={isSaving}
-            className="px-5 py-2.5 rounded-xl text-xs font-extrabold bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-slate-950 flex items-center gap-1.5 cursor-pointer"
+            className="px-5 py-2.5 rounded-xl text-xs font-extrabold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white flex items-center gap-1.5 cursor-pointer shadow-sm"
           >
             {isSaving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
             {isSaving ? 'Saving...' : 'Save Quiz'}
@@ -5663,41 +5842,41 @@ function EditQuestionsModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 animate-vq-pop">
-      <div className="bg-[#13111E] border border-white/15 w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh] text-white">
-        <div className="px-6 py-4 bg-[#0E0C17] border-b border-white/10 flex flex-wrap justify-between items-center gap-3">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-xs animate-vq-pop">
+      <div className="bg-white border border-[#E6E0D4] w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh] text-slate-900">
+        <div className="px-6 py-4 bg-[#FAF7F0] border-b border-[#E6E0D4] flex flex-wrap justify-between items-center gap-3">
           <div>
-            <h2 className="vq-display text-lg font-extrabold text-white flex items-center gap-2">
-              <Settings size={18} className="text-amber-400" />
+            <h2 className="vq-display text-lg font-extrabold text-slate-900 flex items-center gap-2">
+              <Settings size={18} className="text-indigo-600" />
               Edit Video Questions
             </h2>
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-slate-500">
               {config?.topic ? (
                 <>
-                  Topic: <span className="text-amber-300 font-bold">{config.topic}</span> ·{' '}
+                  Topic: <span className="text-indigo-700 font-extrabold">{config.topic}</span> ·{' '}
                 </>
               ) : null}
-              Level: <span className="text-amber-300 font-bold">{normalizeEnglishLevel(config?.level)}</span>
+              Level: <span className="text-indigo-700 font-extrabold">{normalizeEnglishLevel(config?.level)}</span>
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1.5 bg-[#0C0A15] border border-white/15 rounded-xl px-2.5 py-1">
-              <Clock size={13} className="text-amber-400" />
+            <div className="flex items-center gap-1.5 bg-white border border-[#D8D0C5] rounded-xl px-2.5 py-1">
+              <Clock size={13} className="text-indigo-600" />
               <input
                 type="text"
                 value={customTimeInput}
                 onChange={(e) => setCustomTimeInput(e.target.value)}
                 placeholder="0:15"
                 title="Enter specific time as MM:SS (e.g. 1:20) or seconds (e.g. 80)"
-                className="w-16 bg-transparent text-xs font-extrabold text-amber-300 vq-mono focus:outline-none text-center"
+                className="w-16 bg-transparent text-xs font-extrabold text-indigo-700 vq-mono focus:outline-none text-center"
               />
             </div>
 
             <button
               type="button"
               onClick={() => handleAddQuestionAtSpecificTime('blank')}
-              className="px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/40 text-emerald-300 text-xs font-bold flex items-center gap-1 cursor-pointer whitespace-nowrap"
+              className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-extrabold flex items-center gap-1 cursor-pointer whitespace-nowrap"
             >
               <Plus size={14} /> Fill in the Blank
             </button>
@@ -5705,15 +5884,15 @@ function EditQuestionsModal({
             <button
               type="button"
               onClick={() => handleAddQuestionAtSpecificTime('mc')}
-              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-white text-xs font-bold flex items-center gap-1 cursor-pointer whitespace-nowrap"
+              className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-[#D8D0C5] text-slate-800 text-xs font-extrabold flex items-center gap-1 cursor-pointer whitespace-nowrap"
             >
-              <Plus size={14} className="text-amber-400" /> Multiple Choice
+              <Plus size={14} className="text-indigo-600" /> Multiple Choice
             </button>
 
             <button
               type="button"
               onClick={() => handleAddQuestionAtSpecificTime('auto')}
-              className="px-3 py-1.5 rounded-xl bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-300 text-xs font-bold flex items-center gap-1 cursor-pointer whitespace-nowrap"
+              className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-xs font-extrabold flex items-center gap-1 cursor-pointer whitespace-nowrap"
             >
               <Sparkles size={13} /> Auto-Generate
             </button>
@@ -5721,7 +5900,7 @@ function EditQuestionsModal({
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-white rounded-lg cursor-pointer"
+              className="p-1.5 text-slate-400 hover:text-slate-800 rounded-lg cursor-pointer"
             >
               <XCircle size={20} />
             </button>
@@ -5730,26 +5909,26 @@ function EditQuestionsModal({
 
         <div className="p-6 overflow-y-auto flex-1 space-y-4 vq-scrollbar">
           {editedQuestions.length === 0 ? (
-            <div className="p-8 rounded-2xl border border-dashed border-white/15 bg-[#0C0A15] text-center space-y-3">
-              <div className="text-sm font-extrabold text-white">
+            <div className="p-8 rounded-2xl border border-dashed border-[#D8D0C5] bg-[#FAF7F0] text-center space-y-3">
+              <div className="text-sm font-extrabold text-slate-900">
                 No questions yet — add a Fill in the Blank or Multiple Choice question above
               </div>
-              <p className="text-xs text-slate-400 max-w-md mx-auto">
-                Enter a timestamp (like <span className="text-amber-300 vq-mono">0:15</span>) and click <strong>Fill in the Blank</strong> or <strong>Multiple Choice</strong>.
+              <p className="text-xs text-slate-600 max-w-md mx-auto">
+                Enter a timestamp (like <span className="text-indigo-700 font-bold vq-mono">0:15</span>) and click <strong>Fill in the Blank</strong> or <strong>Multiple Choice</strong>.
               </p>
             </div>
           ) : (
             editedQuestions.map((q) => (
               <div
                 key={q.id}
-                className="bg-[#0C0A15] p-4 rounded-2xl border border-white/10 space-y-3"
+                className="bg-[#FAF7F0] p-4 rounded-2xl border border-[#E6E0D4] space-y-3"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="px-2.5 py-1 rounded-lg bg-amber-400/15 text-amber-300 text-xs font-bold vq-mono">
+                    <span className="px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-xs font-extrabold vq-mono">
                       @{formatSeconds(q.timeTrigger)}
                     </span>
-                    <label className="text-[11px] text-slate-400 font-semibold">
+                    <label className="text-[11px] text-slate-600 font-bold">
                       Seconds:
                     </label>
                     <input
@@ -5760,12 +5939,12 @@ function EditQuestionsModal({
                       onChange={(e) =>
                         updateQuestionField(q.id, 'timeTrigger', Math.max(1, Number(e.target.value) || 1))
                       }
-                      className="w-20 px-2.5 py-1 rounded-lg bg-[#13111E] border border-white/15 text-xs font-bold text-white vq-mono"
+                      className="w-20 px-2.5 py-1 rounded-lg bg-white border border-[#D8D0C5] text-xs font-extrabold text-slate-900 vq-mono"
                     />
                     <select
                       value={q.type || 'Multiple Choice'}
                       onChange={(e) => updateQuestionField(q.id, 'type', e.target.value)}
-                      className="px-2.5 py-1 rounded-lg bg-[#161229] border border-white/15 text-xs font-bold text-amber-300"
+                      className="px-2.5 py-1 rounded-lg bg-white border border-[#D8D0C5] text-xs font-bold text-indigo-700"
                     >
                       {QUESTION_TYPES.map((t) => (
                         <option key={t} value={t}>
@@ -5785,7 +5964,7 @@ function EditQuestionsModal({
                           Math.max(1, Math.round(currentTime || 10))
                         )
                       }
-                      className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] font-bold text-slate-300 cursor-pointer"
+                      className="px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-50 border border-[#D8D0C5] text-[10px] font-extrabold text-slate-700 cursor-pointer"
                     >
                       Use Video Time ({formatSeconds(currentTime)})
                     </button>
@@ -5793,7 +5972,7 @@ function EditQuestionsModal({
                     <button
                       type="button"
                       onClick={() => handleDeleteQuestion(q.id)}
-                      className="p-1.5 text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
+                      className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
                       title="Delete question"
                     >
                       <Trash2 size={15} />
@@ -5810,12 +5989,12 @@ function EditQuestionsModal({
                       ? 'e.g. He has ____ at the mirror.'
                       : `Directly type your question for ${formatSeconds(q.timeTrigger)}...`
                   }
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#161229] border border-white/15 focus:border-amber-400 focus:outline-none text-xs sm:text-sm font-semibold text-white"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-[#D8D0C5] focus:border-indigo-600 focus:outline-none text-xs sm:text-sm font-semibold text-slate-900"
                 />
 
                 {q.type === 'Fill in the Blanks' ? (
-                  <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-400/40">
-                    <span className="text-xs font-extrabold text-emerald-300 shrink-0">
+                  <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-300">
+                    <span className="text-xs font-extrabold text-emerald-800 shrink-0">
                       Correct Answer for Blank:
                     </span>
                     <input
@@ -5823,7 +6002,7 @@ function EditQuestionsModal({
                       value={q.answer || ''}
                       onChange={(e) => updateQuestionField(q.id, 'answer', e.target.value)}
                       placeholder="e.g. looked"
-                      className="flex-1 bg-transparent text-xs sm:text-sm font-bold text-white focus:outline-none"
+                      className="flex-1 bg-transparent text-xs sm:text-sm font-bold text-emerald-950 focus:outline-none"
                     />
                   </div>
                 ) : (
@@ -5833,8 +6012,8 @@ function EditQuestionsModal({
                         key={oIdx}
                         className={`flex items-center gap-2 p-2 rounded-xl border ${
                           opt.isCorrect
-                            ? 'bg-emerald-500/10 border-emerald-400/50'
-                            : 'bg-[#161229] border-white/10'
+                            ? 'bg-emerald-50 border-emerald-400'
+                            : 'bg-white border-[#D8D0C5]'
                         }`}
                       >
                         <button
@@ -5843,8 +6022,8 @@ function EditQuestionsModal({
                           title="Mark as correct answer"
                           className={`w-6 h-6 rounded-md text-xs font-black flex items-center justify-center shrink-0 cursor-pointer ${
                             opt.isCorrect
-                              ? 'bg-emerald-400 text-slate-950'
-                              : 'bg-white/10 text-slate-400 hover:text-white'
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-slate-100 text-slate-600 hover:text-slate-900'
                           }`}
                         >
                           {['A', 'B', 'C', 'D'][oIdx] || oIdx + 1}
@@ -5856,7 +6035,7 @@ function EditQuestionsModal({
                           placeholder={`Choice ${['A', 'B', 'C', 'D'][oIdx] || oIdx + 1}${
                             opt.isCorrect ? ' (Correct)' : ''
                           }`}
-                          className="w-full bg-transparent text-xs font-medium text-white focus:outline-none"
+                          className="w-full bg-transparent text-xs font-semibold text-slate-900 focus:outline-none"
                         />
                       </div>
                     ))}
@@ -5867,11 +6046,11 @@ function EditQuestionsModal({
           )}
         </div>
 
-        <div className="px-6 py-4 bg-[#120E22] border-t border-white/10 flex justify-between items-center gap-3">
+        <div className="px-6 py-4 bg-[#FAF7F0] border-t border-[#E6E0D4] flex justify-between items-center gap-3">
           <button
             type="button"
             onClick={() => setEditedQuestions([])}
-            className="px-3 py-2 rounded-xl text-xs font-bold text-rose-400 hover:bg-rose-500/10 cursor-pointer"
+            className="px-3 py-2 rounded-xl text-xs font-extrabold text-rose-600 hover:bg-rose-50 cursor-pointer"
           >
             Clear All
           </button>
@@ -5879,14 +6058,14 @@ function EditQuestionsModal({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-bold text-slate-300 hover:bg-white/5 cursor-pointer"
+              className="px-4 py-2 rounded-xl text-xs font-extrabold text-slate-600 hover:bg-slate-200/60 cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={handleSave}
-              className="px-5 py-2 rounded-xl text-xs font-extrabold bg-amber-400 hover:bg-amber-300 text-slate-950 flex items-center gap-1.5 cursor-pointer"
+              className="px-5 py-2 rounded-xl text-xs font-extrabold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 cursor-pointer shadow-sm"
             >
               <Check size={15} />
               Save Questions

@@ -42,9 +42,9 @@ export function Footer({ onViewChange }: { onViewChange?: (view: ViewState) => v
   return (
     <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 mt-16 pt-12 pb-8">
       <div className="max-w-7xl mx-auto px-6">
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-10 mb-10">
-          {/* Brand Column */}
-          <div className="md:col-span-5 flex flex-col items-start">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+          {/* Brand Column + TikTok & Facebook Buttons */}
+          <div className="col-span-1 md:col-span-2 flex flex-col items-start">
             <button
               type="button"
               onClick={() => handleNav('home')}
@@ -52,13 +52,50 @@ export function Footer({ onViewChange }: { onViewChange?: (view: ViewState) => v
             >
               <HamsterBrandLogo variant="footer" />
             </button>
-            <p className="text-sm text-slate-600 dark:text-slate-300 max-w-sm leading-relaxed font-medium">
+            <p className="text-sm text-slate-600 dark:text-slate-300 max-w-sm leading-relaxed font-medium mb-5">
               {t('footer.tagline')}
             </p>
+
+            {/* TikTok & Facebook Social Buttons */}
+            <div className="flex flex-wrap items-center gap-3">
+              <a
+                href="https://www.tiktok.com/@hamsterenglish.online"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group inline-flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-bold text-xs sm:text-sm shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all"
+              >
+                <span className="w-7 h-7 rounded-xl bg-gradient-to-tr from-[#25F4EE] via-slate-950 to-[#FE2C55] p-0.5 flex items-center justify-center">
+                  <span className="w-full h-full rounded-[10px] bg-slate-950 flex items-center justify-center text-white">
+                    <TikTokIcon className="w-4 h-4" />
+                  </span>
+                </span>
+                <div className="flex flex-col text-left leading-tight">
+                  <span className="text-[10px] font-semibold text-slate-300">Follow on</span>
+                  <span className="font-extrabold tracking-tight">TikTok</span>
+                </div>
+                <ExternalLink size={13} className="text-slate-400 group-hover:text-white transition-colors ml-0.5" />
+              </a>
+
+              <a
+                href="https://www.facebook.com/hamsterenglish.online"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group inline-flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-[#1877F2] hover:bg-[#166FE5] text-white font-bold text-xs sm:text-sm shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all"
+              >
+                <span className="w-7 h-7 rounded-xl bg-white/15 flex items-center justify-center text-white">
+                  <FacebookIcon className="w-4 h-4" />
+                </span>
+                <div className="flex flex-col text-left leading-tight">
+                  <span className="text-[10px] font-semibold text-blue-100">Join us on</span>
+                  <span className="font-extrabold tracking-tight">Facebook</span>
+                </div>
+                <ExternalLink size={13} className="text-blue-200 group-hover:text-white transition-colors ml-0.5" />
+              </a>
+            </div>
           </div>
 
           {/* Platform Links */}
-          <div className="md:col-span-2">
+          <div>
             <h4 className="font-extrabold text-sm uppercase tracking-wider text-slate-900 dark:text-slate-100 mb-4">
               {t('footer.platform')}
             </h4>
@@ -94,7 +131,7 @@ export function Footer({ onViewChange }: { onViewChange?: (view: ViewState) => v
           </div>
 
           {/* Resources Links */}
-          <div className="md:col-span-2">
+          <div>
             <h4 className="font-extrabold text-sm uppercase tracking-wider text-slate-900 dark:text-slate-100 mb-4">
               {t('footer.resources')}
             </h4>
@@ -136,42 +173,6 @@ export function Footer({ onViewChange }: { onViewChange?: (view: ViewState) => v
                 </button>
               </li>
             </ul>
-          </div>
-
-          {/* Community & Social Column */}
-          <div className="md:col-span-3">
-            <h4 className="font-extrabold text-sm uppercase tracking-wider text-slate-900 dark:text-slate-100 mb-4">
-              Community
-            </h4>
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-3 leading-relaxed">
-              Watch classroom game tutorials, teacher tips, and new game drops on our official channels:
-            </p>
-            <div className="space-y-2 text-sm font-bold">
-              <a
-                href="https://www.tiktok.com/@hamsterenglish.online"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/80 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-slate-800 dark:text-slate-100 transition-colors"
-              >
-                <span className="flex items-center gap-2">
-                  <TikTokIcon className="w-4 h-4 text-rose-500" />
-                  <span>@hamsterenglish.online</span>
-                </span>
-                <ExternalLink size={13} className="text-slate-400" />
-              </a>
-              <a
-                href="https://www.facebook.com/hamsterenglish.online"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/80 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-slate-800 dark:text-slate-100 transition-colors"
-              >
-                <span className="flex items-center gap-2">
-                  <FacebookIcon className="w-4 h-4 text-[#1877F2]" />
-                  <span>Hamsterenglish.online</span>
-                </span>
-                <ExternalLink size={13} className="text-slate-400" />
-              </a>
-            </div>
           </div>
         </div>
 

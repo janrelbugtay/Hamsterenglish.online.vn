@@ -10,27 +10,28 @@ export function HamsterMascotIcon({
 }) {
   const sizeClasses =
     size === "sm"
-      ? "w-9 h-9 rounded-xl"
+      ? "w-10 h-10"
       : size === "lg"
-      ? "w-14 h-14 rounded-2xl"
-      : "w-11 h-11 rounded-2xl";
+      ? "w-16 h-16"
+      : "w-12 h-12";
 
   return (
     <div
       className={cn(
-        "relative flex items-center justify-center shrink-0 overflow-hidden bg-amber-100 dark:bg-amber-950/80 border-2 border-amber-300/90 dark:border-amber-500/50 shadow-md shadow-amber-500/15 group-hover:scale-105 transition-transform duration-200",
+        "relative flex items-center justify-center shrink-0 bg-transparent group-hover:scale-105 transition-transform duration-200",
         sizeClasses,
         className
       )}
     >
       <img
-        src="/images/flashcards-card-v3.jpg?v=3"
+        src="/images/hamster-logo-transparent.png?v=4"
         alt="Hamsterenglish.online mascot"
-        className="w-full h-full object-cover object-[50%_48%] scale-[2.45] origin-[50%_50%] select-none pointer-events-none"
+        referrerPolicy="no-referrer"
+        className="w-full h-full object-contain drop-shadow-sm select-none pointer-events-none"
         onError={(e) => {
           const target = e.currentTarget;
-          if (!target.src.includes("image_d6c7c8ee.png")) {
-            target.src = "/assets/aistudio/image_d6c7c8ee.png";
+          if (!target.src.includes("hamster_mascot_fullbody_1795367067754.jpg")) {
+            target.src = "/src/assets/images/hamster_mascot_fullbody_1795367067754.jpg";
           }
         }}
       />

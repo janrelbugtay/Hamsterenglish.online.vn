@@ -28,7 +28,7 @@ type SleepState =
   | 'AWAKE'
   | 'RECOVERING';
 
-type NoiseControlMode = 'sleeping' | 'cage';
+type NoiseControlMode = 'sleeping' | 'cage' | 'bubbles';
 
 type NoiseAlertMode = 'hamster' | 'beep' | 'shush' | 'none';
 
@@ -403,6 +403,263 @@ interface LeavingHamsterState {
   startedAt: number;
 }
 
+type HamsterBallSizeTier = 'large' | 'medium' | 'small' | 'tiny';
+
+type HamsterBallPose =
+  | 'smile'
+  | 'wave'
+  | 'seed'
+  | 'strawberry'
+  | 'eating'
+  | 'sleeping'
+  | 'surprised'
+  | 'laughing'
+  | 'standing'
+  | 'leaf'
+  | 'viewer'
+  | 'tilted';
+
+interface HamsterBallRimColor {
+  id: string;
+  name: string;
+  rimLight: string;
+  rimMid: string;
+  rimDark: string;
+  edgeTint: string;
+  innerGlow: string;
+}
+
+const HAMSTER_BALL_RIMS: HamsterBallRimColor[] = [
+  {
+    id: 'bubblegum',
+    name: 'Bubblegum Pink',
+    rimLight: '#ff99cc',
+    rimMid: '#ff4da6',
+    rimDark: '#c61a6f',
+    edgeTint: 'rgba(255, 77, 166, 0.24)',
+    innerGlow: 'rgba(255, 182, 219, 0.36)',
+  },
+  {
+    id: 'orange',
+    name: 'Bright Orange',
+    rimLight: '#ffb870',
+    rimMid: '#ff7b24',
+    rimDark: '#c74d00',
+    edgeTint: 'rgba(255, 123, 36, 0.24)',
+    innerGlow: 'rgba(255, 200, 150, 0.36)',
+  },
+  {
+    id: 'golden',
+    name: 'Golden Yellow',
+    rimLight: '#fff085',
+    rimMid: '#ffcc00',
+    rimDark: '#c79300',
+    edgeTint: 'rgba(255, 204, 0, 0.25)',
+    innerGlow: 'rgba(255, 243, 168, 0.38)',
+  },
+  {
+    id: 'skyblue',
+    name: 'Sky Blue',
+    rimLight: '#8ae0ff',
+    rimMid: '#1cb0f6',
+    rimDark: '#0077b3',
+    edgeTint: 'rgba(28, 176, 246, 0.24)',
+    innerGlow: 'rgba(179, 236, 255, 0.36)',
+  },
+  {
+    id: 'lavender',
+    name: 'Lavender Purple',
+    rimLight: '#d8b4fe',
+    rimMid: '#a855f7',
+    rimDark: '#6b21a8',
+    edgeTint: 'rgba(168, 85, 247, 0.24)',
+    innerGlow: 'rgba(226, 200, 255, 0.36)',
+  },
+  {
+    id: 'mint',
+    name: 'Mint Green',
+    rimLight: '#86efac',
+    rimMid: '#22c55e',
+    rimDark: '#15803d',
+    edgeTint: 'rgba(34, 197, 94, 0.24)',
+    innerGlow: 'rgba(187, 247, 208, 0.36)',
+  },
+  {
+    id: 'coral',
+    name: 'Coral Red',
+    rimLight: '#ff9e9e',
+    rimMid: '#ff4b4b',
+    rimDark: '#b91c1c',
+    edgeTint: 'rgba(255, 75, 75, 0.24)',
+    innerGlow: 'rgba(255, 190, 190, 0.36)',
+  },
+  {
+    id: 'turquoise',
+    name: 'Turquoise',
+    rimLight: '#67e8f9',
+    rimMid: '#06b6d4',
+    rimDark: '#0e7490',
+    edgeTint: 'rgba(6, 182, 212, 0.24)',
+    innerGlow: 'rgba(178, 245, 255, 0.36)',
+  },
+];
+
+interface HamsterBallFurStyle {
+  id: string;
+  name: string;
+  furLight: string;
+  furMid: string;
+  furDark: string;
+  belly: string;
+  stroke: string;
+}
+
+const HAMSTER_BALL_FURS: HamsterBallFurStyle[] = [
+  {
+    id: 'golden_cream',
+    name: 'Golden Brown & Cream',
+    furLight: '#fbd38d',
+    furMid: '#dd842c',
+    furDark: '#9c4221',
+    belly: '#fffaf0',
+    stroke: '#6b2710',
+  },
+  {
+    id: 'orange_white',
+    name: 'Orange & White',
+    furLight: '#fed7aa',
+    furMid: '#fb923c',
+    furDark: '#c2410c',
+    belly: '#ffffff',
+    stroke: '#7c2d12',
+  },
+  {
+    id: 'white_gray',
+    name: 'White & Light Gray',
+    furLight: '#ffffff',
+    furMid: '#e2e8f0',
+    furDark: '#94a3b8',
+    belly: '#ffffff',
+    stroke: '#64748b',
+  },
+  {
+    id: 'caramel_beige',
+    name: 'Caramel & Beige',
+    furLight: '#f5deb3',
+    furMid: '#c68b59',
+    furDark: '#8b5a2b',
+    belly: '#fff8e7',
+    stroke: '#5c3a1a',
+  },
+  {
+    id: 'chocolate_cream',
+    name: 'Chocolate Brown & Cream',
+    furLight: '#d6b28e',
+    furMid: '#8c4a1c',
+    furDark: '#451a03',
+    belly: '#fef3c7',
+    stroke: '#3b1506',
+  },
+  {
+    id: 'soft_gray_white',
+    name: 'Soft Gray & White',
+    furLight: '#f1f5f9',
+    furMid: '#a1a1aa',
+    furDark: '#52525b',
+    belly: '#ffffff',
+    stroke: '#3f3f46',
+  },
+  {
+    id: 'pale_golden',
+    name: 'Pale Golden Yellow',
+    furLight: '#fef9c3',
+    furMid: '#eab308',
+    furDark: '#a16207',
+    belly: '#fffef2',
+    stroke: '#713f12',
+  },
+];
+
+interface HamsterBallSpec {
+  id: number;
+  homeX: number;
+  homeY: number;
+  r: number;
+  tier: HamsterBallSizeTier;
+  zLayer: number;
+  rimIdx: number;
+  furIdx: number;
+  pose: HamsterBallPose;
+  flip?: boolean;
+}
+
+// 44 Adorable 3D Hamsters in Transparent Hamster Balls
+// Concentrated in the bottom 60-65% of the 1200x540 canvas (y: 235..485), leaving the top 35% open when quiet!
+// Size distribution: 8 Large (18%), 16 Medium (36%), 12 Small (27%), 8 Tiny (18%)
+const HAMSTER_BALL_SPECS: HamsterBallSpec[] = [
+  // LARGE SPHERES (8 balls — across the main upper edge of the collection, visually prominent)
+  { id: 1, homeX: 118, homeY: 286, r: 54, tier: 'large', zLayer: 2, rimIdx: 0, furIdx: 1, pose: 'wave' },
+  { id: 2, homeX: 222, homeY: 274, r: 58, tier: 'large', zLayer: 1, rimIdx: 1, furIdx: 0, pose: 'laughing' },
+  { id: 3, homeX: 432, homeY: 256, r: 64, tier: 'large', zLayer: 2, rimIdx: 6, furIdx: 0, pose: 'viewer' },
+  { id: 4, homeX: 602, homeY: 288, r: 58, tier: 'large', zLayer: 2, rimIdx: 3, furIdx: 1, pose: 'wave', flip: true },
+  { id: 5, homeX: 748, homeY: 266, r: 60, tier: 'large', zLayer: 1, rimIdx: 0, furIdx: 6, pose: 'strawberry' },
+  { id: 6, homeX: 922, homeY: 422, r: 56, tier: 'large', zLayer: 3, rimIdx: 0, furIdx: 0, pose: 'strawberry' },
+  { id: 7, homeX: 1095, homeY: 325, r: 58, tier: 'large', zLayer: 2, rimIdx: 4, furIdx: 6, pose: 'laughing', flip: true },
+  { id: 8, homeX: 422, homeY: 434, r: 54, tier: 'large', zLayer: 3, rimIdx: 1, furIdx: 3, pose: 'smile' },
+
+  // MEDIUM SPHERES (16 balls — filling spaces between the large spheres)
+  { id: 9, homeX: 68, homeY: 344, r: 44, tier: 'medium', zLayer: 2, rimIdx: 4, furIdx: 3, pose: 'smile' },
+  { id: 10, homeX: 46, homeY: 416, r: 46, tier: 'medium', zLayer: 3, rimIdx: 3, furIdx: 0, pose: 'leaf' },
+  { id: 11, homeX: 154, homeY: 368, r: 46, tier: 'medium', zLayer: 3, rimIdx: 5, furIdx: 0, pose: 'leaf' },
+  { id: 12, homeX: 282, homeY: 356, r: 48, tier: 'medium', zLayer: 2, rimIdx: 4, furIdx: 2, pose: 'standing' },
+  { id: 13, homeX: 348, homeY: 294, r: 46, tier: 'medium', zLayer: 1, rimIdx: 2, furIdx: 6, pose: 'eating' },
+  { id: 14, homeX: 238, homeY: 430, r: 46, tier: 'medium', zLayer: 3, rimIdx: 5, furIdx: 0, pose: 'seed' },
+  { id: 15, homeX: 356, homeY: 446, r: 44, tier: 'medium', zLayer: 3, rimIdx: 0, furIdx: 1, pose: 'wave' },
+  { id: 16, homeX: 516, homeY: 332, r: 46, tier: 'medium', zLayer: 2, rimIdx: 0, furIdx: 3, pose: 'tilted' },
+  { id: 17, homeX: 598, homeY: 396, r: 45, tier: 'medium', zLayer: 3, rimIdx: 4, furIdx: 4, pose: 'laughing' },
+  { id: 18, homeX: 682, homeY: 352, r: 46, tier: 'medium', zLayer: 2, rimIdx: 2, furIdx: 5, pose: 'standing', flip: true },
+  { id: 19, homeX: 770, homeY: 374, r: 44, tier: 'medium', zLayer: 3, rimIdx: 3, furIdx: 2, pose: 'smile' },
+  { id: 20, homeX: 838, homeY: 320, r: 48, tier: 'medium', zLayer: 2, rimIdx: 3, furIdx: 4, pose: 'viewer' },
+  { id: 21, homeX: 846, homeY: 442, r: 45, tier: 'medium', zLayer: 3, rimIdx: 5, furIdx: 3, pose: 'seed' },
+  { id: 22, homeX: 938, homeY: 296, r: 46, tier: 'medium', zLayer: 1, rimIdx: 7, furIdx: 1, pose: 'standing' },
+  { id: 23, homeX: 1002, homeY: 446, r: 43, tier: 'medium', zLayer: 3, rimIdx: 6, furIdx: 1, pose: 'sleeping' },
+  { id: 24, homeX: 1156, homeY: 444, r: 45, tier: 'medium', zLayer: 3, rimIdx: 2, furIdx: 6, pose: 'smile' },
+
+  // SMALL SPHERES (12 balls — filling gaps between medium spheres)
+  { id: 25, homeX: 85, homeY: 460, r: 32, tier: 'small', zLayer: 4, rimIdx: 2, furIdx: 6, pose: 'laughing' },
+  { id: 26, homeX: 126, homeY: 432, r: 30, tier: 'small', zLayer: 2, rimIdx: 5, furIdx: 3, pose: 'smile' },
+  { id: 27, homeX: 176, homeY: 442, r: 29, tier: 'small', zLayer: 2, rimIdx: 0, furIdx: 1, pose: 'surprised' },
+  { id: 28, homeX: 292, homeY: 454, r: 33, tier: 'small', zLayer: 4, rimIdx: 1, furIdx: 0, pose: 'laughing' },
+  { id: 29, homeX: 344, homeY: 382, r: 33, tier: 'small', zLayer: 2, rimIdx: 4, furIdx: 2, pose: 'tilted' },
+  { id: 30, homeX: 404, homeY: 348, r: 33, tier: 'small', zLayer: 1, rimIdx: 7, furIdx: 5, pose: 'smile' },
+  { id: 31, homeX: 462, homeY: 374, r: 29, tier: 'small', zLayer: 2, rimIdx: 2, furIdx: 0, pose: 'viewer' },
+  { id: 32, homeX: 492, homeY: 454, r: 32, tier: 'small', zLayer: 4, rimIdx: 5, furIdx: 0, pose: 'leaf' },
+  { id: 33, homeX: 540, homeY: 436, r: 31, tier: 'small', zLayer: 3, rimIdx: 1, furIdx: 1, pose: 'laughing' },
+  { id: 34, homeX: 642, homeY: 454, r: 32, tier: 'small', zLayer: 4, rimIdx: 3, furIdx: 2, pose: 'strawberry' },
+  { id: 35, homeX: 698, homeY: 454, r: 31, tier: 'small', zLayer: 4, rimIdx: 1, furIdx: 6, pose: 'sleeping' },
+  { id: 36, homeX: 896, homeY: 368, r: 32, tier: 'small', zLayer: 2, rimIdx: 4, furIdx: 3, pose: 'smile' },
+
+  // TINY SPHERES (8 balls — dense decorative arrangement along the bottom and between larger spheres)
+  { id: 37, homeX: 24, homeY: 468, r: 21, tier: 'tiny', zLayer: 4, rimIdx: 6, furIdx: 1, pose: 'smile' },
+  { id: 38, homeX: 144, homeY: 468, r: 22, tier: 'tiny', zLayer: 4, rimIdx: 4, furIdx: 3, pose: 'viewer' },
+  { id: 39, homeX: 204, homeY: 398, r: 20, tier: 'tiny', zLayer: 3, rimIdx: 2, furIdx: 6, pose: 'smile' },
+  { id: 40, homeX: 504, homeY: 406, r: 21, tier: 'tiny', zLayer: 3, rimIdx: 4, furIdx: 2, pose: 'surprised' },
+  { id: 41, homeX: 562, homeY: 468, r: 20, tier: 'tiny', zLayer: 4, rimIdx: 0, furIdx: 1, pose: 'smile' },
+  { id: 42, homeX: 742, homeY: 436, r: 24, tier: 'tiny', zLayer: 3, rimIdx: 2, furIdx: 6, pose: 'eating' },
+  { id: 43, homeX: 974, homeY: 374, r: 24, tier: 'tiny', zLayer: 2, rimIdx: 3, furIdx: 2, pose: 'viewer' },
+  { id: 44, homeX: 1072, homeY: 458, r: 23, tier: 'tiny', zLayer: 4, rimIdx: 5, furIdx: 0, pose: 'leaf' },
+];
+
+interface HamsterBallPhysicsState {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  rot: number;
+  vRot: number;
+}
+
 const AMBIENT_DUST_MOTES = [
   { left: '14%', top: '24%', size: 5, delay: '0s', dur: '5.5s' },
   { left: '24%', top: '52%', size: 4, delay: '1.1s', dur: '6.2s' },
@@ -468,12 +725,24 @@ export function SleepingHamster({
   const [timerEndPhase, setTimerEndPhase] = useState<'idle' | 'awake_10s' | 'eating'>('idle');
   const [wakeSoundSecondsLeft, setWakeSoundSecondsLeft] = useState(0);
 
-  // Game Mode: Sleeping Hamster (original) vs Hamster Cage (3 start, angry leave, 20s quiet appear up to 10+10 babies)
+  // Game Mode: Sleeping Hamster (original) vs Hamster Cage vs Hamster Bubbles (44 3D Hamster Balls collection)
   const [gameMode, setGameMode] = useState<NoiseControlMode>('sleeping');
   const [cageCount, setCageCount] = useState<number>(3);
   const [cageQuietSeconds, setCageQuietSeconds] = useState<number>(0);
   const [leavingHamster, setLeavingHamster] = useState<LeavingHamsterState | null>(null);
   const [justArrivedSlot, setJustArrivedSlot] = useState<number | null>(null);
+  const [hamsterBallsState, setHamsterBallsState] = useState<HamsterBallPhysicsState[]>(() =>
+    HAMSTER_BALL_SPECS.map((s) => ({
+      id: s.id,
+      x: s.homeX,
+      y: s.homeY,
+      vx: 0,
+      vy: 0,
+      rot: 0,
+      vRot: 0,
+    }))
+  );
+  const [bubblesFlyingCount, setBubblesFlyingCount] = useState<number>(0);
 
   const [starPoints, setStarPoints] = useState(3.0);
   const [starSlots, setStarSlots] = useState(3);
@@ -503,7 +772,7 @@ export function SleepingHamster({
   const quietMinuteAccumRef = useRef(0);
   const lastFrameTimeRef = useRef(performance.now());
 
-  // Hamster Cage mutable refs for real-time noise / quiet tracking
+  // Hamster Cage & Hamster Bubbles mutable refs for real-time noise / quiet tracking
   const gameModeRef = useRef<NoiseControlMode>('sleeping');
   const cageCountRef = useRef<number>(3);
   const cageQuietSecRef = useRef<number>(0);
@@ -512,6 +781,17 @@ export function SleepingHamster({
   const leavingHamsterRef = useRef<LeavingHamsterState | null>(null);
   const leavingTimeoutRef = useRef<number | null>(null);
   const arriveTimeoutRef = useRef<number | null>(null);
+  const hamsterBallsPhysicsRef = useRef<HamsterBallPhysicsState[]>(
+    HAMSTER_BALL_SPECS.map((s) => ({
+      id: s.id,
+      x: s.homeX,
+      y: s.homeY,
+      vx: 0,
+      vy: 0,
+      rot: 0,
+      vRot: 0,
+    }))
+  );
 
   gameModeRef.current = gameMode;
 
@@ -597,7 +877,12 @@ export function SleepingHamster({
       overrideMode?: NoiseAlertMode,
       forceLoop = false
     ) => {
-      const mode = overrideMode ?? stateSnapshotRef.current.noiseAlert;
+      const mode =
+        overrideMode ??
+        (stateSnapshotRef.current.gameMode === 'bubbles' &&
+        (type === 'warning' || type === 'awake')
+          ? 'shush'
+          : stateSnapshotRef.current.noiseAlert);
       if (mode === 'none' && type !== 'eat') return;
 
       try {
@@ -873,7 +1158,7 @@ export function SleepingHamster({
 
   // Continuous Noise Alert Loop while Disturbed / Almost Awake / Awake
   useEffect(() => {
-    if (!hasStarted || isMicMuted || noiseAlert === 'none') return;
+    if (!hasStarted || isMicMuted || (noiseAlert === 'none' && gameMode !== 'bubbles')) return;
     if (timerEndPhase !== 'idle') return;
     if (sleepState !== 'DISTURBED' && sleepState !== 'ALMOST_AWAKE' && sleepState !== 'AWAKE') {
       return;
@@ -886,7 +1171,8 @@ export function SleepingHamster({
     const id = window.setInterval(() => {
       if (
         stateSnapshotRef.current.isMicMuted ||
-        stateSnapshotRef.current.noiseAlert === 'none' ||
+        (stateSnapshotRef.current.noiseAlert === 'none' &&
+          stateSnapshotRef.current.gameMode !== 'bubbles') ||
         timerEndPhaseRef.current !== 'idle'
       ) {
         return;
@@ -895,7 +1181,7 @@ export function SleepingHamster({
     }, intervalMs);
 
     return () => clearInterval(id);
-  }, [hasStarted, sleepState, isMicMuted, noiseAlert, timerEndPhase, playAlertSound]);
+  }, [hasStarted, sleepState, isMicMuted, noiseAlert, gameMode, timerEndPhase, playAlertSound]);
 
   const applySleepState = useCallback(
     (next: SleepState) => {
@@ -1119,13 +1405,14 @@ export function SleepingHamster({
           }
         }
 
-        // Live Star Portion Draining (Sleeping Mode) OR Angry Hamster Leaving (Cage Mode)
+        // Live Star Portion Draining (Sleeping Mode), Angry Hamster Leaving (Cage Mode), OR Flying Hamster Bubbles (Bubbles Mode)
         const activeState = sleepStateRef.current;
-        if (
+        const isNoisyNow =
           !snap.isMicMuted &&
           timerEndPhaseRef.current === 'idle' &&
-          (activeState === 'DISTURBED' || activeState === 'ALMOST_AWAKE' || activeState === 'AWAKE')
-        ) {
+          (activeState === 'DISTURBED' || activeState === 'ALMOST_AWAKE' || activeState === 'AWAKE');
+
+        if (isNoisyNow) {
           if (snap.gameMode === 'sleeping') {
             const drainPerSec =
               activeState === 'AWAKE' ? 0.28 : activeState === 'ALMOST_AWAKE' ? 0.17 : 0.085;
@@ -1174,6 +1461,105 @@ export function SleepingHamster({
           }
         } else if (snap.gameMode === 'cage' && cageNoiseAccumRef.current > 0) {
           cageNoiseAccumRef.current = Math.max(0, cageNoiseAccumRef.current - 0.65 * dtSec);
+        }
+
+        // 60fps Hamster Bubbles Physics:
+        // - When noisy: Shh sound triggers and hamster bubbles fly around the entire canvas!
+        // - When quiet: Hamster bubbles smoothly glide back and stay in their exact resting place!
+        if (snap.gameMode === 'bubbles') {
+          const balls = hamsterBallsPhysicsRef.current;
+          const intensity =
+            activeState === 'AWAKE' ? 1.45 : activeState === 'ALMOST_AWAKE' ? 1.12 : 0.82;
+          let flyingCount = 0;
+
+          for (let i = 0; i < balls.length; i++) {
+            const b = balls[i];
+            const spec = HAMSTER_BALL_SPECS[i];
+            if (isNoisyNow) {
+              // Launch upward from resting pile and fly around the 1200x540 canvas
+              const phaseX = nowPerf * 0.0029 + i * 1.37;
+              const phaseY = nowPerf * 0.0024 + i * 1.93;
+              const targetAltY = 75 + ((i * 53) % 330);
+              const altPull = (targetAltY - b.y) * 2.2;
+
+              b.vx +=
+                (Math.sin(phaseX) * 320 + Math.cos(phaseY * 0.8) * 140) * intensity * dtSec;
+              b.vy +=
+                (altPull + Math.cos(phaseY) * 290 - (b.y > 320 ? 220 : 0)) * intensity * dtSec;
+
+              // Keep lively flying speed while noisy
+              const speed = Math.hypot(b.vx, b.vy);
+              const maxSpeed = 360 * intensity;
+              const minSpeed = 125 * intensity;
+              if (speed > maxSpeed) {
+                b.vx = (b.vx / speed) * maxSpeed;
+                b.vy = (b.vy / speed) * maxSpeed;
+              } else if (speed < minSpeed) {
+                const angle = phaseX;
+                b.vx += Math.cos(angle) * 95 * intensity * dtSec;
+                b.vy -= Math.abs(Math.sin(angle)) * 135 * intensity * dtSec;
+              }
+
+              b.x += b.vx * dtSec;
+              b.y += b.vy * dtSec;
+
+              // Gentle playful rotation while flying
+              b.vRot += (b.vx * 0.14 - b.rot * 2.4) * dtSec;
+              b.vRot *= 0.96;
+              b.rot = Math.max(-28, Math.min(28, b.rot + b.vRot * dtSec));
+
+              // Bounce off walls & ceiling/floor of 1200x540 stage
+              const minX = spec.r + 12;
+              const maxX = 1200 - spec.r - 12;
+              const minY = spec.r + 14;
+              const maxY = 496 - spec.r;
+
+              if (b.x < minX) {
+                b.x = minX;
+                b.vx = Math.abs(b.vx) * 0.88;
+              } else if (b.x > maxX) {
+                b.x = maxX;
+                b.vx = -Math.abs(b.vx) * 0.88;
+              }
+              if (b.y < minY) {
+                b.y = minY;
+                b.vy = Math.abs(b.vy) * 0.88;
+              } else if (b.y > maxY) {
+                b.y = maxY;
+                b.vy = -Math.abs(b.vy) * 0.9;
+              }
+              flyingCount += 1;
+            } else {
+              // Quiet: smoothly spring back to resting homeX, homeY and stay in place
+              const dx = spec.homeX - b.x;
+              const dy = spec.homeY - b.y;
+              const dist = Math.hypot(dx, dy);
+
+              if (dist > 0.35 || Math.hypot(b.vx, b.vy) > 1.5 || Math.abs(b.rot) > 0.3) {
+                const springK = 14.5;
+                const damping = Math.pow(0.035, dtSec);
+                b.vx = (b.vx + dx * springK * dtSec) * damping;
+                b.vy = (b.vy + dy * springK * dtSec) * damping;
+                b.x += b.vx * dtSec;
+                b.y += b.vy * dtSec;
+                b.rot = b.rot * Math.pow(0.03, dtSec);
+                b.vRot = b.vRot * Math.pow(0.03, dtSec);
+                if (dist > 8) flyingCount += 1;
+              } else {
+                b.x = spec.homeX;
+                b.y = spec.homeY;
+                b.vx = 0;
+                b.vy = 0;
+                b.rot = 0;
+                b.vRot = 0;
+              }
+            }
+          }
+
+          if (frameCounter % 2 === 0) {
+            setHamsterBallsState(balls.map((item) => ({ ...item })));
+            setBubblesFlyingCount(flyingCount);
+          }
         }
 
         // Throttle React UI updates cleanly (~20fps for meter, live star drain & spectrum)
@@ -1353,6 +1739,37 @@ export function SleepingHamster({
     analyserRef.current = analyser;
   };
 
+  const resetHamsterBallsPositions = useCallback(() => {
+    const resetList = HAMSTER_BALL_SPECS.map((s) => ({
+      id: s.id,
+      x: s.homeX,
+      y: s.homeY,
+      vx: 0,
+      vy: 0,
+      rot: 0,
+      vRot: 0,
+    }));
+    hamsterBallsPhysicsRef.current = resetList;
+    setHamsterBallsState(resetList);
+    setBubblesFlyingCount(0);
+  }, []);
+
+  const handleClickHamsterBubble = useCallback(
+    (ballId: number) => {
+      if (!hasStarted) return;
+      const target = hamsterBallsPhysicsRef.current.find((b) => b.id === ballId);
+      if (target) {
+        target.vy = -215 - Math.random() * 65;
+        target.vx = (Math.random() - 0.5) * 150;
+        target.vRot = (Math.random() - 0.5) * 110;
+        setHamsterBallsState(hamsterBallsPhysicsRef.current.map((item) => ({ ...item })));
+      }
+      playAlertSound('pet');
+      spawnParticle('heart', '🫧 💖', 1.5);
+    },
+    [hasStarted, playAlertSound, spawnParticle]
+  );
+
   const handleStartWithMic = async () => {
     setMicError(null);
     setIsConnectingMic(true);
@@ -1373,6 +1790,10 @@ export function SleepingHamster({
       setJustArrivedSlot(null);
       setCageCount(3);
       setCageQuietSeconds(0);
+      resetHamsterBallsPositions();
+      if (gameModeRef.current === 'bubbles') {
+        setNoiseAlert('shush');
+      }
       setSleepState('DEEP_SLEEP');
       setSustainedEnergy(8);
       setTimerMode('up');
@@ -1414,6 +1835,7 @@ export function SleepingHamster({
     setJustArrivedSlot(null);
     setCageCount(3);
     setCageQuietSeconds(0);
+    resetHamsterBallsPositions();
     setSleepState('DEEP_SLEEP');
     setSustainedEnergy(8);
     setStarPoints(3.0);
@@ -1433,6 +1855,10 @@ export function SleepingHamster({
     if (mode === 'cage' && cageCountRef.current === 0 && !leavingHamsterRef.current) {
       cageCountRef.current = 3;
       setCageCount(3);
+    }
+    if (mode === 'bubbles') {
+      setNoiseAlert('shush');
+      resetHamsterBallsPositions();
     }
   };
 
@@ -1703,7 +2129,7 @@ export function SleepingHamster({
               <span className="hidden sm:inline">Back</span>
             </button>
 
-            {/* In-Game Mode Switcher: Sleeping Hamster | Hamster Cage */}
+            {/* In-Game Mode Switcher: Sleeping Hamster | Hamster Cage | Hamster Bubbles */}
             <div
               className="inline-flex items-center gap-1 bg-black/35 border border-white/15 rounded-xl p-1 shrink-0"
               role="group"
@@ -1730,6 +2156,17 @@ export function SleepingHamster({
                 }`}
               >
                 Hamster Cage
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSwitchGameMode('bubbles')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap shrink-0 ${
+                  gameMode === 'bubbles'
+                    ? 'bg-pink-400 text-purple-950 shadow-sm'
+                    : 'text-purple-200/75 hover:text-white'
+                }`}
+              >
+                Hamster Bubbles
               </button>
             </div>
 
@@ -1771,7 +2208,7 @@ export function SleepingHamster({
             </button>
           </div>
 
-          {/* CENTER HUD: Bigger Stopwatch/Editable Timer + Mode Progress (Stars OR Hamster Cage) */}
+          {/* CENTER HUD: Bigger Stopwatch/Editable Timer + Mode Progress (Stars OR Hamster Cage OR Hamster Bubbles) */}
           <div className={`relative justify-self-center ${currentTheme.panelBg} backdrop-blur-md border border-white/15 px-6 sm:px-7 py-3.5 rounded-3xl flex flex-wrap sm:flex-nowrap items-center justify-center gap-6 sm:gap-7 shadow-2xl`}>
             {/* Time + Mode Options (Stopwatch / Timer), Pause, Reset & Edit Timer Controls */}
             <div className="flex items-center gap-4">
@@ -1841,7 +2278,13 @@ export function SleepingHamster({
                   type="button"
                   onClick={handleResetTimerAndStars}
                   className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-purple-100 transition cursor-pointer"
-                  title={gameMode === 'cage' ? 'Reset Time & Cage (3 Hamsters)' : 'Reset Time & Stars'}
+                  title={
+                    gameMode === 'cage'
+                      ? 'Reset Time & Cage (3 Hamsters)'
+                      : gameMode === 'bubbles'
+                      ? 'Reset Time & Hamster Bubbles'
+                      : 'Reset Time & Stars'
+                  }
                 >
                   <RotateCcw size={16} />
                 </button>
@@ -1939,7 +2382,7 @@ export function SleepingHamster({
                   );
                 })}
               </div>
-            ) : (
+            ) : gameMode === 'cage' ? (
               /* Hamster Cage Counter & 20s Quiet Progress HUD */
               <div className="flex flex-col gap-1.5 min-w-[205px]">
                 <div className="flex items-center justify-between gap-4">
@@ -1985,6 +2428,46 @@ export function SleepingHamster({
                       ? 'MAX 20/20'
                       : `Quiet ${cageQuietSeconds}/20s`}
                   </span>
+                </div>
+              </div>
+            ) : (
+              /* Hamster Bubbles Counter & Live Calm/Flying Status HUD */
+              <div className="flex flex-col gap-1.5 min-w-[215px]">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 whitespace-nowrap">
+                    <span className="text-lg">🫧</span>
+                    <span className="text-sm sm:text-base font-black text-white tabular-nums">
+                      {HAMSTER_BALL_SPECS.length}
+                    </span>
+                    <span className="text-[11px] font-bold text-pink-200/90 uppercase">
+                      Hamster Balls
+                    </span>
+                  </div>
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider whitespace-nowrap ${
+                      bubblesFlyingCount > 0 ||
+                      sleepState === 'DISTURBED' ||
+                      sleepState === 'ALMOST_AWAKE' ||
+                      sleepState === 'AWAKE'
+                        ? 'bg-rose-500/35 text-rose-200 border border-rose-300/50 animate-pulse'
+                        : 'bg-emerald-500/30 text-emerald-200 border border-emerald-300/40'
+                    }`}
+                  >
+                    {bubblesFlyingCount > 0 ||
+                    sleepState === 'DISTURBED' ||
+                    sleepState === 'ALMOST_AWAKE' ||
+                    sleepState === 'AWAKE'
+                      ? '🤫 Shhh! Flying!'
+                      : '✨ Quiet in Place'}
+                  </span>
+                </div>
+                <div className="text-[11px] font-bold text-pink-100/80 whitespace-nowrap">
+                  {bubblesFlyingCount > 0 ||
+                  sleepState === 'DISTURBED' ||
+                  sleepState === 'ALMOST_AWAKE' ||
+                  sleepState === 'AWAKE'
+                    ? 'Be quiet so the hamster bubbles settle down!'
+                    : 'Quiet classroom keeps all bubbles settled!'}
                 </div>
               </div>
             )}
@@ -2098,9 +2581,722 @@ export function SleepingHamster({
       <div className="flex-1 flex flex-col lg:flex-row gap-4 px-4 md:px-6 pb-4 pt-1 min-h-0">
         {/* LEFT/CENTER STAGE + NOISE MONITOR BAR */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0 gap-3">
-          {/* LIVING 3D GLASS HAMSTER HABITAT */}
+          {/* LIVING 3D GLASS HAMSTER HABITAT OR 3D HAMSTER BUBBLES COLLECTION */}
           <main className="flex-1 relative flex items-center justify-center min-h-[260px] pt-2">
+            {gameMode === 'bubbles' ? (
+              <div
+                className={`relative w-full h-full max-h-[580px] rounded-[2.25rem] border-[5px] transition-all duration-300 flex items-center justify-center overflow-hidden ${
+                  sleepState === 'AWAKE'
+                    ? 'border-rose-400 shadow-[0_24px_65px_rgba(244,63,94,0.35),0_0_75px_rgba(244,63,94,0.45)] sh-enclosure-shake'
+                    : sleepState === 'ALMOST_AWAKE' || sleepState === 'DISTURBED'
+                    ? 'border-amber-300 shadow-[0_24px_65px_rgba(251,191,36,0.3),0_0_60px_rgba(251,191,36,0.35)]'
+                    : 'border-pink-200/90 shadow-[0_24px_65px_rgba(131,24,67,0.28),0_0_45px_rgba(249,168,212,0.35)]'
+                }`}
+                style={{
+                  background:
+                    'linear-gradient(180deg, #F7C9D7 0%, #FCE0E5 56%, #FFF0F0 86%, #FCE4EC 100%)',
+                }}
+              >
+                {/* Floating Zzz / Hearts / Stars Particles */}
+                <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
+                  {particles.map((p) => (
+                    <div
+                      key={p.id}
+                      className="sh-particle absolute bottom-[34%] font-black text-rose-600 drop-shadow-[0_2px_10px_rgba(255,255,255,0.95)]"
+                      style={{
+                        left: `${p.leftPct}%`,
+                        fontSize: `${p.sizeRem}rem`,
+                        animationDuration: `${p.durationSec}s`,
+                      }}
+                    >
+                      {p.text}
+                    </div>
+                  ))}
+                </div>
 
+                {/* Live Shh! Flying Status Banner when Noisy */}
+                {hasStarted &&
+                  (sleepState === 'DISTURBED' ||
+                    sleepState === 'ALMOST_AWAKE' ||
+                    sleepState === 'AWAKE') && (
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+                      <div className="px-5 py-2.5 rounded-2xl bg-rose-500/95 border-2 border-white shadow-[0_12px_30px_rgba(225,29,72,0.4)] text-white text-xs sm:text-sm font-black tracking-wide flex items-center gap-2 animate-bounce whitespace-nowrap">
+                        <span className="text-lg">🤫</span>
+                        <span>SHHH! Too noisy! Be quiet so the Hamster Bubbles stay in place!</span>
+                      </div>
+                    </div>
+                  )}
+
+                {/* 4K-Style Wide 3D Hamster Balls Collection SVG */}
+                <svg
+                  viewBox="0 0 1200 540"
+                  preserveAspectRatio="xMidYMid slice"
+                  className="w-full h-full select-none"
+                >
+                  <defs>
+                    {/* Light Pastel Pink Studio Backdrop Gradient (#F7C9D7 -> #FCE0E5 -> #FFF0F0) */}
+                    <linearGradient id="hbPastelPinkBg" x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stopColor="#F7C9D7" />
+                      <stop offset="55%" stopColor="#FCE0E5" />
+                      <stop offset="88%" stopColor="#FFF0F0" />
+                      <stop offset="100%" stopColor="#F9D5E0" />
+                    </linearGradient>
+
+                    {/* Soft Studio Ground Plane Gradient */}
+                    <linearGradient id="hbGroundPlane" x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stopColor="#FFF0F0" stopOpacity="0" />
+                      <stop offset="35%" stopColor="#FADCE4" stopOpacity="0.65" />
+                      <stop offset="100%" stopColor="#F2B8C8" stopOpacity="0.92" />
+                    </linearGradient>
+
+                    {/* Soft Contact Shadow Gradient under each Sphere */}
+                    <radialGradient id="hbContactShadow" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" stopColor="#88294A" stopOpacity="0.42" />
+                      <stop offset="55%" stopColor="#B54D70" stopOpacity="0.2" />
+                      <stop offset="100%" stopColor="#F7C9D7" stopOpacity="0" />
+                    </radialGradient>
+
+                    {/* Cozy Golden Bedding Cushion Inside Bottom of Each Sphere */}
+                    <linearGradient id="hbInnerBedding" x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stopColor="#FDE68A" />
+                      <stop offset="55%" stopColor="#F59E0B" />
+                      <stop offset="100%" stopColor="#B45309" />
+                    </linearGradient>
+
+                    {/* 3D Pink Heart Nose Gradient */}
+                    <radialGradient id="hbPinkNose" cx="35%" cy="30%" r="65%">
+                      <stop offset="0%" stopColor="#fbcfe8" />
+                      <stop offset="55%" stopColor="#f472b6" />
+                      <stop offset="100%" stopColor="#be185d" />
+                    </radialGradient>
+
+                    {/* 8 Colorful Transparent Sphere Rim Gradients & Inner Glass Tints */}
+                    {HAMSTER_BALL_RIMS.map((rim, rIdx) => (
+                      <React.Fragment key={`hb-rim-def-${rim.id}`}>
+                        <linearGradient
+                          id={`hbRimOuterGrad-${rIdx}`}
+                          x1="15%"
+                          y1="10%"
+                          x2="85%"
+                          y2="90%"
+                        >
+                          <stop offset="0%" stopColor={rim.rimLight} />
+                          <stop offset="48%" stopColor={rim.rimMid} />
+                          <stop offset="100%" stopColor={rim.rimDark} />
+                        </linearGradient>
+                        <radialGradient
+                          id={`hbSphereGlassGrad-${rIdx}`}
+                          cx="36%"
+                          cy="32%"
+                          r="68%"
+                        >
+                          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.02" />
+                          <stop offset="68%" stopColor={rim.rimLight} stopOpacity="0.08" />
+                          <stop offset="88%" stopColor={rim.rimMid} stopOpacity="0.24" />
+                          <stop offset="100%" stopColor={rim.rimDark} stopOpacity="0.42" />
+                        </radialGradient>
+                      </React.Fragment>
+                    ))}
+
+                    {/* 7 Hamster Fur Combination Gradients */}
+                    {HAMSTER_BALL_FURS.map((fur, fIdx) => (
+                      <radialGradient
+                        key={`hb-fur-def-${fur.id}`}
+                        id={`hbFurGrad-${fIdx}`}
+                        cx="42%"
+                        cy="28%"
+                        r="70%"
+                      >
+                        <stop offset="0%" stopColor={fur.furLight} />
+                        <stop offset="55%" stopColor={fur.furMid} />
+                        <stop offset="100%" stopColor={fur.furDark} />
+                      </radialGradient>
+                    ))}
+
+                    {/* ClipPath for unit sphere (r = 100) */}
+                    <clipPath id="hbUnitSphereClip">
+                      <circle cx="0" cy="0" r="93" />
+                    </clipPath>
+                  </defs>
+
+                  {/* 1. Light Pastel Pink Studio Background & Ground Plane */}
+                  <rect width="1200" height="540" fill="url(#hbPastelPinkBg)" />
+                  <ellipse
+                    cx="600"
+                    cy="210"
+                    rx="560"
+                    ry="190"
+                    fill="#ffffff"
+                    opacity="0.28"
+                  />
+                  <rect x="0" y="458" width="1200" height="82" fill="url(#hbGroundPlane)" />
+
+                  {/* 2. Soft Contact Shadows on the Ground Plane beneath all 44 Hamster Balls */}
+                  <g>
+                    {HAMSTER_BALL_SPECS.map((spec, idx) => {
+                      const bState = hamsterBallsState[idx] || {
+                        x: spec.homeX,
+                        y: spec.homeY,
+                      };
+                      const lift = Math.max(0, spec.homeY - bState.y);
+                      const shadowScale = Math.max(0.28, 1 - lift / 360);
+                      const shadowY = Math.min(504, spec.homeY + spec.r * 0.92);
+                      return (
+                        <ellipse
+                          key={`hb-shadow-${spec.id}`}
+                          cx={bState.x}
+                          cy={shadowY}
+                          rx={spec.r * 0.95 * shadowScale}
+                          ry={spec.r * 0.24 * shadowScale}
+                          fill="url(#hbContactShadow)"
+                          opacity={shadowScale}
+                        />
+                      );
+                    })}
+                  </g>
+
+                  {/* 3. Layered Collection of 44 Transparent 3D Hamster Balls (Sorted Back-to-Front by zLayer) */}
+                  <g>
+                    {[...HAMSTER_BALL_SPECS]
+                      .map((spec, idx) => ({
+                        spec,
+                        bState: hamsterBallsState[idx] || {
+                          id: spec.id,
+                          x: spec.homeX,
+                          y: spec.homeY,
+                          vx: 0,
+                          vy: 0,
+                          rot: 0,
+                          vRot: 0,
+                        },
+                      }))
+                      .sort((a, b) => a.spec.zLayer - b.spec.zLayer)
+                      .map(({ spec, bState }) => {
+                        const rim = HAMSTER_BALL_RIMS[spec.rimIdx % HAMSTER_BALL_RIMS.length];
+                        const resolvedFurIdx =
+                          (spec.furIdx + coatIndex) % HAMSTER_BALL_FURS.length;
+                        const fur = HAMSTER_BALL_FURS[resolvedFurIdx];
+                        const scale = spec.r / 100;
+                        const flipX = spec.flip ? -1 : 1;
+                        const isFlyingNow =
+                          Math.hypot(bState.x - spec.homeX, bState.y - spec.homeY) > 6 ||
+                          sleepState === 'DISTURBED' ||
+                          sleepState === 'ALMOST_AWAKE' ||
+                          sleepState === 'AWAKE';
+                        const activePose: HamsterBallPose = isFlyingNow
+                          ? spec.id % 2 === 0
+                            ? 'surprised'
+                            : 'wave'
+                          : spec.pose;
+
+                        return (
+                          <g
+                            key={`hamster-ball-${spec.id}`}
+                            transform={`translate(${bState.x.toFixed(1)}, ${bState.y.toFixed(1)}) rotate(${bState.rot.toFixed(1)})`}
+                            onClick={() => handleClickHamsterBubble(spec.id)}
+                            className="cursor-pointer"
+                          >
+                            <title>
+                              {`${rim.name} Hamster Ball #${spec.id} (${fur.name}) — Click to bounce!`}
+                            </title>
+                            <g
+                              className={!isFlyingNow ? 'sh-cage-bob' : undefined}
+                              style={
+                                !isFlyingNow
+                                  ? { animationDelay: `${(spec.id % 9) * 0.25}s` }
+                                  : undefined
+                              }
+                            >
+                              <g transform={`scale(${scale})`}>
+                                {/* Back Transparent Sphere Fill */}
+                                <circle
+                                  cx="0"
+                                  cy="0"
+                                  r="95"
+                                  fill="rgba(255, 255, 255, 0.22)"
+                                />
+
+                                {/* Subtle Back Ventilation Holes */}
+                                <g fill="rgba(255,255,255,0.42)" stroke={rim.rimMid} strokeWidth="1.2" opacity="0.55">
+                                  <circle cx="-54" cy="-54" r="4.2" />
+                                  <circle cx="54" cy="-54" r="4.2" />
+                                  <circle cx="-68" cy="0" r="4.2" />
+                                  <circle cx="68" cy="0" r="4.2" />
+                                  <circle cx="0" cy="-72" r="4.2" />
+                                </g>
+
+                                {/* Interior Clipped Group: Golden Bedding Cushion + 3D Adorable Hamster */}
+                                <g clipPath="url(#hbUnitSphereClip)">
+                                  {/* Cozy Golden-Cream Bedding at Bottom of Sphere */}
+                                  <path
+                                    d="M -94 56 Q -45 42 0 46 Q 45 42 94 56 L 94 100 L -94 100 Z"
+                                    fill="url(#hbInnerBedding)"
+                                    opacity="0.92"
+                                  />
+                                  <ellipse
+                                    cx="0"
+                                    cy="55"
+                                    rx="76"
+                                    ry="14"
+                                    fill="#FEF3C7"
+                                    opacity="0.78"
+                                  />
+
+                                  {/* 3D HAMSTER CHARACTER INSIDE SPHERE */}
+                                  <g
+                                    transform={`translate(0, ${
+                                      activePose === 'standing' ? 4 : 10
+                                    }) scale(${flipX}, 1) rotate(${
+                                      activePose === 'tilted' ? 8 : 0
+                                    })`}
+                                  >
+                                    {/* Soft Contact Shadow on Bedding */}
+                                    <ellipse
+                                      cx="0"
+                                      cy="52"
+                                      rx="54"
+                                      ry="12"
+                                      fill="rgba(120, 53, 15, 0.35)"
+                                    />
+
+                                    {/* Tiny Rounded Ears */}
+                                    <g transform="translate(-38, -50) rotate(-18)">
+                                      <ellipse
+                                        cx="0"
+                                        cy="0"
+                                        rx="17"
+                                        ry="18"
+                                        fill={`url(#hbFurGrad-${resolvedFurIdx})`}
+                                        stroke={fur.stroke}
+                                        strokeWidth="3.2"
+                                      />
+                                      <ellipse cx="1" cy="2" rx="10.5" ry="11" fill="#f48fb1" />
+                                    </g>
+                                    <g transform="translate(38, -50) rotate(18)">
+                                      <ellipse
+                                        cx="0"
+                                        cy="0"
+                                        rx="17"
+                                        ry="18"
+                                        fill={`url(#hbFurGrad-${resolvedFurIdx})`}
+                                        stroke={fur.stroke}
+                                        strokeWidth="3.2"
+                                      />
+                                      <ellipse cx="-1" cy="2" rx="10.5" ry="11" fill="#f48fb1" />
+                                    </g>
+
+                                    {/* Short Little Hind Paws */}
+                                    <ellipse
+                                      cx="-34"
+                                      cy="50"
+                                      rx="14"
+                                      ry="8.5"
+                                      fill="#fda4af"
+                                      stroke="#9f1239"
+                                      strokeWidth="2.4"
+                                    />
+                                    <ellipse
+                                      cx="34"
+                                      cy="50"
+                                      rx="14"
+                                      ry="8.5"
+                                      fill="#fda4af"
+                                      stroke="#9f1239"
+                                      strokeWidth="2.4"
+                                    />
+
+                                    {/* Round Chubby Body & Oversized Head with Puffy Cheeks */}
+                                    <path
+                                      d="M -52 -18 C -56 -46, -34 -64, 0 -64 C 34 -64, 56 -46, 52 -18 C 66 -4, 68 24, 56 44 C 46 58, 24 60, 0 60 C -24 60, -46 58, -56 44 C -68 24, -66 -4, -52 -18 Z"
+                                      fill={`url(#hbFurGrad-${resolvedFurIdx})`}
+                                      stroke={fur.stroke}
+                                      strokeWidth="3.4"
+                                      strokeLinejoin="round"
+                                    />
+
+                                    {/* Soft Fluffy Belly & Puffy Cheek Pouches */}
+                                    <path
+                                      d="M -54 8 C -58 -6, -40 -15, -22 -9 C -9 -4, 9 -4, 22 -9 C 40 -15, 58 -6, 54 8 C 58 30, 44 56, 0 57 C -44 56, -58 30, -54 8 Z"
+                                      fill={fur.belly}
+                                    />
+                                    <circle
+                                      cx="-38"
+                                      cy="4"
+                                      r={activePose === 'eating' ? 19 : 16}
+                                      fill={fur.belly}
+                                    />
+                                    <circle
+                                      cx="38"
+                                      cy="4"
+                                      r={activePose === 'eating' ? 19 : 16}
+                                      fill={fur.belly}
+                                    />
+
+                                    {/* Soft Pink Blush on Cheeks */}
+                                    <ellipse
+                                      cx="-38"
+                                      cy="4"
+                                      rx="12.5"
+                                      ry="7.5"
+                                      fill="#fda4af"
+                                      opacity="0.85"
+                                    />
+                                    <ellipse
+                                      cx="38"
+                                      cy="4"
+                                      rx="12.5"
+                                      ry="7.5"
+                                      fill="#fda4af"
+                                      opacity="0.85"
+                                    />
+
+                                    {/* Large Expressive Glossy Eyes (or Closed Sleeping Eyes) */}
+                                    {activePose === 'sleeping' ? (
+                                      <g
+                                        fill="none"
+                                        stroke="#230d04"
+                                        strokeWidth="3.8"
+                                        strokeLinecap="round"
+                                      >
+                                        <path d="M -32 -14 Q -22 -4 -12 -14" />
+                                        <path d="M 12 -14 Q 22 -4 32 -14" />
+                                      </g>
+                                    ) : (
+                                      <g>
+                                        <circle
+                                          cx="-22"
+                                          cy="-14"
+                                          r={activePose === 'viewer' ? 11.2 : 9.8}
+                                          fill="#1f0d05"
+                                        />
+                                        <circle cx="-25.5" cy="-17.5" r="3.8" fill="#ffffff" />
+                                        <circle cx="-18.5" cy="-10.5" r="1.8" fill="#ffffff" />
+
+                                        <circle
+                                          cx="22"
+                                          cy="-14"
+                                          r={activePose === 'viewer' ? 11.2 : 9.8}
+                                          fill="#1f0d05"
+                                        />
+                                        <circle cx="18.5" cy="-17.5" r="3.8" fill="#ffffff" />
+                                        <circle cx="25.5" cy="-10.5" r="1.8" fill="#ffffff" />
+                                      </g>
+                                    )}
+
+                                    {/* Small Pink Nose */}
+                                    <path
+                                      d="M -6 -3 C -6 -7, 6 -7, 6 -3 C 6 1, 2.5 4.5, 0 4.5 C -2.5 4.5, -6 1, -6 -3 Z"
+                                      fill="url(#hbPinkNose)"
+                                    />
+
+                                    {/* Expressive Mouth by Pose */}
+                                    {activePose === 'surprised' ? (
+                                      <circle
+                                        cx="0"
+                                        cy="11"
+                                        r="6.2"
+                                        fill="#9f1239"
+                                        stroke="#451a03"
+                                        strokeWidth="2.4"
+                                      />
+                                    ) : activePose === 'laughing' ? (
+                                      <g>
+                                        <path
+                                          d="M -11 6 Q 0 23 11 6 Z"
+                                          fill="#fb7185"
+                                          stroke="#881337"
+                                          strokeWidth="2.2"
+                                        />
+                                        <rect
+                                          x="-3"
+                                          y="6"
+                                          width="6"
+                                          height="3.6"
+                                          rx="1"
+                                          fill="#ffffff"
+                                        />
+                                      </g>
+                                    ) : (
+                                      <g>
+                                        <path
+                                          d="M -8 7 Q 0 17 8 7 Z"
+                                          fill="#fb7185"
+                                          stroke="#881337"
+                                          strokeWidth="2"
+                                        />
+                                        <path
+                                          d="M -11 6 Q -5.5 12 0 4.5 Q 5.5 12 11 6"
+                                          fill="none"
+                                          stroke="#451a03"
+                                          strokeWidth="3"
+                                          strokeLinecap="round"
+                                        />
+                                      </g>
+                                    )}
+
+                                    {/* Character Poses & Held Items (Wave, Seed, Strawberry, Leaf, Cozy Paws) */}
+                                    {activePose === 'wave' ? (
+                                      <g>
+                                        <ellipse
+                                          cx="-20"
+                                          cy="26"
+                                          rx="10"
+                                          ry="12"
+                                          transform="rotate(18 -20 26)"
+                                          fill="#fda4af"
+                                          stroke="#9f1239"
+                                          strokeWidth="2.4"
+                                        />
+                                        <ellipse
+                                          cx="36"
+                                          cy="4"
+                                          rx="10.5"
+                                          ry="13"
+                                          transform="rotate(-38 36 4)"
+                                          fill="#fda4af"
+                                          stroke="#9f1239"
+                                          strokeWidth="2.4"
+                                        />
+                                      </g>
+                                    ) : activePose === 'seed' || activePose === 'eating' ? (
+                                      <g>
+                                        <path
+                                          d="M 0 14 C 9 15, 11 29, 0 38 C -11 29, -9 15, 0 14 Z"
+                                          fill="#27272a"
+                                          stroke="#fef08a"
+                                          strokeWidth="2.2"
+                                        />
+                                        <line
+                                          x1="0"
+                                          y1="17"
+                                          x2="0"
+                                          y2="34"
+                                          stroke="#fef08a"
+                                          strokeWidth="1.8"
+                                        />
+                                        <ellipse
+                                          cx="-15"
+                                          cy="27"
+                                          rx="9.5"
+                                          ry="11.5"
+                                          transform="rotate(24 -15 27)"
+                                          fill="#fda4af"
+                                          stroke="#9f1239"
+                                          strokeWidth="2.3"
+                                        />
+                                        <ellipse
+                                          cx="15"
+                                          cy="27"
+                                          rx="9.5"
+                                          ry="11.5"
+                                          transform="rotate(-24 15 27)"
+                                          fill="#fda4af"
+                                          stroke="#9f1239"
+                                          strokeWidth="2.3"
+                                        />
+                                      </g>
+                                    ) : activePose === 'strawberry' ? (
+                                      <g>
+                                        <path
+                                          d="M 0 15 C 12 15, 14 29, 0 39 C -14 29, -12 15, 0 15 Z"
+                                          fill="#ef4444"
+                                          stroke="#991b1b"
+                                          strokeWidth="2.2"
+                                        />
+                                        <path
+                                          d="M -6 15 Q 0 10 6 15 Q 0 18 -6 15 Z"
+                                          fill="#22c55e"
+                                          stroke="#15803d"
+                                          strokeWidth="1.5"
+                                        />
+                                        <circle cx="-3" cy="24" r="1.2" fill="#fef08a" />
+                                        <circle cx="3" cy="25" r="1.2" fill="#fef08a" />
+                                        <circle cx="0" cy="30" r="1.2" fill="#fef08a" />
+                                        <ellipse
+                                          cx="-16"
+                                          cy="27"
+                                          rx="9.5"
+                                          ry="11.5"
+                                          transform="rotate(22 -16 27)"
+                                          fill="#fda4af"
+                                          stroke="#9f1239"
+                                          strokeWidth="2.3"
+                                        />
+                                        <ellipse
+                                          cx="16"
+                                          cy="27"
+                                          rx="9.5"
+                                          ry="11.5"
+                                          transform="rotate(-22 16 27)"
+                                          fill="#fda4af"
+                                          stroke="#9f1239"
+                                          strokeWidth="2.3"
+                                        />
+                                      </g>
+                                    ) : activePose === 'leaf' ? (
+                                      <g>
+                                        <path
+                                          d="M -2 34 Q 0 20 12 14 Q 16 26 2 32 Z"
+                                          fill="#22c55e"
+                                          stroke="#15803d"
+                                          strokeWidth="2"
+                                        />
+                                        <path
+                                          d="M 2 34 Q 0 20 -12 14 Q -16 26 -2 32 Z"
+                                          fill="#4ade80"
+                                          stroke="#15803d"
+                                          strokeWidth="2"
+                                        />
+                                        <ellipse
+                                          cx="-15"
+                                          cy="28"
+                                          rx="9.5"
+                                          ry="11.5"
+                                          transform="rotate(22 -15 28)"
+                                          fill="#fda4af"
+                                          stroke="#9f1239"
+                                          strokeWidth="2.3"
+                                        />
+                                        <ellipse
+                                          cx="15"
+                                          cy="28"
+                                          rx="9.5"
+                                          ry="11.5"
+                                          transform="rotate(-22 15 28)"
+                                          fill="#fda4af"
+                                          stroke="#9f1239"
+                                          strokeWidth="2.3"
+                                        />
+                                      </g>
+                                    ) : (
+                                      <g>
+                                        <ellipse
+                                          cx="-18"
+                                          cy="28"
+                                          rx="10"
+                                          ry="12"
+                                          transform="rotate(18 -18 28)"
+                                          fill="#fda4af"
+                                          stroke="#9f1239"
+                                          strokeWidth="2.3"
+                                        />
+                                        <ellipse
+                                          cx="18"
+                                          cy="28"
+                                          rx="10"
+                                          ry="12"
+                                          transform="rotate(-18 18 28)"
+                                          fill="#fda4af"
+                                          stroke="#9f1239"
+                                          strokeWidth="2.3"
+                                        />
+                                      </g>
+                                    )}
+                                  </g>
+                                </g>
+
+                                {/* 4. FOREGROUND TRANSPARENT GLOSSY SPHERE RIM, SEAMS & REFLECTIONS */}
+                                {/* Translucent Colored Edge Refraction */}
+                                <circle
+                                  cx="0"
+                                  cy="0"
+                                  r="93"
+                                  fill={`url(#hbSphereGlassGrad-${spec.rimIdx % HAMSTER_BALL_RIMS.length})`}
+                                  pointerEvents="none"
+                                />
+
+                                {/* Colorful Circular Outer Rim */}
+                                <circle
+                                  cx="0"
+                                  cy="0"
+                                  r="94"
+                                  fill="none"
+                                  stroke={`url(#hbRimOuterGrad-${spec.rimIdx % HAMSTER_BALL_RIMS.length})`}
+                                  strokeWidth="12"
+                                />
+                                {/* Inner Tinted Seam Ring */}
+                                <circle
+                                  cx="0"
+                                  cy="0"
+                                  r="87.5"
+                                  fill="none"
+                                  stroke={rim.rimLight}
+                                  strokeWidth="2.2"
+                                  opacity="0.82"
+                                />
+                                {/* Outer Rim Crisp Edge */}
+                                <circle
+                                  cx="0"
+                                  cy="0"
+                                  r="99.5"
+                                  fill="none"
+                                  stroke={rim.rimDark}
+                                  strokeWidth="1.6"
+                                  opacity="0.65"
+                                />
+
+                                {/* Detailed Circular Seam Latches (Top, Bottom, Left, Right) */}
+                                <rect
+                                  x="-99"
+                                  y="-8"
+                                  width="10"
+                                  height="16"
+                                  rx="4"
+                                  fill={rim.rimMid}
+                                  stroke={rim.rimDark}
+                                  strokeWidth="1.8"
+                                />
+                                <rect
+                                  x="89"
+                                  y="-8"
+                                  width="10"
+                                  height="16"
+                                  rx="4"
+                                  fill={rim.rimMid}
+                                  stroke={rim.rimDark}
+                                  strokeWidth="1.8"
+                                />
+                                <rect
+                                  x="-8"
+                                  y="-99"
+                                  width="16"
+                                  height="8"
+                                  rx="3.5"
+                                  fill={rim.rimLight}
+                                  stroke={rim.rimDark}
+                                  strokeWidth="1.5"
+                                />
+
+                                {/* Glossy Plastic Studio Reflections & Specular Highlights */}
+                                <path
+                                  d="M -66 -46 A 78 78 0 0 1 28 -74"
+                                  fill="none"
+                                  stroke="rgba(255, 255, 255, 0.82)"
+                                  strokeWidth="8.5"
+                                  strokeLinecap="round"
+                                />
+                                <circle
+                                  cx="-58"
+                                  cy="-26"
+                                  r="5.5"
+                                  fill="rgba(255, 255, 255, 0.85)"
+                                />
+                                <path
+                                  d="M -44 68 A 80 80 0 0 0 58 54"
+                                  fill="none"
+                                  stroke="rgba(255, 255, 255, 0.45)"
+                                  strokeWidth="4.5"
+                                  strokeLinecap="round"
+                                />
+                              </g>
+                            </g>
+                          </g>
+                        );
+                      })}
+                  </g>
+                </svg>
+              </div>
+            ) : (
             <div
               className={`relative w-full h-full max-h-[580px] rounded-[2.25rem] border-[5px] transition-all duration-300 flex items-center justify-center overflow-visible ${activeUi.enclosureBorder}`}
               style={{ backgroundColor: currentTheme.tankBg }}
@@ -3559,6 +4755,7 @@ export function SleepingHamster({
                 </svg>
               </div>
             </div>
+            )}
           </main>
 
           {/* CLEAN BOTTOM NOISE MONITOR BAR */}
@@ -3774,7 +4971,7 @@ export function SleepingHamster({
             <span>Back to Studio</span>
           </button>
 
-          <div className="bg-[#23144a]/95 border border-purple-300/25 rounded-[2rem] p-7 sm:p-8 max-w-md w-full text-center shadow-[0_30px_80px_rgba(0,0,0,0.7)] relative overflow-hidden">
+          <div className="bg-[#23144a]/95 border border-purple-300/25 rounded-[2rem] p-7 sm:p-8 max-w-lg w-full text-center shadow-[0_30px_80px_rgba(0,0,0,0.7)] relative overflow-hidden">
             <div className="w-44 aspect-[4/3] mx-auto mb-5 rounded-2xl overflow-hidden border-2 border-purple-300/40 shadow-xl">
               <img
                 src={noiseControlCardImg}
@@ -3789,11 +4986,11 @@ export function SleepingHamster({
             </h1>
 
             {/* Choose Game Mode Before Starting */}
-            <div className="grid grid-cols-2 gap-2.5 mb-5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-5">
               <button
                 type="button"
                 onClick={() => handleSwitchGameMode('sleeping')}
-                className={`py-3 px-3 rounded-2xl border text-center transition cursor-pointer ${
+                className={`py-3 px-2.5 rounded-2xl border text-center transition cursor-pointer ${
                   gameMode === 'sleeping'
                     ? 'bg-purple-500/35 border-purple-300 text-white shadow-md'
                     : 'bg-white/5 border-white/10 text-purple-200/75 hover:bg-white/10'
@@ -3807,7 +5004,7 @@ export function SleepingHamster({
               <button
                 type="button"
                 onClick={() => handleSwitchGameMode('cage')}
-                className={`py-3 px-3 rounded-2xl border text-center transition cursor-pointer ${
+                className={`py-3 px-2.5 rounded-2xl border text-center transition cursor-pointer ${
                   gameMode === 'cage'
                     ? 'bg-amber-400/25 border-amber-300 text-white shadow-md'
                     : 'bg-white/5 border-white/10 text-purple-200/75 hover:bg-white/10'
@@ -3816,6 +5013,20 @@ export function SleepingHamster({
                 <div className="text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 whitespace-nowrap">
                   <span>🐹</span>
                   <span>Hamster Cage</span>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSwitchGameMode('bubbles')}
+                className={`py-3 px-2.5 rounded-2xl border text-center transition cursor-pointer ${
+                  gameMode === 'bubbles'
+                    ? 'bg-pink-400/35 border-pink-300 text-white shadow-md'
+                    : 'bg-white/5 border-white/10 text-purple-200/75 hover:bg-white/10'
+                }`}
+              >
+                <div className="text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 whitespace-nowrap">
+                  <span>🫧</span>
+                  <span>Hamster Bubbles</span>
                 </div>
               </button>
             </div>
