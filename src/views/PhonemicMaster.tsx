@@ -21,18 +21,11 @@ export function PhonemicMaster({ onViewChange }: { onViewChange: (view: ViewStat
     <div ref={containerRef} id="game-container" className="w-full min-h-full flex-1 flex flex-col relative bg-white dark:bg-slate-900">
       <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shadow-sm z-10">
         <button
-          onClick={() => onViewChange("games")}
-          className="flex items-center gap-2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white font-bold transition-colors"
+          onClick={() => onViewChange("home")}
+          className="flex items-center gap-2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white font-bold transition-colors cursor-pointer"
         >
           <ArrowLeft className="w-5 h-5" />
-          Back to Games
-        </button>
-        <button 
-          onClick={toggleFullScreen}
-          className="flex items-center gap-2 text-slate-500 hover:text-sky-600 dark:text-slate-400 dark:hover:text-sky-400 transition-colors font-semibold text-sm"
-        >
-          <Maximize className="w-5 h-5" />
-          Fullscreen
+          Back
         </button>
       </div>
       <iframe

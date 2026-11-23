@@ -528,13 +528,13 @@ function gameReducer(state: typeof initialState, action: any): typeof initialSta
     }
 }
 
-const ModeSelection = ({ onSelectMode, onViewChange }: { onSelectMode: (mode: string) => void, onViewChange: (view: ViewState) => void }) => {
+const ModeSelection = ({ onSelectMode, onViewChange }: { onSelectMode: (mode: string) => void, onViewChange: (view: ViewState, data?: any) => void }) => {
     const [pickedMode, setPickedMode] = useState<'LOCAL' | 'HOST' | 'JOIN'>('LOCAL');
     return (
         <div className="min-h-screen w-full relative">
             <UnifiedGameSetup
                 title="TIC-TAC-TOE BATTLE"
-                onBack={() => onViewChange("games")}
+                onBack={() => onViewChange("home", { __stepBack: true })}
                 playerModeOptions={[
                     { id: 'LOCAL', label: 'LOCAL 2P', icon: '🖥️' },
                     { id: 'HOST', label: 'HOST ROOM', icon: '👑' },
@@ -1375,7 +1375,7 @@ export const TicTacToe = ({
     initialJoinData,
     initialGame,
 }: {
-    onViewChange: (view: ViewState) => void;
+    onViewChange: (view: ViewState, data?: any) => void;
     initialJoinData?: { code: string; nickname: string } | null;
     initialGame?: any;
 }) => {
@@ -1488,7 +1488,7 @@ export const TicTacToe = ({
                         dispatch({type: 'RETURN_TO_SETUP'});
                         NetworkManager.cleanup();
                         NetworkManager.messageCallback = null;
-                        onViewChange("games");
+                        onViewChange("home", { __stepBack: true });
                     }}
                     className="flex items-center gap-2 p-2 rounded-full transition-colors backdrop-blur-md border border-gray-800 text-gray-400 hover:text-white bg-gray-900/50 hover:bg-gray-800 shadow-sm"
                 >
@@ -1509,7 +1509,7 @@ export const TicTacToe = ({
                         dispatch({ type: 'RETURN_TO_SETUP' });
                         NetworkManager.cleanup();
                         NetworkManager.messageCallback = null;
-                        onViewChange("games");
+                        onViewChange("home", { __stepBack: true });
                     }}
                 />
             )}

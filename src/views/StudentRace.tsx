@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Confetti from 'react-confetti';
 import { useWindowSize } from 'react-use';
 import { 
-  Users, Play, History, Trash2, Plus, 
+  ArrowLeft, Users, Play, History, Trash2, Plus, 
   ChevronRight, Trophy, X, Save, Check
 } from 'lucide-react';
 
@@ -223,13 +223,25 @@ export function StudentRace({ onViewChange }: any) {
       {!isFullScreenGame && (
         <header className="bg-indigo-600 text-white shadow-md z-10 p-4 sticky top-0">
           <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setCurrentMode(GAME_MODES.HOME)}>
-              <div className="bg-yellow-400 p-2 rounded-xl group-hover:scale-110 transition-transform">
-                <Play className="w-6 h-6 text-indigo-900 fill-current" />
+            <div className="flex items-center gap-3">
+              {onViewChange && (
+                <button
+                  type="button"
+                  onClick={() => onViewChange('home', { __stepBack: true })}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold text-sm transition-colors cursor-pointer border border-white/25"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Back</span>
+                </button>
+              )}
+              <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setCurrentMode(GAME_MODES.HOME)}>
+                <div className="bg-yellow-400 p-2 rounded-xl group-hover:scale-110 transition-transform">
+                  <Play className="w-6 h-6 text-indigo-900 fill-current" />
+                </div>
+                <h1 className="text-2xl font-black tracking-tight flex items-center gap-1">
+                  NAME <span className="text-yellow-400">PICKER</span>
+                </h1>
               </div>
-              <h1 className="text-2xl font-black tracking-tight flex items-center gap-1">
-                NAME <span className="text-yellow-400">PICKER</span>
-              </h1>
             </div>
 
             <nav className="flex gap-1 overflow-x-auto no-scrollbar pb-1 sm:pb-0">

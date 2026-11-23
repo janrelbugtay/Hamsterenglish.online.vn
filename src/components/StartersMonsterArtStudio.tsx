@@ -2959,13 +2959,6 @@ export const StartersMonsterArtStudio: React.FC<StartersMonsterArtStudioProps> =
               <span>Slide Deck View</span>
             </button>
           )}
-          <button
-            onClick={toggleFullscreen}
-            className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-sm"
-          >
-            {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-            <span>{isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}</span>
-          </button>
         </div>
       </div>
 

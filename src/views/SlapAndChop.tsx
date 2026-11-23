@@ -7315,7 +7315,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           quiz={activeQuiz}
           folders={folders}
           onSave={saveQuiz}
-          onCancel={() => onViewChange('games')}
+          onCancel={() => onViewChange('home', { __stepBack: true })}
           onPlayDirect={(updatedQuiz) => {
             if (updatedQuiz) setActiveQuiz(updatedQuiz);
             setScreen('setup');
@@ -7329,7 +7329,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
           title="MOSQUITO SLAP 3D"
           containerId="slap-and-chop-container"
           questionCount={activeQuiz.questions.length}
-          onBack={() => setScreen('editor')}
+          onBack={() => onViewChange('home', { __stepBack: true })}
           onOpenSettings={() => setShowSettingsModal(true)}
           onOpenGameSwitcher={() => setShowModeModal(true)}
           onOpenQuizEditor={() => setScreen('editor')}

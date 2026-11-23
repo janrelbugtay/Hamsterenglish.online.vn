@@ -523,6 +523,9 @@ export default function App() {
     }
 
     // Support 1-step-back navigation when data?.stepBack is passed or when navigating between views
+    if (document.fullscreenElement && document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    }
     if (data && data.__stepBack && viewHistoryRef.current.length > 0) {
       const prev = viewHistoryRef.current.pop()!;
       setCurrentView(prev.view);
@@ -799,7 +802,7 @@ export default function App() {
       case "squid-game-picker":
         return <SquidGamePicker onViewChange={handleViewChange} />;
       case "letter-lock":
-        return <LetterLock />;
+        return <LetterLock onViewChange={handleViewChange} />;
       case "tic-tac-toe":
         return <TicTacToe onViewChange={handleViewChange} initialJoinData={joinData} initialGame={selectedGame} />;
       case "homework":
@@ -857,6 +860,7 @@ export default function App() {
     "flashcards-match", "phonemic-master", "sleeping-hamster"
   ].includes(currentView);
   const isClass = currentView === "class-record" || currentView === "class-rewards";
+  const isAutoFullscreenView = isGame || isClass;
   const isAdminView = currentView === "admin-dashboard" && isAdmin;
 
   return (
@@ -871,6 +875,12 @@ export default function App() {
         }}
         onSuccess={() => {
           if (pendingAction) {
+            if (currentViewRef.current !== pendingAction.view) {
+              viewHistoryRef.current.push({
+                view: currentViewRef.current,
+                game: selectedGameRef.current
+              });
+            }
             setCurrentView(pendingAction.view);
             setSelectedGame(pendingAction.data || null);
             setPendingAction(null);
@@ -888,6 +898,12 @@ export default function App() {
         }}
         onSuccess={() => {
           if (pendingAction) {
+            if (currentViewRef.current !== pendingAction.view) {
+              viewHistoryRef.current.push({
+                view: currentViewRef.current,
+                game: selectedGameRef.current
+              });
+            }
             setCurrentView(pendingAction.view);
             setSelectedGame(pendingAction.data || null);
             setPendingAction(null);
@@ -900,7 +916,7 @@ export default function App() {
           }
         }}
       />
-      {!isLockedHomeworkLink && (
+      {!isLockedHomeworkLink && !isAutoFullscreenView && (
         <Navigation 
           currentView={currentView} 
           onViewChange={handleViewChange} 
@@ -911,8 +927,8 @@ export default function App() {
         />
       )}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {!isLockedHomeworkLink && (
-          <div className={isGame ? "hidden md:block shrink-0" : "shrink-0"}>
+        {!isLockedHomeworkLink && !isAutoFullscreenView && (
+          <div className="shrink-0">
             <Header
               onViewChange={handleViewChange}
               setIsMobileMenuOpen={setIsMobileMenuOpen}
@@ -929,15 +945,13 @@ export default function App() {
           className={`flex-1 custom-scrollbar ${
             isAdminView
               ? "p-0 space-y-0 h-full flex flex-col overflow-hidden"
-              : isLockedHomeworkLink || isGame
-              ? "p-0 space-y-0 h-full flex flex-col overflow-y-auto"
-              : isClass
-              ? "p-2 md:p-3 space-y-0 overflow-y-auto"
+              : isLockedHomeworkLink || isAutoFullscreenView
+              ? "p-0 space-y-0 w-full h-full flex flex-col overflow-y-auto"
               : "p-4 md:p-8 space-y-6 overflow-y-auto"
           }`}
         >
           {renderView()}
-          {!isLockedHomeworkLink && !isGame && !isClass && !isAdminView && (
+          {!isLockedHomeworkLink && !isAutoFullscreenView && !isAdminView && (
             <Footer onViewChange={handleViewChange} />
           )}
         </main>

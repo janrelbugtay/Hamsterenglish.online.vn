@@ -360,41 +360,68 @@ interface FloatingParticle {
   durationSec: number;
 }
 
+const CAGE_QUIET_APPEAR_SECONDS = 10;
+
 interface CageSlot {
   x: number;
   y: number;
   scale: number;
   flip?: boolean;
   accessory?: 'bow' | 'pacifier' | 'tuft';
+  walkRangeX?: number;
+  walkSpeed?: number;
+  level?: 'floor' | 'loft' | 'roof';
 }
 
-// 10 cozy slots for Adult Hamsters (1..10) inside the terrarium cage
+interface CageWalkerState {
+  x: number;
+  y: number;
+  dir: 1 | -1;
+  phase: number;
+  pauseSec: number;
+  isWalking: boolean;
+}
+
+// 10 cozy walking patrol slots for Adult Hamsters (1..10) inside the deluxe multi-level terrarium cage
 const CAGE_ADULT_SLOTS: CageSlot[] = [
-  { x: 465, y: 382, scale: 0.39 },
-  { x: 582, y: 390, scale: 0.38, flip: true },
-  { x: 354, y: 390, scale: 0.37 },
-  { x: 185, y: 388, scale: 0.37 },
-  { x: 892, y: 388, scale: 0.37, flip: true },
-  { x: 746, y: 365, scale: 0.34, flip: true },
-  { x: 295, y: 292, scale: 0.33 },
-  { x: 686, y: 222, scale: 0.31 },
-  { x: 792, y: 222, scale: 0.31, flip: true },
-  { x: 938, y: 328, scale: 0.34, flip: true },
+  { x: 465, y: 386, scale: 0.39, walkRangeX: 95, walkSpeed: 42, level: 'floor' },
+  { x: 585, y: 392, scale: 0.38, flip: true, walkRangeX: 85, walkSpeed: 38, level: 'floor' },
+  { x: 342, y: 390, scale: 0.37, walkRangeX: 82, walkSpeed: 40, level: 'floor' },
+  { x: 182, y: 388, scale: 0.37, walkRangeX: 68, walkSpeed: 36, level: 'floor' },
+  { x: 882, y: 388, scale: 0.37, flip: true, walkRangeX: 58, walkSpeed: 37, level: 'floor' },
+  { x: 742, y: 366, scale: 0.34, flip: true, walkRangeX: 64, walkSpeed: 35, level: 'floor' },
+  { x: 235, y: 218, scale: 0.33, walkRangeX: 78, walkSpeed: 39, level: 'loft' },
+  { x: 472, y: 218, scale: 0.32, flip: true, walkRangeX: 88, walkSpeed: 41, level: 'loft' },
+  { x: 746, y: 194, scale: 0.31, flip: true, walkRangeX: 58, walkSpeed: 33, level: 'roof' },
+  { x: 918, y: 334, scale: 0.34, flip: true, walkRangeX: 46, walkSpeed: 34, level: 'floor' },
 ];
 
-// 10 cozy slots for Baby Hamsters (11..20) inside the terrarium cage
+// 10 cozy walking patrol slots for Baby Hamsters (11..20) inside the deluxe multi-level terrarium cage
 const CAGE_BABY_SLOTS: CageSlot[] = [
-  { x: 412, y: 422, scale: 0.25, accessory: 'bow' },
-  { x: 516, y: 424, scale: 0.25, flip: true, accessory: 'pacifier' },
-  { x: 618, y: 420, scale: 0.24, accessory: 'tuft' },
-  { x: 248, y: 420, scale: 0.25, accessory: 'pacifier' },
-  { x: 122, y: 418, scale: 0.24, flip: true, accessory: 'bow' },
-  { x: 842, y: 422, scale: 0.25, flip: true, accessory: 'tuft' },
-  { x: 928, y: 416, scale: 0.24, accessory: 'bow' },
-  { x: 318, y: 426, scale: 0.23, flip: true, accessory: 'tuft' },
-  { x: 572, y: 426, scale: 0.23, accessory: 'pacifier' },
-  { x: 668, y: 392, scale: 0.24, flip: true, accessory: 'bow' },
+  { x: 412, y: 422, scale: 0.25, accessory: 'bow', walkRangeX: 76, walkSpeed: 48, level: 'floor' },
+  { x: 518, y: 424, scale: 0.25, flip: true, accessory: 'pacifier', walkRangeX: 72, walkSpeed: 46, level: 'floor' },
+  { x: 622, y: 420, scale: 0.24, accessory: 'tuft', walkRangeX: 66, walkSpeed: 50, level: 'floor' },
+  { x: 246, y: 420, scale: 0.25, accessory: 'pacifier', walkRangeX: 68, walkSpeed: 44, level: 'floor' },
+  { x: 136, y: 418, scale: 0.24, flip: true, accessory: 'bow', walkRangeX: 52, walkSpeed: 42, level: 'floor' },
+  { x: 838, y: 422, scale: 0.25, flip: true, accessory: 'tuft', walkRangeX: 62, walkSpeed: 49, level: 'floor' },
+  { x: 918, y: 416, scale: 0.24, accessory: 'bow', walkRangeX: 46, walkSpeed: 45, level: 'floor' },
+  { x: 322, y: 426, scale: 0.23, flip: true, accessory: 'tuft', walkRangeX: 64, walkSpeed: 52, level: 'floor' },
+  { x: 562, y: 226, scale: 0.23, accessory: 'pacifier', walkRangeX: 54, walkSpeed: 44, level: 'loft' },
+  { x: 358, y: 226, scale: 0.24, flip: true, accessory: 'bow', walkRangeX: 58, walkSpeed: 47, level: 'loft' },
 ];
+
+const ALL_CAGE_SLOTS: CageSlot[] = [...CAGE_ADULT_SLOTS, ...CAGE_BABY_SLOTS];
+
+function createInitialCageWalkers(): CageWalkerState[] {
+  return ALL_CAGE_SLOTS.map((slot, idx) => ({
+    x: slot.x + (((idx * 29) % 5) - 2) * 8,
+    y: slot.y,
+    dir: slot.flip ? 1 : -1,
+    phase: idx * 1.15,
+    pauseSec: 0,
+    isWalking: true,
+  }));
+}
 
 interface LeavingHamsterState {
   slotIndex: number;
@@ -658,6 +685,22 @@ interface HamsterBallPhysicsState {
   vy: number;
   rot: number;
   vRot: number;
+  restY: number;
+  driftAngle: number;
+}
+
+function createInitialHamsterBallsState(): HamsterBallPhysicsState[] {
+  return HAMSTER_BALL_SPECS.map((s) => ({
+    id: s.id,
+    x: s.homeX,
+    y: s.homeY,
+    vx: 0,
+    vy: 0,
+    rot: 0,
+    vRot: 0,
+    restY: s.homeY,
+    driftAngle: (s.id * 1.37) % (Math.PI * 2),
+  }));
 }
 
 const AMBIENT_DUST_MOTES = [
@@ -731,16 +774,11 @@ export function SleepingHamster({
   const [cageQuietSeconds, setCageQuietSeconds] = useState<number>(0);
   const [leavingHamster, setLeavingHamster] = useState<LeavingHamsterState | null>(null);
   const [justArrivedSlot, setJustArrivedSlot] = useState<number | null>(null);
+  const [cageWalkersState, setCageWalkersState] = useState<CageWalkerState[]>(() =>
+    createInitialCageWalkers()
+  );
   const [hamsterBallsState, setHamsterBallsState] = useState<HamsterBallPhysicsState[]>(() =>
-    HAMSTER_BALL_SPECS.map((s) => ({
-      id: s.id,
-      x: s.homeX,
-      y: s.homeY,
-      vx: 0,
-      vy: 0,
-      rot: 0,
-      vRot: 0,
-    }))
+    createInitialHamsterBallsState()
   );
   const [bubblesFlyingCount, setBubblesFlyingCount] = useState<number>(0);
 
@@ -781,17 +819,13 @@ export function SleepingHamster({
   const leavingHamsterRef = useRef<LeavingHamsterState | null>(null);
   const leavingTimeoutRef = useRef<number | null>(null);
   const arriveTimeoutRef = useRef<number | null>(null);
+  const cageWalkersRef = useRef<CageWalkerState[]>(createInitialCageWalkers());
   const hamsterBallsPhysicsRef = useRef<HamsterBallPhysicsState[]>(
-    HAMSTER_BALL_SPECS.map((s) => ({
-      id: s.id,
-      x: s.homeX,
-      y: s.homeY,
-      vx: 0,
-      vy: 0,
-      rot: 0,
-      vRot: 0,
-    }))
+    createInitialHamsterBallsState()
   );
+  const bubbleGroupRefs = useRef<(SVGGElement | null)[]>([]);
+  const bubbleShadowRefs = useRef<(SVGEllipseElement | null)[]>([]);
+  const bubblesFlyingCountRef = useRef<number>(0);
 
   gameModeRef.current = gameMode;
 
@@ -1463,102 +1497,306 @@ export function SleepingHamster({
           cageNoiseAccumRef.current = Math.max(0, cageNoiseAccumRef.current - 0.65 * dtSec);
         }
 
-        // 60fps Hamster Bubbles Physics:
-        // - When noisy: Shh sound triggers and hamster bubbles fly around the entire canvas!
-        // - When quiet: Hamster bubbles smoothly glide back and stay in their exact resting place!
-        if (snap.gameMode === 'bubbles') {
-          const balls = hamsterBallsPhysicsRef.current;
-          const intensity =
-            activeState === 'AWAKE' ? 1.45 : activeState === 'ALMOST_AWAKE' ? 1.12 : 0.82;
-          let flyingCount = 0;
+        // 60fps Hamster Cage Walking Patrol Physics:
+        // Hamsters walk back & forth across their floor, wooden mezzanine loft, and roof decks with animated stepping feet!
+        if (snap.gameMode === 'cage') {
+          const walkers = cageWalkersRef.current;
+          for (let i = 0; i < ALL_CAGE_SLOTS.length; i++) {
+            const w = walkers[i];
+            const slot = ALL_CAGE_SLOTS[i];
+            if (!w || !slot) continue;
 
-          for (let i = 0; i < balls.length; i++) {
-            const b = balls[i];
-            const spec = HAMSTER_BALL_SPECS[i];
             if (isNoisyNow) {
-              // Launch upward from resting pile and fly around the 1200x540 canvas
-              const phaseX = nowPerf * 0.0029 + i * 1.37;
-              const phaseY = nowPerf * 0.0024 + i * 1.93;
-              const targetAltY = 75 + ((i * 53) % 330);
-              const altPull = (targetAltY - b.y) * 2.2;
-
-              b.vx +=
-                (Math.sin(phaseX) * 320 + Math.cos(phaseY * 0.8) * 140) * intensity * dtSec;
-              b.vy +=
-                (altPull + Math.cos(phaseY) * 290 - (b.y > 320 ? 220 : 0)) * intensity * dtSec;
-
-              // Keep lively flying speed while noisy
-              const speed = Math.hypot(b.vx, b.vy);
-              const maxSpeed = 360 * intensity;
-              const minSpeed = 125 * intensity;
-              if (speed > maxSpeed) {
-                b.vx = (b.vx / speed) * maxSpeed;
-                b.vy = (b.vy / speed) * maxSpeed;
-              } else if (speed < minSpeed) {
-                const angle = phaseX;
-                b.vx += Math.cos(angle) * 95 * intensity * dtSec;
-                b.vy -= Math.abs(Math.sin(angle)) * 135 * intensity * dtSec;
-              }
-
-              b.x += b.vx * dtSec;
-              b.y += b.vy * dtSec;
-
-              // Gentle playful rotation while flying
-              b.vRot += (b.vx * 0.14 - b.rot * 2.4) * dtSec;
-              b.vRot *= 0.96;
-              b.rot = Math.max(-28, Math.min(28, b.rot + b.vRot * dtSec));
-
-              // Bounce off walls & ceiling/floor of 1200x540 stage
-              const minX = spec.r + 12;
-              const maxX = 1200 - spec.r - 12;
-              const minY = spec.r + 14;
-              const maxY = 496 - spec.r;
-
-              if (b.x < minX) {
-                b.x = minX;
-                b.vx = Math.abs(b.vx) * 0.88;
-              } else if (b.x > maxX) {
-                b.x = maxX;
-                b.vx = -Math.abs(b.vx) * 0.88;
-              }
-              if (b.y < minY) {
-                b.y = minY;
-                b.vy = Math.abs(b.vy) * 0.88;
-              } else if (b.y > maxY) {
-                b.y = maxY;
-                b.vy = -Math.abs(b.vy) * 0.9;
-              }
-              flyingCount += 1;
+              w.isWalking = false;
             } else {
-              // Quiet: smoothly spring back to resting homeX, homeY and stay in place
-              const dx = spec.homeX - b.x;
-              const dy = spec.homeY - b.y;
-              const dist = Math.hypot(dx, dy);
-
-              if (dist > 0.35 || Math.hypot(b.vx, b.vy) > 1.5 || Math.abs(b.rot) > 0.3) {
-                const springK = 14.5;
-                const damping = Math.pow(0.035, dtSec);
-                b.vx = (b.vx + dx * springK * dtSec) * damping;
-                b.vy = (b.vy + dy * springK * dtSec) * damping;
-                b.x += b.vx * dtSec;
-                b.y += b.vy * dtSec;
-                b.rot = b.rot * Math.pow(0.03, dtSec);
-                b.vRot = b.vRot * Math.pow(0.03, dtSec);
-                if (dist > 8) flyingCount += 1;
+              if (w.pauseSec > 0) {
+                w.pauseSec = Math.max(0, w.pauseSec - dtSec);
+                w.isWalking = false;
               } else {
-                b.x = spec.homeX;
-                b.y = spec.homeY;
-                b.vx = 0;
-                b.vy = 0;
-                b.rot = 0;
-                b.vRot = 0;
+                w.isWalking = true;
+                const speed = slot.walkSpeed ?? 38;
+                const range = slot.walkRangeX ?? 72;
+                w.x += w.dir * speed * dtSec;
+                w.phase += speed * 0.24 * dtSec;
+                const minX = slot.x - range;
+                const maxX = slot.x + range;
+                if (w.x <= minX) {
+                  w.x = minX;
+                  w.dir = 1;
+                  w.pauseSec = 0.55 + ((i * 37) % 9) * 0.08;
+                  w.isWalking = false;
+                } else if (w.x >= maxX) {
+                  w.x = maxX;
+                  w.dir = -1;
+                  w.pauseSec = 0.55 + ((i * 53) % 9) * 0.08;
+                  w.isWalking = false;
+                }
+                w.y = slot.y;
               }
             }
           }
 
           if (frameCounter % 2 === 0) {
+            setCageWalkersState(walkers.map((item) => ({ ...item })));
+          }
+        }
+
+        // 60fps Direct-DOM Hardware-Accelerated Hamster Bubbles Physics:
+        // - Free-floating bubbles with smooth 60fps wall rebounds & elastic sphere-to-sphere collisions
+        // - Instant dB response: stay still when quiet, gentle drift at low dB, fast zoom at loud dB
+        // - Smooth anti-clumping floor settling: when quiet again, float down and spread evenly across the bottom floor
+        if (snap.gameMode === 'bubbles') {
+          const balls = hamsterBallsPhysicsRef.current;
+          // Use fast-reacting peak of sustained energy & instantaneous rawInput for instant dB response
+          const liveAudio =
+            snap.isMicMuted || timerEndPhaseRef.current !== 'idle'
+              ? 0
+              : Math.max(energy, rawInput * 0.95);
+          const quietCeiling = Math.max(8, t.light * 0.68);
+
+          // Continuous dB-to-speed drive:
+          // 0 = Quiet (settle smoothly & stay still)
+          // 0.14..0.48 = Low dB (instant gentle floating drift: 110–260 px/s)
+          // 0.50..1.10 = Medium-High dB (active bouncing flight: 280–640 px/s)
+          // 1.15..2.45 = Loud / Noisier dB (very fast zoom around screen: 660–1280 px/s)
+          let dbDrive = 0;
+          if (liveAudio > quietCeiling) {
+            if (liveAudio < t.disturbed) {
+              const ratio = (liveAudio - quietCeiling) / Math.max(6, t.disturbed - quietCeiling);
+              dbDrive = 0.14 + ratio * 0.34;
+            } else if (liveAudio < t.awake) {
+              const ratio = (liveAudio - t.disturbed) / Math.max(8, t.awake - t.disturbed);
+              dbDrive = 0.48 + ratio * 0.64;
+            } else {
+              const ratio = Math.min(1.5, (liveAudio - t.awake) / Math.max(10, 92 - t.awake));
+              dbDrive = 1.12 + ratio * 1.35;
+            }
+          }
+
+          let movingCount = 0;
+
+          for (let i = 0; i < balls.length; i++) {
+            const b = balls[i];
+            const spec = HAMSTER_BALL_SPECS[i];
+            const minX = spec.r + 12;
+            const maxX = 1200 - spec.r - 12;
+            const minY = spec.r + 14;
+            const maxY = 496 - spec.r;
+            const floorZoneTop = 258 + spec.r * 0.35;
+
+            if (dbDrive > 0) {
+              // Target speed scales immediately with classroom dB
+              const speedVar = 0.88 + ((i * 19) % 7) * 0.045;
+              const targetSpeed = (340 * dbDrive + 165 * dbDrive * dbDrive) * speedVar;
+
+              // Gently curve the bubble's flight angle like real air-Current bubbles
+              const swirl =
+                Math.sin(nowPerf * 0.0022 + i * 1.71) * 1.35 +
+                Math.cos(nowPerf * 0.0017 + i * 2.33) * 1.15;
+              b.driftAngle += swirl * (0.85 + dbDrive * 0.9) * dtSec;
+
+              const curSpeed = Math.hypot(b.vx, b.vy);
+              if (curSpeed < 18) {
+                // Instant launch from rest with upward buoyant lift
+                const launchAngle = -Math.PI * (0.18 + ((i * 23) % 13) * 0.05);
+                b.driftAngle = launchAngle;
+                b.vx = Math.cos(launchAngle) * targetSpeed * 0.85;
+                b.vy = Math.sin(launchAngle) * targetSpeed * 0.85 - 95 * dbDrive;
+              } else {
+                // Blend current velocity vector smoothly with swirling target speed without fighting collisions
+                const velAngle = Math.atan2(b.vy, b.vx);
+                const turnedAngle = velAngle + swirl * 0.55 * dtSec;
+                const desiredSpeed = Math.max(targetSpeed, curSpeed * Math.pow(0.55, dtSec));
+                const accel = Math.min(1, (6.5 + dbDrive * 6.0) * dtSec);
+                b.vx += (Math.cos(turnedAngle) * desiredSpeed - b.vx) * accel;
+                b.vy += (Math.sin(turnedAngle) * desiredSpeed - b.vy) * accel;
+              }
+
+              // Upward buoyancy when noisy so bubbles lift off the floor and fill the whole stage
+              if (b.y > 330) {
+                b.vy -= (185 + 240 * dbDrive) * dtSec;
+              } else if (dbDrive < 0.38 && b.y < 190) {
+                // At very low noise ("move a bit"), keep bubbles floating in the lower-mid region
+                b.vy += (190 - b.y) * 1.8 * dtSec;
+              }
+
+              b.x += b.vx * dtSec;
+              b.y += b.vy * dtSec;
+
+              // Update resting height organically within the bottom floor band
+              b.restY = Math.max(floorZoneTop, Math.min(maxY, 310 + ((i * 37) % 165)));
+
+              // Playful rotation synced to horizontal speed
+              b.vRot += (b.vx * 0.11 - b.rot * 2.8) * dtSec;
+              b.vRot *= 0.94;
+              b.rot = Math.max(-28, Math.min(28, b.rot + b.vRot * dtSec));
+
+              // Crisp elastic wall rebounds
+              if (b.x < minX) {
+                b.x = minX;
+                b.vx = Math.abs(b.vx) * 0.92;
+                b.driftAngle = Math.atan2(b.vy, b.vx);
+              } else if (b.x > maxX) {
+                b.x = maxX;
+                b.vx = -Math.abs(b.vx) * 0.92;
+                b.driftAngle = Math.atan2(b.vy, b.vx);
+              }
+              if (b.y < minY) {
+                b.y = minY;
+                b.vy = Math.abs(b.vy) * 0.92;
+                b.driftAngle = Math.atan2(b.vy, b.vx);
+              } else if (b.y > maxY) {
+                b.y = maxY;
+                b.vy = -Math.abs(b.vy) * 0.92;
+                b.driftAngle = Math.atan2(b.vy, b.vx);
+              }
+
+              movingCount += 1;
+            } else {
+              // Quiet: Smooth anti-clumping floor settling into the bottom zone
+              const dragX = Math.pow(0.05, dtSec);
+              b.vx *= dragX;
+
+              if (b.y < floorZoneTop) {
+                // Float smoothly downward from upper screen into the bottom floor zone
+                b.vy += 360 * dtSec;
+                b.vy *= Math.pow(0.18, dtSec);
+              } else if (b.y < b.restY - 2) {
+                const dy = b.restY - b.y;
+                b.vy = (b.vy + dy * 5.8 * dtSec) * Math.pow(0.06, dtSec);
+              } else {
+                b.restY = Math.max(floorZoneTop, Math.min(maxY, b.y));
+                b.vy *= Math.pow(0.03, dtSec);
+              }
+
+              b.x += b.vx * dtSec;
+              b.y += b.vy * dtSec;
+
+              if (b.x < minX) {
+                b.x = minX;
+                b.vx = Math.abs(b.vx) * 0.5;
+              } else if (b.x > maxX) {
+                b.x = maxX;
+                b.vx = -Math.abs(b.vx) * 0.5;
+              }
+              if (b.y < minY) {
+                b.y = minY;
+                b.vy = Math.abs(b.vy) * 0.5;
+              } else if (b.y > maxY) {
+                b.y = maxY;
+                b.vy = 0;
+              }
+
+              b.rot *= Math.pow(0.02, dtSec);
+              b.vRot *= Math.pow(0.02, dtSec);
+
+              if (Math.hypot(b.vx, b.vy) < 2.2 && b.y >= floorZoneTop - 4) {
+                b.vx = 0;
+                b.vy = 0;
+                b.vRot = 0;
+                if (Math.abs(b.rot) < 0.25) b.rot = 0;
+              } else if (Math.hypot(b.vx, b.vy) > 22) {
+                movingCount += 1;
+              }
+            }
+          }
+
+          // Pairwise Elastic Sphere-to-Sphere Collision & Anti-Clumping Horizontal Distribution (2 solver passes)
+          const restitution = dbDrive > 0 ? 0.86 : 0.25;
+          for (let pass = 0; pass < 2; pass++) {
+            for (let i = 0; i < balls.length; i++) {
+              const b1 = balls[i];
+              const r1 = HAMSTER_BALL_SPECS[i].r;
+              for (let j = i + 1; j < balls.length; j++) {
+                const b2 = balls[j];
+                const r2 = HAMSTER_BALL_SPECS[j].r;
+                const dx = b2.x - b1.x;
+                const dy = b2.y - b1.y;
+                const distSq = dx * dx + dy * dy;
+                const minSep = (r1 + r2) * 0.94;
+
+                if (distSq < minSep * minSep) {
+                  const dist = Math.sqrt(Math.max(0.01, distSq));
+                  const nx = dx / dist;
+                  const ny = dy / dist;
+                  const overlap = minSep - dist;
+
+                  // Immediate positional separation weighted by inverse radius so spheres NEVER clump or stack
+                  const totalR = r1 + r2;
+                  const w1 = r2 / totalR;
+                  const w2 = r1 / totalR;
+                  b1.x -= nx * overlap * w1;
+                  b1.y -= ny * overlap * w1;
+                  b2.x += nx * overlap * w2;
+                  b2.y += ny * overlap * w2;
+
+                  // Clamp back inside stage walls
+                  b1.x = Math.max(r1 + 12, Math.min(1200 - r1 - 12, b1.x));
+                  b1.y = Math.max(r1 + 14, Math.min(496 - r1, b1.y));
+                  b2.x = Math.max(r2 + 12, Math.min(1200 - r2 - 12, b2.x));
+                  b2.y = Math.max(r2 + 14, Math.min(496 - r2, b2.y));
+
+                  // Elastic impulse bounce on pass 0
+                  if (pass === 0) {
+                    const rvx = b2.vx - b1.vx;
+                    const rvy = b2.vy - b1.vy;
+                    const velAlongNormal = rvx * nx + rvy * ny;
+                    if (velAlongNormal < 0) {
+                      const impulse = -(1 + restitution) * velAlongNormal * 0.5;
+                      b1.vx -= impulse * nx;
+                      b1.vy -= impulse * ny;
+                      b2.vx += impulse * nx;
+                      b2.vy += impulse * ny;
+                    }
+                  }
+                } else if (pass === 0 && dbDrive === 0 && movingCount > 0) {
+                  // Anti-clumping horizontal spreading force while settling on the floor
+                  const spreadDist = (r1 + r2) * 1.26;
+                  if (distSq < spreadDist * spreadDist && Math.abs(dy) < (r1 + r2) * 0.9) {
+                    const horizSign = dx >= 0 ? 1 : -1;
+                    const push = (1 - Math.sqrt(distSq) / spreadDist) * 110 * dtSec;
+                    b1.vx -= horizSign * push;
+                    b2.vx += horizSign * push;
+                  }
+                }
+              }
+            }
+          }
+
+          // Direct 60fps DOM Transform Updates (Zero React Re-Render Lag!)
+          for (let i = 0; i < balls.length; i++) {
+            const b = balls[i];
+            const spec = HAMSTER_BALL_SPECS[i];
+            const groupEl = bubbleGroupRefs.current[i];
+            if (groupEl) {
+              groupEl.setAttribute(
+                'transform',
+                `translate(${b.x.toFixed(1)}, ${b.y.toFixed(1)}) rotate(${b.rot.toFixed(1)})`
+              );
+            }
+            const shadowEl = bubbleShadowRefs.current[i];
+            if (shadowEl) {
+              const baseRestY = b.restY ?? spec.homeY;
+              const lift = Math.max(0, baseRestY - b.y);
+              const shadowScale = Math.max(0.28, 1 - lift / 360);
+              const shadowY = Math.min(504, Math.max(b.y, baseRestY) + spec.r * 0.92);
+              shadowEl.setAttribute('cx', b.x.toFixed(1));
+              shadowEl.setAttribute('cy', shadowY.toFixed(1));
+              shadowEl.setAttribute('rx', (spec.r * 0.95 * shadowScale).toFixed(1));
+              shadowEl.setAttribute('ry', (spec.r * 0.24 * shadowScale).toFixed(1));
+              shadowEl.setAttribute('opacity', shadowScale.toFixed(2));
+            }
+          }
+
+          // Only trigger React state update when calm/flying state transitions or when settling completes
+          const wasFlying = bubblesFlyingCountRef.current > 0;
+          const isFlying = movingCount > 0;
+          if (wasFlying !== isFlying || (wasFlying && !isFlying)) {
+            bubblesFlyingCountRef.current = movingCount;
+            setBubblesFlyingCount(movingCount);
             setHamsterBallsState(balls.map((item) => ({ ...item })));
-            setBubblesFlyingCount(flyingCount);
+          } else {
+            bubblesFlyingCountRef.current = movingCount;
           }
         }
 
@@ -1635,17 +1873,23 @@ export function SleepingHamster({
           quietMinuteAccumRef.current = 0;
         }
       } else if (snap.gameMode === 'cage') {
-        // Every 20 quiet seconds, 1 new hamster appears (1..10 adults, 11..20 baby hamsters)
+        // Every 10 quiet seconds, 1 new hamster appears (1..10 adults, 11..20 baby hamsters) and starts walking!
         if (isQuietNow && !leavingHamsterRef.current) {
           if (cageCountRef.current < 20) {
             cageQuietSecRef.current += 1;
-            if (cageQuietSecRef.current >= 20) {
+            if (cageQuietSecRef.current >= CAGE_QUIET_APPEAR_SECONDS) {
               cageQuietSecRef.current = 0;
               setCageQuietSeconds(0);
               const arrivedSlot = cageCountRef.current;
               const nextCount = Math.min(20, cageCountRef.current + 1);
               cageCountRef.current = nextCount;
               setCageCount(nextCount);
+              if (cageWalkersRef.current[arrivedSlot]) {
+                const slotDef = ALL_CAGE_SLOTS[arrivedSlot];
+                cageWalkersRef.current[arrivedSlot].x = slotDef ? slotDef.x : cageWalkersRef.current[arrivedSlot].x;
+                cageWalkersRef.current[arrivedSlot].pauseSec = 0;
+                cageWalkersRef.current[arrivedSlot].isWalking = true;
+              }
               setJustArrivedSlot(arrivedSlot);
               if (arriveTimeoutRef.current) window.clearTimeout(arriveTimeoutRef.current);
               arriveTimeoutRef.current = window.setTimeout(() => {
@@ -1740,16 +1984,9 @@ export function SleepingHamster({
   };
 
   const resetHamsterBallsPositions = useCallback(() => {
-    const resetList = HAMSTER_BALL_SPECS.map((s) => ({
-      id: s.id,
-      x: s.homeX,
-      y: s.homeY,
-      vx: 0,
-      vy: 0,
-      rot: 0,
-      vRot: 0,
-    }));
+    const resetList = createInitialHamsterBallsState();
     hamsterBallsPhysicsRef.current = resetList;
+    bubblesFlyingCountRef.current = 0;
     setHamsterBallsState(resetList);
     setBubblesFlyingCount(0);
   }, []);
@@ -1759,10 +1996,11 @@ export function SleepingHamster({
       if (!hasStarted) return;
       const target = hamsterBallsPhysicsRef.current.find((b) => b.id === ballId);
       if (target) {
-        target.vy = -215 - Math.random() * 65;
-        target.vx = (Math.random() - 0.5) * 150;
-        target.vRot = (Math.random() - 0.5) * 110;
-        setHamsterBallsState(hamsterBallsPhysicsRef.current.map((item) => ({ ...item })));
+        target.vy = -380 - Math.random() * 90;
+        target.vx = (Math.random() - 0.5) * 260;
+        target.vRot = (Math.random() - 0.5) * 140;
+        bubblesFlyingCountRef.current = Math.max(1, bubblesFlyingCountRef.current);
+        setBubblesFlyingCount(bubblesFlyingCountRef.current);
       }
       playAlertSound('pet');
       spawnParticle('heart', '🫧 💖', 1.5);
@@ -2410,7 +2648,7 @@ export function SleepingHamster({
                   </div>
                 </div>
 
-                {/* 20-Second Quiet Progress Bar */}
+                {/* 10-Second Quiet Progress Bar */}
                 <div className="flex items-center gap-2">
                   <div className="flex-1 h-2.5 bg-black/45 rounded-full overflow-hidden border border-white/10">
                     <div
@@ -2419,14 +2657,14 @@ export function SleepingHamster({
                         width:
                           cageCount >= 20
                             ? '100%'
-                            : `${Math.min(100, (cageQuietSeconds / 20) * 100)}%`,
+                            : `${Math.min(100, (cageQuietSeconds / CAGE_QUIET_APPEAR_SECONDS) * 100)}%`,
                       }}
                     />
                   </div>
                   <span className="text-[11px] font-mono tabular-nums font-extrabold text-emerald-300 whitespace-nowrap">
                     {cageCount >= 20
                       ? 'MAX 20/20'
-                      : `Quiet ${cageQuietSeconds}/20s`}
+                      : `Quiet ${cageQuietSeconds}/${CAGE_QUIET_APPEAR_SECONDS}s`}
                   </span>
                 </div>
               </div>
@@ -2737,13 +2975,18 @@ export function SleepingHamster({
                       const bState = hamsterBallsState[idx] || {
                         x: spec.homeX,
                         y: spec.homeY,
+                        restY: spec.homeY,
                       };
-                      const lift = Math.max(0, spec.homeY - bState.y);
+                      const baseRestY = bState.restY ?? spec.homeY;
+                      const lift = Math.max(0, baseRestY - bState.y);
                       const shadowScale = Math.max(0.28, 1 - lift / 360);
-                      const shadowY = Math.min(504, spec.homeY + spec.r * 0.92);
+                      const shadowY = Math.min(504, Math.max(bState.y, baseRestY) + spec.r * 0.92);
                       return (
                         <ellipse
                           key={`hb-shadow-${spec.id}`}
+                          ref={(el) => {
+                            bubbleShadowRefs.current[idx] = el;
+                          }}
                           cx={bState.x}
                           cy={shadowY}
                           rx={spec.r * 0.95 * shadowScale}
@@ -2760,6 +3003,7 @@ export function SleepingHamster({
                     {[...HAMSTER_BALL_SPECS]
                       .map((spec, idx) => ({
                         spec,
+                        idx,
                         bState: hamsterBallsState[idx] || {
                           id: spec.id,
                           x: spec.homeX,
@@ -2768,10 +3012,12 @@ export function SleepingHamster({
                           vy: 0,
                           rot: 0,
                           vRot: 0,
+                          restY: spec.homeY,
+                          driftAngle: 0,
                         },
                       }))
                       .sort((a, b) => a.spec.zLayer - b.spec.zLayer)
-                      .map(({ spec, bState }) => {
+                      .map(({ spec, idx, bState }) => {
                         const rim = HAMSTER_BALL_RIMS[spec.rimIdx % HAMSTER_BALL_RIMS.length];
                         const resolvedFurIdx =
                           (spec.furIdx + coatIndex) % HAMSTER_BALL_FURS.length;
@@ -2779,7 +3025,7 @@ export function SleepingHamster({
                         const scale = spec.r / 100;
                         const flipX = spec.flip ? -1 : 1;
                         const isFlyingNow =
-                          Math.hypot(bState.x - spec.homeX, bState.y - spec.homeY) > 6 ||
+                          bubblesFlyingCount > 0 ||
                           sleepState === 'DISTURBED' ||
                           sleepState === 'ALMOST_AWAKE' ||
                           sleepState === 'AWAKE';
@@ -2792,6 +3038,9 @@ export function SleepingHamster({
                         return (
                           <g
                             key={`hamster-ball-${spec.id}`}
+                            ref={(el) => {
+                              bubbleGroupRefs.current[idx] = el;
+                            }}
                             transform={`translate(${bState.x.toFixed(1)}, ${bState.y.toFixed(1)}) rotate(${bState.rot.toFixed(1)})`}
                             onClick={() => handleClickHamsterBubble(spec.id)}
                             className="cursor-pointer"
@@ -3388,7 +3637,7 @@ export function SleepingHamster({
                 {hasStarted && gameMode === 'cage' && timerEndPhase === 'idle' && cageCount === 0 && !leavingHamster && (
                   <div className="absolute top-5 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
                     <div className="px-5 py-2.5 rounded-2xl bg-rose-500/85 border border-rose-200/70 backdrop-blur-md shadow-xl text-white text-xs sm:text-sm font-black tracking-wide whitespace-nowrap">
-                      😡 Cage Empty! Stay quiet for 20s to bring a hamster back ({cageQuietSeconds}/20s)
+                      😡 Cage Empty! Stay quiet for {CAGE_QUIET_APPEAR_SECONDS}s to bring a hamster back ({cageQuietSeconds}/{CAGE_QUIET_APPEAR_SECONDS}s)
                     </div>
                   </div>
                 )}
@@ -3609,7 +3858,7 @@ export function SleepingHamster({
                     <rect x="198" y="416" width="194" height="18" rx="9" fill={currentTheme.wheelColors[1]} stroke={currentTheme.wheelColors[0]} strokeWidth="2" />
                     <g
                       className={
-                        sleepState === 'AWAKE'
+                        sleepState === 'AWAKE' || (gameMode === 'cage' && cageCount > 0)
                           ? 'sh-wheel-spin'
                           : isDisturbedFace || isAlmostAwakeFace
                           ? 'sh-wheel-rock'
@@ -3753,9 +4002,317 @@ export function SleepingHamster({
                     />
                   )}
 
-                  {/* LIVING CHARACTER LAYER: Original Sleeping Hamster OR Hamster Cage (10 Adults + 10 Babies) */}
+                  {/* LIVING CHARACTER LAYER: Original Sleeping Hamster OR Deluxe Multi-Level Walking Hamster Cage (10 Adults + 10 Babies) */}
                   {gameMode === 'cage' ? (
                     <g filter="url(#shSoftShadow)">
+                      {/* DELUXE MULTI-LEVEL HAMSTER CAGE PLAYGROUND ARCHITECTURE */}
+                      <g>
+                        {/* 1. Curved Transparent Acrylic Play Tunnel Tube (Upper Mid-Background) */}
+                        <g opacity="0.92">
+                          {/* Outer Clear Tube Body */}
+                          <path
+                            d="M 355 232 C 355 128, 615 128, 615 232"
+                            fill="none"
+                            stroke="rgba(186, 230, 253, 0.24)"
+                            strokeWidth="44"
+                            strokeLinecap="round"
+                          />
+                          <path
+                            d="M 355 232 C 355 128, 615 128, 615 232"
+                            fill="none"
+                            stroke="rgba(255, 255, 255, 0.42)"
+                            strokeWidth="44"
+                            strokeLinecap="round"
+                            strokeDasharray="2 42"
+                          />
+                          {/* Glossy Top Highlight along Curved Tube */}
+                          <path
+                            d="M 366 224 C 366 140, 604 140, 604 224"
+                            fill="none"
+                            stroke="rgba(255, 255, 255, 0.55)"
+                            strokeWidth="7"
+                            strokeLinecap="round"
+                          />
+                          {/* Colorful Habitrail Connector Rings along the Tunnel */}
+                          {[
+                            { x: 355, y: 224, rot: -6, col: '#38bdf8', dark: '#0284c7' },
+                            { x: 398, y: 170, rot: -48, col: '#f472b6', dark: '#db2777' },
+                            { x: 485, y: 148, rot: 0, col: '#34d399', dark: '#059669' },
+                            { x: 572, y: 170, rot: 48, col: '#fbbf24', dark: '#d97706' },
+                            { x: 615, y: 224, rot: 6, col: '#a78bfa', dark: '#7c3aed' },
+                          ].map((ring, rIdx) => (
+                            <g
+                              key={`tube-ring-${rIdx}`}
+                              transform={`translate(${ring.x}, ${ring.y}) rotate(${ring.rot})`}
+                            >
+                              <rect
+                                x="-7"
+                                y="-25"
+                                width="14"
+                                height="50"
+                                rx="6"
+                                fill={ring.col}
+                                stroke={ring.dark}
+                                strokeWidth="2.5"
+                              />
+                              <rect
+                                x="-3"
+                                y="-20"
+                                width="4"
+                                height="14"
+                                rx="2"
+                                fill="rgba(255,255,255,0.65)"
+                              />
+                            </g>
+                          ))}
+                        </g>
+
+                        {/* 2. Cedar Wood Support Pillars for Upper Mezzanine Loft */}
+                        <rect
+                          x="156"
+                          y="246"
+                          width="16"
+                          height="168"
+                          rx="5"
+                          fill="url(#shWoodHouse)"
+                          stroke={currentTheme.woodHouse[2]}
+                          strokeWidth="2.5"
+                        />
+                        <rect
+                          x="582"
+                          y="246"
+                          width="16"
+                          height="168"
+                          rx="5"
+                          fill="url(#shWoodHouse)"
+                          stroke={currentTheme.woodHouse[2]}
+                          strokeWidth="2.5"
+                        />
+
+                        {/* 3. Slanted Wooden Climbing Ramp with Grippy Ladder Rungs (Floor to Loft) */}
+                        <g>
+                          <polygon
+                            points="365,248 402,248 474,404 434,404"
+                            fill="url(#shWoodHouse)"
+                            stroke={currentTheme.woodHouse[2]}
+                            strokeWidth="3"
+                            strokeLinejoin="round"
+                          />
+                          {[0.16, 0.32, 0.48, 0.64, 0.8].map((t, rungIdx) => {
+                            const rx1 = 368 + (436 - 368) * t;
+                            const rx2 = 399 + (471 - 399) * t;
+                            const ry = 248 + (404 - 248) * t;
+                            return (
+                              <line
+                                key={`ramp-rung-${rungIdx}`}
+                                x1={rx1}
+                                y1={ry}
+                                x2={rx2}
+                                y2={ry}
+                                stroke={currentTheme.woodRoof[0]}
+                                strokeWidth="4.5"
+                                strokeLinecap="round"
+                              />
+                            );
+                          })}
+                        </g>
+
+                        {/* 4. Elevated Cedar Mezzanine Loft & Suspension Bridge Deck (x: 135..632, y: 238..254) */}
+                        <g>
+                          {/* Back Guard Rail Rope & Mini Log Posts */}
+                          <path
+                            d="M 148 214 Q 255 224 365 214 Q 485 224 612 214"
+                            fill="none"
+                            stroke="#fde68a"
+                            strokeWidth="3.5"
+                            strokeDasharray="6 3"
+                          />
+                          {[148, 220, 292, 365, 445, 528, 612].map((postX, pIdx) => (
+                            <g key={`loft-post-${pIdx}`}>
+                              <rect
+                                x={postX - 5}
+                                y="208"
+                                width="10"
+                                height="34"
+                                rx="4"
+                                fill="url(#shWoodRoof)"
+                                stroke={currentTheme.woodRoof[2]}
+                                strokeWidth="2"
+                              />
+                              <circle
+                                cx={postX}
+                                cy="208"
+                                r="4.5"
+                                fill="#fbbf24"
+                                stroke={currentTheme.woodRoof[2]}
+                                strokeWidth="1.5"
+                              />
+                            </g>
+                          ))}
+
+                          {/* Main Upper Wooden Deck Plank */}
+                          <rect
+                            x="132"
+                            y="238"
+                            width="502"
+                            height="16"
+                            rx="8"
+                            fill="url(#shWoodRoof)"
+                            stroke={currentTheme.woodRoof[2]}
+                            strokeWidth="3"
+                          />
+                          {/* Wood Plank Divider Notches */}
+                          {[190, 250, 310, 370, 430, 490, 550, 600].map((notchX) => (
+                            <line
+                              key={`plank-notch-${notchX}`}
+                              x1={notchX}
+                              y1="240"
+                              x2={notchX}
+                              y2="252"
+                              stroke={currentTheme.woodRoof[2]}
+                              strokeWidth="2"
+                              opacity="0.55"
+                            />
+                          ))}
+                          {/* Soft top highlight on loft deck */}
+                          <line
+                            x1="142"
+                            y1="242"
+                            x2="622"
+                            y2="242"
+                            stroke="rgba(255,255,255,0.35)"
+                            strokeWidth="2.2"
+                            strokeLinecap="round"
+                          />
+                        </g>
+
+                        {/* 5. Hanging Wooden Chew Ring & Golden Bell Toy (Upper Left) */}
+                        <g transform="translate(168, 18)">
+                          <line
+                            x1="0"
+                            y1="0"
+                            x2="0"
+                            y2="68"
+                            stroke="#fcd34d"
+                            strokeWidth="3.5"
+                            strokeDasharray="5 4"
+                          />
+                          <circle
+                            cx="0"
+                            cy="86"
+                            r="18"
+                            fill="none"
+                            stroke="#f472b6"
+                            strokeWidth="7"
+                          />
+                          <circle
+                            cx="0"
+                            cy="86"
+                            r="18"
+                            fill="none"
+                            stroke="#fbcfe8"
+                            strokeWidth="2"
+                          />
+                          <circle
+                            cx="0"
+                            cy="78"
+                            r="6.5"
+                            fill="#fbbf24"
+                            stroke="#92400e"
+                            strokeWidth="2"
+                          />
+                        </g>
+
+                        {/* 6. Cage Floor Enrichment: Wooden Seesaw, Pastel ABC Chew Cubes & Fresh Clover Sprouts */}
+                        {/* Cute Wooden Seesaw / Teeter-Totter (Left-Center Floor) */}
+                        <g transform="translate(242, 432)">
+                          <polygon
+                            points="-18,12 0,-12 18,12"
+                            fill="#38bdf8"
+                            stroke="#0369a1"
+                            strokeWidth="2.8"
+                            strokeLinejoin="round"
+                          />
+                          <g transform="rotate(-7)">
+                            <rect
+                              x="-62"
+                              y="-15"
+                              width="124"
+                              height="10"
+                              rx="5"
+                              fill="#f472b6"
+                              stroke="#9d174d"
+                              strokeWidth="2.5"
+                            />
+                            <line
+                              x1="-52"
+                              y1="-12"
+                              x2="52"
+                              y2="-12"
+                              stroke="rgba(255,255,255,0.45)"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                            />
+                          </g>
+                        </g>
+
+                        {/* Pastel Wooden Chew Blocks (Center-Right Floor) */}
+                        <g transform="translate(525, 424)">
+                          <rect
+                            x="0"
+                            y="0"
+                            width="24"
+                            height="24"
+                            rx="5"
+                            fill="#a78bfa"
+                            stroke="#5b21b6"
+                            strokeWidth="2.5"
+                          />
+                          <text
+                            x="12"
+                            y="17"
+                            textAnchor="middle"
+                            fill="#ffffff"
+                            fontSize="13"
+                            fontWeight="900"
+                          >
+                            A
+                          </text>
+                          <rect
+                            x="22"
+                            y="4"
+                            width="22"
+                            height="22"
+                            rx="5"
+                            transform="rotate(10 33 15)"
+                            fill="#34d399"
+                            stroke="#065f46"
+                            strokeWidth="2.5"
+                          />
+                          <text
+                            x="33"
+                            y="19"
+                            textAnchor="middle"
+                            fill="#ffffff"
+                            fontSize="12"
+                            fontWeight="900"
+                          >
+                            ★
+                          </text>
+                        </g>
+
+                        {/* Mini Clover & Daisy Patch (Right Courtyard) */}
+                        <g transform="translate(822, 432)">
+                          <ellipse cx="0" cy="6" rx="28" ry="8" fill="#15803d" opacity="0.55" />
+                          <circle cx="-12" cy="1" r="6" fill="#4ade80" />
+                          <circle cx="-4" cy="-2" r="7" fill="#22c55e" />
+                          <circle cx="6" cy="1" r="6" fill="#4ade80" />
+                          <circle cx="15" cy="2" r="5" fill="#22c55e" />
+                          <circle cx="-6" cy="-2" r="3.5" fill="#fef08a" stroke="#ffffff" strokeWidth="2" />
+                          <circle cx="10" cy="0" r="3" fill="#fbcfe8" stroke="#ffffff" strokeWidth="1.8" />
+                        </g>
+                      </g>
+
                       {(() => {
                         const renderMiniHamster = (
                           slotIdx: number,
@@ -3772,7 +4329,24 @@ export function SleepingHamster({
                           const isNoisyCage =
                             !isLeavingAngry &&
                             (isDisturbedFace || isAlmostAwakeFace || sleepState === 'AWAKE');
-                          const flipX = slot.flip ? -1 : 1;
+                          const walker = cageWalkersState[slotIdx];
+                          const isWalkingNow =
+                            !isLeavingAngry && !isNoisyCage && (walker ? walker.isWalking : true);
+                          const posX = !isLeavingAngry && walker ? walker.x : slot.x;
+                          const basePosY = !isLeavingAngry && walker ? walker.y : slot.y;
+                          const stepPhase = walker ? walker.phase : slotIdx * 1.1;
+                          const stepSin = isWalkingNow ? Math.sin(stepPhase) : 0;
+                          const stepCos = isWalkingNow ? Math.cos(stepPhase) : 0;
+                          const walkBounceY = isWalkingNow ? Math.abs(stepSin) * 5.2 : 0;
+                          const walkWaddleDeg = isWalkingNow ? stepSin * 3.6 : 0;
+                          const flipX =
+                            !isLeavingAngry && walker
+                              ? walker.dir === 1
+                                ? -1
+                                : 1
+                              : slot.flip
+                              ? -1
+                              : 1;
                           const strokeCol =
                             coat.id === 'pearl'
                               ? '#64748b'
@@ -3781,18 +4355,23 @@ export function SleepingHamster({
                               : '#5c1f08';
                           const holdsSunflowerSeed = !isBaby && !isLeavingAngry && !isNoisyCage && slotIdx % 3 === 1;
                           const holdsMiniCarrot = !isBaby && !isLeavingAngry && !isNoisyCage && slotIdx % 4 === 2;
+                          const leftFootLift = isWalkingNow ? Math.max(0, stepSin) * 15 : 0;
+                          const rightFootLift = isWalkingNow ? Math.max(0, -stepSin) * 15 : 0;
+                          const leftFootRot = -10 + stepSin * 18;
+                          const rightFootRot = 10 - stepSin * 18;
+                          const pawSwingY = isWalkingNow ? stepCos * 5.5 : 0;
 
                           return (
                             <g
                               key={`cage-hamster-${slotIdx}-${isLeavingAngry ? 'leave' : 'stay'}`}
-                              transform={`translate(${slot.x}, ${slot.y})`}
+                              transform={`translate(${posX.toFixed(1)}, ${(basePosY - walkBounceY).toFixed(1)})`}
                               onClick={isLeavingAngry ? undefined : handlePetHamster}
                               className={isLeavingAngry ? 'pointer-events-none' : 'cursor-pointer'}
                             >
                               <title>
                                 {isBaby
-                                  ? `Baby Hamster #${slotIdx - 9} (Click to pet!)`
-                                  : `Hamster #${slotIdx + 1} (Click to pet!)`}
+                                  ? `Baby Hamster #${slotIdx - 9} (Walking around! Click to pet!)`
+                                  : `Hamster #${slotIdx + 1} (Walking around! Click to pet!)`}
                               </title>
                               <g
                                 className={
@@ -3800,25 +4379,33 @@ export function SleepingHamster({
                                     ? 'sh-hamster-leave'
                                     : isArriving
                                     ? 'sh-hamster-arrive'
-                                    : 'sh-cage-bob'
+                                    : !isWalkingNow
+                                    ? 'sh-cage-bob'
+                                    : undefined
                                 }
                                 style={
-                                  !isLeavingAngry && !isArriving
+                                  !isLeavingAngry && !isArriving && !isWalkingNow
                                     ? { animationDelay: `${(slotIdx % 7) * 0.28}s` }
                                     : undefined
                                 }
                               >
                                 <g
-                                  transform={`scale(${slot.scale * flipX}, ${slot.scale})`}
+                                  transform={`rotate(${walkWaddleDeg.toFixed(2)}) scale(${slot.scale * flipX}, ${slot.scale})`}
                                   className={isLeavingAngry ? 'sh-angry-shake' : undefined}
                                 >
                                   {/* Soft Ground Shadow */}
-                                  <ellipse cx="0" cy="92" rx="92" ry="20" fill="rgba(16, 6, 38, 0.52)" />
+                                  <ellipse
+                                    cx="0"
+                                    cy={92 + walkBounceY * 1.4}
+                                    rx={92 - walkBounceY * 1.2}
+                                    ry="20"
+                                    fill="rgba(16, 6, 38, 0.52)"
+                                  />
 
-                                  {/* Little Round Tail Peeking Behind */}
+                                  {/* Little Round Tail Peeking & Wagging Behind */}
                                   <circle
                                     cx="78"
-                                    cy="54"
+                                    cy={54 + stepCos * 4}
                                     r="14"
                                     fill="#fbcfe8"
                                     stroke={strokeCol}
@@ -3826,7 +4413,7 @@ export function SleepingHamster({
                                   />
 
                                   {/* Detailed Plush Hamster Ears with Inner Ear Crease */}
-                                  <g transform="translate(-58, -68) rotate(-18)">
+                                  <g transform={`translate(-58, -68) rotate(${-18 + stepSin * 4})`}>
                                     <ellipse
                                       cx="0"
                                       cy="0"
@@ -3846,7 +4433,7 @@ export function SleepingHamster({
                                       opacity="0.75"
                                     />
                                   </g>
-                                  <g transform="translate(58, -68) rotate(18)">
+                                  <g transform={`translate(58, -68) rotate(${18 + stepSin * 4})`}>
                                     <ellipse
                                       cx="0"
                                       cy="0"
@@ -3867,8 +4454,8 @@ export function SleepingHamster({
                                     />
                                   </g>
 
-                                  {/* Little Chubby Hind Feet at Bottom */}
-                                  <g transform="translate(-52, 82) rotate(-10)">
+                                  {/* Animated Walking Chubby Hind Feet at Bottom */}
+                                  <g transform={`translate(-52, ${(82 - leftFootLift).toFixed(1)}) rotate(${leftFootRot.toFixed(1)})`}>
                                     <ellipse
                                       cx="0"
                                       cy="0"
@@ -3882,7 +4469,7 @@ export function SleepingHamster({
                                     <circle cx="0" cy="-4" r="3.2" fill="#f43f5e" opacity="0.7" />
                                     <circle cx="8" cy="-2" r="3.2" fill="#f43f5e" opacity="0.7" />
                                   </g>
-                                  <g transform="translate(52, 82) rotate(10)">
+                                  <g transform={`translate(52, ${(82 - rightFootLift).toFixed(1)}) rotate(${rightFootRot.toFixed(1)})`}>
                                     <ellipse
                                       cx="0"
                                       cy="0"
@@ -4277,13 +4864,13 @@ export function SleepingHamster({
                                       </g>
                                     </g>
                                   ) : (
-                                    /* Cozy Tucked Front Paws on Chest */
+                                    /* Cozy Swinging Front Paws on Chest */
                                     <g>
-                                      <g transform="translate(-26, 44) rotate(18)">
+                                      <g transform={`translate(-26, ${(44 + pawSwingY).toFixed(1)}) rotate(${(18 + stepSin * 10).toFixed(1)})`}>
                                         <ellipse cx="0" cy="0" rx="15" ry="18" fill="#fda4af" stroke="#881337" strokeWidth="3.4" />
                                         <path d="M -5 -10 L -5 -3 M 0 -11 L 0 -3 M 5 -10 L 5 -3" stroke="#9f1239" strokeWidth="2.3" strokeLinecap="round" />
                                       </g>
-                                      <g transform="translate(26, 44) rotate(-18)">
+                                      <g transform={`translate(26, ${(44 - pawSwingY).toFixed(1)}) rotate(${(-18 + stepSin * 10).toFixed(1)})`}>
                                         <ellipse cx="0" cy="0" rx="15" ry="18" fill="#fda4af" stroke="#881337" strokeWidth="3.4" />
                                         <path d="M -5 -10 L -5 -3 M 0 -11 L 0 -3 M 5 -10 L 5 -3" stroke="#9f1239" strokeWidth="2.3" strokeLinecap="round" />
                                       </g>

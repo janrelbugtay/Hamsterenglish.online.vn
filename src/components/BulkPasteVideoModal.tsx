@@ -203,19 +203,6 @@ export function BulkPasteVideoModal({
 
             <button
               type="button"
-              onClick={toggleFullscreen}
-              className={`p-2 rounded-xl border transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
-                isTrulyFullscreen
-                  ? 'bg-purple-600 text-white border-purple-500'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border-slate-700'
-              }`}
-              title={isTrulyFullscreen ? 'Exit Fullscreen' : 'Full Screen'}
-            >
-              {isTrulyFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-            </button>
-
-            <button
-              type="button"
               onClick={() => {
                 if (document.fullscreenElement) {
                   document.exitFullscreen?.().catch(() => {});

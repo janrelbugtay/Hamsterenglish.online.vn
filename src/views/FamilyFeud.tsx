@@ -209,7 +209,7 @@ const AnswerBoard = ({ answers, revealedIndices, isDark }: { answers: any[], rev
   );
 };
 
-export function FamilyFeud({ onViewChange, initialGame }: { onViewChange: (view: ViewState) => void, initialGame?: any }) {
+export function FamilyFeud({ onViewChange, initialGame }: { onViewChange: (view: ViewState, data?: any) => void, initialGame?: any }) {
   const { user } = useAuth();
   const [folders, setFolders] = useState<{ id: string; name: string }[]>([]);
   
@@ -562,7 +562,7 @@ export function FamilyFeud({ onViewChange, initialGame }: { onViewChange: (view:
       <UnifiedGameSetup
         title={topic || 'FAMILY FEUD 3D'}
         questionCount={rounds.length}
-        onBack={() => onViewChange('games')}
+        onBack={() => onViewChange('home', { __stepBack: true })}
         topRightExtras={
           <>
             <button
@@ -883,27 +883,6 @@ export function FamilyFeud({ onViewChange, initialGame }: { onViewChange: (view:
           title="Toggle Theme"
         >
           {isDark ? <Sun size={20} className="sm:w-6 sm:h-6" /> : <Moon size={20} className="sm:w-6 sm:h-6" />}
-        </button>
-        <button 
-          onClick={async () => {
-            try {
-              if (!document.fullscreenElement) {
-                if (gameContainerRef.current) {
-                  const p = gameContainerRef.current.requestFullscreen();
-                  if (p && p.catch) p.catch(() => {});
-                }
-              } else {
-                if (document.exitFullscreen) {
-                  const p = document.exitFullscreen();
-                  if (p && p.catch) p.catch(() => {});
-                }
-              }
-            } catch (err) {}
-          }}
-          className={`flex items-center gap-2 p-2 rounded-full transition-colors backdrop-blur-md border ${isDark ? 'text-white/80 hover:text-white bg-black/20 hover:bg-black/50 border-white/20' : 'text-slate-600 hover:text-slate-900 bg-white/50 hover:bg-white border-slate-300'}`}
-          title="Toggle Fullscreen"
-        >
-          <Maximize size={20} className="sm:w-6 sm:h-6" />
         </button>
         {gameState !== 'setup' && (
           <button 

@@ -14392,7 +14392,7 @@ export default function HamsterPaintball({
             } else if (role === 'host' && roomCode && screen !== 'editor') {
               markHostedRoomClosed(roomCode);
             }
-            onViewChange('games');
+            onViewChange('home', { __stepBack: true });
           }}
           className="pointer-events-auto shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/95 hover:bg-white text-slate-700 font-semibold text-xs border border-slate-200/90 shadow-sm transition active:scale-[0.98] cursor-pointer whitespace-nowrap"
         >
@@ -14788,8 +14788,11 @@ export default function HamsterPaintball({
             onSave={q => saveQuiz(q, 'lobby')}
             onPlayLobby={q => saveQuiz(q, 'lobby')}
             onCancel={() => {
-              if (!initialGame?.customQuestions && activeQuiz.questions.length === 0) {
-                onViewChange('games');
+              const hasValidQs = activeQuiz.questions.some(
+                q => (q.text && q.text.trim()) || q.image
+              );
+              if (!hasLoadedQuestions && !hasValidQs) {
+                onViewChange('home', { __stepBack: true });
               } else {
                 setScreen('lobby');
               }
@@ -18068,20 +18071,24 @@ function QuizEditor({
     <div className="max-w-4xl mx-auto p-6 bg-white rounded-3xl shadow-xl border border-slate-100 text-slate-800">
       {/* Header matching Bubble Pop GAME SETUP */}
       <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
-        <h2
-          className="text-3xl font-black tracking-tight text-slate-900 uppercase"
-          style={{ fontFamily: "'Fredoka', sans-serif" }}
-        >
-          GAME SETUP
-        </h2>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl font-bold transition cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-sm transition-colors cursor-pointer border border-slate-300"
+            title="Go Back"
           >
-            Cancel
+            <ArrowLeft size={18} />
+            <span>Back</span>
           </button>
+          <h2
+            className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 uppercase"
+            style={{ fontFamily: "'Fredoka', sans-serif" }}
+          >
+            GAME SETUP
+          </h2>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
           {onPlayLobby && (
             <button
               type="button"

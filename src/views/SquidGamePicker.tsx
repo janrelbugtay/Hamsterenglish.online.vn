@@ -8314,12 +8314,12 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
         };
     }, []);
 
-    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [isFullscreen, setIsFullscreen] = useState(true);
     const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
     useEffect(() => {
         const handleFullscreenChange = () => {
-            setIsFullscreen(!!document.fullscreenElement);
+            setIsFullscreen(true);
             setTimeout(() => {
                 window.dispatchEvent(new Event('resize'));
             }, 100);
@@ -8765,14 +8765,6 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                 </div>
                 
                 <div className="flex gap-2 sm:gap-3 pointer-events-auto shrink-0 items-center">
-                    <button 
-                        onClick={toggleFullscreen} 
-                        className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-900/90 rounded-full text-white hover:bg-slate-700 transition border-2 border-slate-700 flex items-center justify-center shadow-lg cursor-pointer"
-                        title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
-                    >
-                        {isFullscreen ? <Minimize className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" /> : <Maximize className="w-4 h-4 sm:w-5 sm:h-5 text-slate-200" />}
-                    </button>
-
                     <div className="relative" ref={gameVolumeRef}>
                         <button
                             onClick={() => setShowVolumeSlider(prev => !prev)}
@@ -9086,11 +9078,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
     return (
         <div 
             id="squid-picker-root" 
-            className={`w-full bg-[#0f172a] text-slate-100 flex relative overflow-hidden transition-all duration-300 ${
-                isFullscreen 
-                    ? 'fixed inset-0 z-50 h-screen w-screen rounded-none' 
-                    : 'min-h-[85vh] h-[85vh] rounded-3xl shadow-2xl border border-slate-800'
-            }`}
+            className="w-screen h-screen fixed inset-0 z-50 bg-[#0f172a] text-slate-100 flex relative overflow-hidden rounded-none"
         >
             {/* Absolute positioning for the Three.js canvas so it stays under the UI layer and takes full space */}
             <div id="canvas-container" className={`absolute inset-0 z-10 ${activeGame === 'coconut' ? 'hidden' : ''}`} />
@@ -9394,14 +9382,6 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                             </div>
 
                             <div className="absolute top-4 sm:top-6 right-4 sm:right-6 z-40 flex items-center gap-2 sm:gap-3 pointer-events-auto">
-                            <button
-                                onClick={toggleFullscreen}
-                                className="w-12 h-12 bg-slate-900/90 hover:bg-slate-700 rounded-full text-white transition border-2 border-slate-700 flex items-center justify-center shadow-lg"
-                                title={isFullscreen ? "Exit Fullscreen" : "Full Screen"}
-                            >
-                                {isFullscreen ? <Minimize className="w-5 h-5 text-emerald-400" /> : <Maximize className="w-5 h-5 text-slate-200" />}
-                            </button>
-
                             <div className="relative" ref={homeVolumeRef}>
                                 <button
                                     onClick={() => setShowVolumeSlider(prev => !prev)}

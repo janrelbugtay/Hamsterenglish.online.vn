@@ -331,7 +331,7 @@ export function RollerCoasterQuiz({
             setActiveQuiz(updatedQuiz);
             setScreen('setup');
           }}
-          onCancel={() => onViewChange('games')}
+          onCancel={() => onViewChange('home', { __stepBack: true })}
           folders={folders}
         />
       )}
@@ -342,7 +342,7 @@ export function RollerCoasterQuiz({
           title="ROLLER COASTER QUIZ"
           containerId="roller-coaster-quiz-container"
           questionCount={getPlayableQuestions().length}
-          onBack={() => onViewChange('games')}
+          onBack={() => onViewChange('home', { __stepBack: true })}
           onOpenGameSwitcher={() => setShowModeModal(true)}
           onOpenQuizEditor={() => setScreen('editor')}
           playerModeOptions={[

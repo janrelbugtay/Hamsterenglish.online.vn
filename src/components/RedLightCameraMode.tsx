@@ -497,15 +497,6 @@ export const RedLightCameraMode: React.FC<RedLightCameraModeProps> = ({
                     >
                         <Settings className="w-3.5 h-3.5" />
                     </button>
-
-                    {/* Fullscreen */}
-                    <button
-                        onClick={toggleFullscreen}
-                        className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition cursor-pointer"
-                        title="Toggle Fullscreen"
-                    >
-                        {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
-                    </button>
                 </div>
             </div>
 

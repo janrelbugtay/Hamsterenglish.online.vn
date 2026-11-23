@@ -45,7 +45,7 @@ export interface GameData {
   mode?: 'word' | 'anagram' | 'multiple-choice';
 }
 
-export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange: (view: ViewState) => void, initialGame?: any }) {
+export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange: (view: ViewState, data?: any) => void, initialGame?: any }) {
   const { user } = useAuth();
   const [screen, setScreen] = useState<GameScreen>(initialGame && !initialGame.editMode ? 'setup' : 'editor');
   const [selectedTheme, setSelectedTheme] = useState('theme-sky');
@@ -177,14 +177,23 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
 
       {screen !== 'game' && (
         <div className="p-6 flex items-center justify-between z-10 relative">
+            <div className="flex items-center gap-2.5">
+              <button 
+                  onClick={() => onViewChange('home', { __stepBack: true })}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/70 dark:bg-slate-800/70 backdrop-blur-md border border-slate-300 dark:border-white/10 shadow-sm font-black text-slate-800 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                  <ArrowLeft size={18} />
+                  <span>Back</span>
+              </button>
+              <button 
+                  onClick={() => setScreen(screen === 'editor' ? 'setup' : 'editor')}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white/40 dark:bg-slate-800/40 backdrop-blur-md border border-white/20 dark:border-white/10 shadow-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-white/60 dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
+              >
+                  {screen === 'editor' ? 'Play Mode' : 'Edit Game'}
+              </button>
+            </div>
             <button 
-                onClick={() => setScreen(screen === 'editor' ? 'setup' : 'editor')}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white/40 dark:bg-slate-800/40 backdrop-blur-md border border-white/20 dark:border-white/10 shadow-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-white/60 dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
-            >
-                {screen === 'editor' ? 'Play Mode' : 'Edit Game'}
-            </button>
-            <button 
-                onClick={() => onViewChange('games')}
+                onClick={() => onViewChange('home', { __stepBack: true })}
                 className="px-5 py-2.5 rounded-2xl bg-white/40 dark:bg-slate-800/40 backdrop-blur-md border border-white/20 dark:border-white/10 shadow-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-white/60 dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
             >
                 Exit
@@ -196,7 +205,7 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
         <GameEditor 
           game={activeGame} 
           onSave={saveGame} 
-          onCancel={() => onViewChange('games')} 
+          onCancel={() => onViewChange('home', { __stepBack: true })} 
           folders={folders}
           onUpdate={(updated) => setActiveGame(updated)}
         />
@@ -291,8 +300,8 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
                 </div>
                 
                 <div className="flex flex-wrap justify-center gap-4 mt-12 relative z-10">
-                  <button onClick={() => onViewChange('games')} className="px-8 py-4 rounded-full bg-white/20 backdrop-blur-md shadow-lg hover:bg-white/30 text-xl font-bold text-white border border-white/40 cursor-pointer transition-all hover:scale-105 active:scale-95 flex items-center gap-2">
-                    <ArrowLeft size={24} /> Back to Games
+                  <button onClick={() => onViewChange('home', { __stepBack: true })} className="px-8 py-4 rounded-full bg-white/20 backdrop-blur-md shadow-lg hover:bg-white/30 text-xl font-bold text-white border border-white/40 cursor-pointer transition-all hover:scale-105 active:scale-95 flex items-center gap-2">
+                    <ArrowLeft size={24} /> Back
                   </button>
                 </div>
         </div>
@@ -1192,12 +1201,20 @@ function GameEditor({
         )}
 
         <div className="bg-white dark:bg-slate-800 p-8 flex flex-col gap-6 border-b-2 border-cyan-500/50">
-            <div className="flex justify-between items-center">
-                <h2 className="text-3xl font-extrabold text-slate-800 dark:text-white tracking-wide">GAME SETUP</h2>
-                <div className="flex gap-3 items-center">
-                    <button onClick={onCancel} className="px-5 py-2.5 rounded-xl text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer">
-                        Cancel
+            <div className="flex flex-wrap justify-between items-center gap-3">
+                <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={onCancel}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-white font-black text-sm transition-colors cursor-pointer border border-slate-300 dark:border-slate-600"
+                      title="Go Back"
+                    >
+                      <ArrowLeft size={18} />
+                      <span>Back</span>
                     </button>
+                    <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-800 dark:text-white tracking-wide">GAME SETUP</h2>
+                </div>
+                <div className="flex gap-3 items-center">
                     <button onClick={initiateSave} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-500 text-white font-bold hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/30 cursor-pointer">
                         <Save size={18} /> Save Game
                     </button>

@@ -1497,7 +1497,7 @@ export function MysteryBox({
         <QuizEditor
           quiz={activeQuiz}
           onSave={saveQuiz}
-          onCancel={() => onViewChange('games')}
+          onCancel={() => onViewChange('home', { __stepBack: true })}
           folders={folders}
         />
       )}
@@ -1508,7 +1508,7 @@ export function MysteryBox({
           title="MYSTERY BOX 3D"
           containerId="mystery-box-container"
           questionCount={activeQuiz.questions.length}
-          onBack={() => onViewChange('games')}
+          onBack={() => onViewChange('home', { __stepBack: true })}
           onOpenGameSwitcher={() => setShowModeModal(true)}
           onOpenQuizEditor={() => setScreen('editor')}
           playerModeOptions={[
@@ -2949,12 +2949,20 @@ function QuizEditor({
         {/* CARD CONTAINER EXACTLY MATCHING USER SCREENSHOT */}
         <div className="w-full max-w-4xl bg-white dark:bg-slate-800/80 rounded-3xl overflow-hidden flex flex-col shadow-2xl mb-8 border border-slate-100 dark:border-slate-700">
           <div className="p-8 flex flex-col gap-6 border-b-2 border-blue-500/50">
-            <div className="flex justify-between items-center">
-              <h2 className="text-3xl font-extrabold text-slate-800 dark:text-white tracking-wide">GAME SETUP</h2>
-              <div className="flex gap-3 items-center">
-                <button onClick={onCancel} className="px-5 py-2.5 rounded-xl text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer">
-                  Cancel
+            <div className="flex flex-wrap justify-between items-center gap-3">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-white font-black text-sm transition-colors cursor-pointer border border-slate-300 dark:border-slate-600"
+                  title="Go Back"
+                >
+                  <ArrowLeft size={18} />
+                  <span>Back</span>
                 </button>
+                <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-800 dark:text-white tracking-wide">GAME SETUP</h2>
+              </div>
+              <div className="flex gap-3 items-center">
                 <button onClick={handleSave} className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-500 text-white font-bold hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/30 cursor-pointer">
                   <Save size={18} /> Save Quiz
                 </button>

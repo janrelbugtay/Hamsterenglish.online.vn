@@ -2207,7 +2207,7 @@ export function ClassRecord({
   };
 
   return (
-    <div className="flex h-full w-full bg-[#f8fafc] select-none overflow-hidden font-sans text-slate-900 rounded-3xl border border-slate-200/90 shadow-xl relative">
+    <div className="flex h-full w-full bg-[#f8fafc] select-none overflow-hidden font-sans text-slate-900 rounded-none border-0 relative">
       <input
         ref={backupFileInputRef}
         type="file"

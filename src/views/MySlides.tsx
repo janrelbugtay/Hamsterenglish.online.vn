@@ -1296,15 +1296,6 @@ export function MySlides({ onViewChange }: { onViewChange: (view: ViewState, dat
                 {isBlackout ? 'Resume' : 'Blackout (B)'}
               </button>
 
-              {/* Toggle Fullscreen (F) */}
-              <button
-                onClick={toggleFullscreen}
-                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
-                title="Toggle Fullscreen (F)"
-              >
-                {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-              </button>
-
               {/* Exit */}
               <button
                 onClick={closePresentation}

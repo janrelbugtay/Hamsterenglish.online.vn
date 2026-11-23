@@ -1525,7 +1525,7 @@ export function HamsterPopQuiz({
   onViewChange,
   initialGame,
 }: {
-  onViewChange: (view: ViewState) => void;
+  onViewChange: (view: ViewState, data?: any) => void;
   initialGame?: any;
 }) {
   const { user } = useAuth();
@@ -2086,8 +2086,8 @@ export function HamsterPopQuiz({
       <header className="sticky top-0 z-40 w-full bg-white/95 backdrop-blur-md border-b border-[#E6E0D4] px-3 sm:px-5 h-14 flex items-center justify-between gap-3 shrink-0 shadow-xs">
         <div className="flex items-center gap-2.5 shrink-0 min-w-0">
           <button
-            onClick={() => onViewChange('games')}
-            title="Back to Games"
+            onClick={() => onViewChange('home', { __stepBack: true })}
+            title="Back"
             className="w-9 h-9 rounded-xl bg-[#FAF7F0] hover:bg-indigo-50 border border-[#E6E0D4] hover:border-indigo-300 flex items-center justify-center text-slate-700 hover:text-indigo-700 transition-colors cursor-pointer shrink-0"
           >
             <ArrowLeft size={17} />

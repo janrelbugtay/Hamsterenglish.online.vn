@@ -1695,7 +1695,7 @@ export function YogaQuiz({ onViewChange, initialGame }: { onViewChange: (view: V
             setActiveQuizOverride(updatedQuiz);
             setScreen('game');
           }}
-          onCancel={() => onViewChange("games")}
+          onCancel={() => onViewChange("home", { __stepBack: true })}
           folders={folders}
         />
       </div>
@@ -1720,7 +1720,7 @@ export function YogaQuiz({ onViewChange, initialGame }: { onViewChange: (view: V
 
       <YogaGame 
         quiz={currentQuizData} 
-        onBack={() => onViewChange("games")} 
+        onBack={() => onViewChange("home", { __stepBack: true })} 
         onEditQuestions={() => setScreen('editor')}
         onSwitchMode={() => setShowModeModal(true)}
       />
@@ -3819,7 +3819,7 @@ function YogaGame({
   const questionReadyAtRef = useRef<number>(0);
 
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(true);
   const [timer, setTimer] = useState<number | null>(null);
   const [timerProgress, setTimerProgress] = useState<number>(0);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -5260,7 +5260,7 @@ function YogaGame({
   const posesForCurrentModeSettings = playMode === 'studio' ? CLASSIC_YOGA_POSES : CAMERA_HAND_POSES;
 
   return (
-    <div className={`flex-1 flex items-center justify-center p-1.5 md:p-3 mx-auto animate-fade-in ${isFullscreen ? 'fixed inset-0 z-50 bg-teal-50 w-full h-full max-w-none' : 'w-full max-w-[1480px]'}`}>
+    <div className="flex-1 flex items-center justify-center p-0 mx-auto animate-fade-in fixed inset-0 z-50 bg-teal-50 w-full h-full max-w-none">
       {showConfetti && (
         <Confetti
           width={width}
@@ -5558,9 +5558,7 @@ function YogaGame({
 
       {/* Main Yoga Studio Container */}
       <div
-        className={`w-full overflow-hidden border-4 md:border-8 border-teal-400/90 relative flex flex-col shadow-2xl ${
-          isFullscreen ? 'h-full rounded-none border-0' : 'min-h-[86vh] rounded-[2.5rem]'
-        }`}
+        className="w-full h-full rounded-none border-0 overflow-hidden relative flex flex-col shadow-2xl"
         style={{
           background: 'linear-gradient(180deg, #f0fdfa 0%, #ccfbf1 55%, #fef3c7 100%)'
         }}
@@ -6138,13 +6136,6 @@ function YogaGame({
                     title="Settings, Poses & Calibration"
                   >
                     <Settings size={16} />
-                  </button>
-                  <button
-                    onClick={toggleFullscreen}
-                    className="w-8 h-8 text-teal-950 hover:bg-white rounded-xl transition-colors font-bold cursor-pointer bg-white/95 shadow-xs border border-teal-200 flex items-center justify-center"
-                    title="Fullscreen"
-                  >
-                    {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
                   </button>
                 </div>
               </div>
