@@ -59,6 +59,8 @@ import { Loader2, QrCode, LogIn } from "lucide-react";
 import { AuthSliderModal } from "./components/AuthSliderModal";
 import { GoogleAuthModal } from "./components/GoogleAuthModal";
 import { verifyMultiplayerRoomCode } from "./utils/roomCodeValidator";
+import { hasTabLaunchUrlParams, resolveLaunchedGameFromUrl } from "./utils/gameTabLauncher";
+import { GameModeModal } from "./components/GameModeModal";
 
 export default function App() {
   // Synchronously detect direct student homework links (?hwPin=... or #homework-...)
@@ -179,6 +181,9 @@ export default function App() {
       ? { roomCode: initialSumo.roomCode, isStudentJoin: true }
       : null
   );
+  const [isTabLaunchPending, setIsTabLaunchPending] = useState<boolean>(() => hasTabLaunchUrlParams());
+  const [newTabPickerGame, setNewTabPickerGame] = useState<any | null>(null);
+  const newTabRootGameRef = useRef<any | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isGoogleAuthModalOpen, setIsGoogleAuthModalOpen] = useState(false);
@@ -252,10 +257,12 @@ export default function App() {
         }
 
         setCurrentView((prev) => {
+          if (hasTabLaunchUrlParams()) return prev;
           if (prev === 'homework' || hasHwInUrl) return 'homework';
           if (prev === 'hamster-paintball' || activePb) return 'hamster-paintball';
           if (prev === 'sumo' && activeSumo) return 'sumo';
           if (prev === 'my-slides' || hasSlideInUrl) return 'my-slides';
+          if (prev !== 'home') return prev;
           return 'home';
         });
       }
@@ -465,6 +472,25 @@ export default function App() {
         setCurrentView('my-slides');
         return;
       }
+      if (params.get('playGame') || params.get('launchKey')) {
+        setIsTabLaunchPending(true);
+        resolveLaunchedGameFromUrl()
+          .then((launched) => {
+            if (launched && launched.game) {
+              newTabRootGameRef.current = launched.game;
+              if (launched.isMultiMode) {
+                setNewTabPickerGame(launched.game);
+              } else {
+                setSelectedGame(launched.game);
+                setCurrentView(launched.mode as ViewState);
+              }
+            }
+          })
+          .finally(() => {
+            setIsTabLaunchPending(false);
+          });
+        return;
+      }
     };
 
     checkUrlParams();
@@ -489,15 +515,16 @@ export default function App() {
 
   // Proactively redirect to home if visitor has no session and is on an action view
   useEffect(() => {
+    if (isTabLaunchPending || newTabPickerGame) return;
     const isJoiningStudentRoom =
       (currentView === "tic-tac-toe" || currentView === "sumo") &&
       Boolean(selectedGame?.isStudentJoin || selectedGame?.roomCode);
-    if (!loading && !user && currentView !== "home" && !isPublicStudentView(currentView) && !isJoiningStudentRoom) {
+    if (!loading && !user && currentView !== "home" && !isPublicStudentView(currentView) && !isJoiningStudentRoom && !selectedGame) {
       setPendingAction({ view: currentView, data: selectedGame });
       setCurrentView("home");
       setIsAuthModalOpen(true);
     }
-  }, [loading, user, currentView, selectedGame]);
+  }, [loading, user, currentView, selectedGame, isTabLaunchPending, newTabPickerGame]);
 
   const [inlineRoomCode, setInlineRoomCode] = useState("");
   const [isInlineCheckingRoom, setIsInlineCheckingRoom] = useState(false);
@@ -526,10 +553,22 @@ export default function App() {
     if (document.fullscreenElement && document.exitFullscreen) {
       document.exitFullscreen().catch(() => {});
     }
+    if (data && data.__stepBack && newTabRootGameRef.current) {
+      setNewTabPickerGame(newTabRootGameRef.current);
+      setCurrentView("home");
+      setSelectedGame(null);
+      return;
+    }
     if (data && data.__stepBack && viewHistoryRef.current.length > 0) {
       const prev = viewHistoryRef.current.pop()!;
       setCurrentView(prev.view);
       setSelectedGame(prev.game || null);
+      return;
+    }
+    if ((view === "home" || view === "games") && newTabRootGameRef.current && currentViewRef.current !== "home") {
+      setNewTabPickerGame(newTabRootGameRef.current);
+      setCurrentView("home");
+      setSelectedGame(null);
       return;
     }
 
@@ -860,7 +899,7 @@ export default function App() {
     "flashcards-match", "phonemic-master", "sleeping-hamster"
   ].includes(currentView);
   const isClass = currentView === "class-record" || currentView === "class-rewards";
-  const isAutoFullscreenView = isGame || isClass;
+  const isAutoFullscreenView = isGame || isClass || isTabLaunchPending || Boolean(newTabPickerGame);
   const isAdminView = currentView === "admin-dashboard" && isAdmin;
 
   return (
@@ -950,7 +989,26 @@ export default function App() {
               : "p-4 md:p-8 space-y-6 overflow-y-auto"
           }`}
         >
-          {renderView()}
+          {isTabLaunchPending ? (
+            <div className="flex-1 flex items-center justify-center min-h-screen bg-white dark:bg-slate-900">
+              <Loader2 className="w-10 h-10 animate-spin text-emerald-600" />
+            </div>
+          ) : newTabPickerGame ? (
+            <GameModeModal
+              isOpen={true}
+              fullTabPage={true}
+              gameData={newTabPickerGame}
+              publishedGames={publishedGames}
+              onClose={() => setNewTabPickerGame(null)}
+              onSelectMode={(mode, adaptedData) => {
+                setNewTabPickerGame(null);
+                setSelectedGame(adaptedData);
+                setCurrentView(mode as ViewState);
+              }}
+            />
+          ) : (
+            renderView()
+          )}
           {!isLockedHomeworkLink && !isAutoFullscreenView && !isAdminView && (
             <Footer onViewChange={handleViewChange} />
           )}

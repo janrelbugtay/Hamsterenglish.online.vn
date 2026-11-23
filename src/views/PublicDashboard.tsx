@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
+import { openGameInNewTab } from "../utils/gameTabLauncher";
 import { SUPER_ADMIN_EMAIL } from "../utils/threatDetector";
 import {
   mergePublicGames,
@@ -1105,11 +1106,7 @@ export function PublicDashboard({
                 key={game.id}
                 className="perf-card group bg-white dark:bg-slate-800/95 rounded-[26px] overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 border border-slate-200/85 dark:border-slate-700/80 hover:border-brand-purple/40 dark:hover:border-purple-500/40 flex flex-col cursor-pointer relative"
                 onClick={() => {
-                  if (isMultiModeCompatible) {
-                    setModeModalGame(game);
-                  } else {
-                    onViewChange(game.gameType as ViewState, game);
-                  }
+                  openGameInNewTab(game);
                 }}
               >
                 {/* Thumbnail Stage — clean, unobstructed top header inside GameThumbnail */}
@@ -1382,7 +1379,8 @@ export function PublicDashboard({
         gameData={modeModalGame}
         onClose={() => setModeModalGame(null)}
         onSelectMode={(mode, adaptedData) => {
-          onViewChange(mode as ViewState, adaptedData);
+          setModeModalGame(null);
+          openGameInNewTab(adaptedData, mode);
         }}
       />
     </div>

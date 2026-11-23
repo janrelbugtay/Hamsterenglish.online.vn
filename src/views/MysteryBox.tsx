@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ViewState } from "../types";
 import { FullscreenButton } from "../components/FullscreenButton";
-import { UnifiedGameSetup } from "../components/UnifiedGameSetup";
+import { MysteryBox3DLobby } from "../components/MysteryBox3DLobby";
 import { MediaPickerModal } from "../components/MediaPickerModal";
 import { BulkPasteVideoModal } from "../components/BulkPasteVideoModal";
 import { GameModeModal } from "../components/GameModeModal";
@@ -1502,185 +1502,51 @@ export function MysteryBox({
         />
       )}
 
-      {/* 2. UNIFIED MINIMALIST 3D SETUP SCREEN */}
+      {/* 2. TROPICAL TREASURE ADVENTURE 3D LOBBY SCREEN */}
       {screen === 'setup' && (
-        <UnifiedGameSetup
-          title="MYSTERY BOX 3D"
-          containerId="mystery-box-container"
+        <MysteryBox3DLobby
           questionCount={activeQuiz.questions.length}
+          numPlayers={numPlayers}
+          onSelectNumPlayers={(count) => {
+            playSound('click');
+            setNumPlayers(count);
+          }}
+          playerNames={playerNames}
+          onChangePlayerName={(idx, val) => {
+            setPlayerNames((prev) => {
+              const updated = [...prev];
+              updated[idx] = val;
+              return updated;
+            });
+          }}
+          difficulty={difficulty}
+          onSelectDifficulty={(mode) => {
+            playSound('click');
+            setDifficulty(mode);
+          }}
+          answerBonusPoints={answerBonusPoints}
+          onToggleBonus={() => {
+            playSound('click');
+            setAnswerBonusPoints((prev) => !prev);
+          }}
+          wrongAnswerPenalty={wrongAnswerPenalty}
+          onTogglePenalty={() => {
+            playSound('click');
+            setWrongAnswerPenalty((prev) => !prev);
+          }}
+          isMuted={isMuted}
+          onToggleMute={() => setIsMuted((prev) => !prev)}
+          selectedTheme={selectedTheme}
+          onSelectTheme={(themeId) => {
+            playSound('click');
+            setSelectedTheme(themeId);
+          }}
+          onStartGame={handleStartGame}
+          onOpenStudy={handleOpenStudy}
           onBack={() => onViewChange('home', { __stepBack: true })}
           onOpenGameSwitcher={() => setShowModeModal(true)}
           onOpenQuizEditor={() => setScreen('editor')}
-          playerModeOptions={[
-            { id: 'solo', label: '1 PLAYER', icon: '🎁' },
-            { id: 'teams', label: `TEAMS (${Math.max(2, numPlayers)})`, icon: '🔵⚡🔴' }
-          ]}
-          selectedPlayerMode={numPlayers === 1 ? 'solo' : 'teams'}
-          onSelectPlayerMode={(mode: string) => {
-            playSound('click');
-            if (mode === 'solo') setNumPlayers(1);
-            else setNumPlayers(prev => (prev === 1 ? 2 : prev));
-          }}
-          playerNames={Array.from({ length: numPlayers }).map((_, i) => ({
-            id: `team-${i}`,
-            badge: numPlayers === 1 ? 'P1' : `T${i + 1}`,
-            value: playerNames[i] ?? '',
-            placeholder: numPlayers === 1 ? 'PLAYER 1' : `TEAM ${i + 1}`,
-            onChange: (val: string) => {
-              setPlayerNames(prev => {
-                const updated = [...prev];
-                updated[i] = val;
-                return updated;
-              });
-            }
-          }))}
-          startLabel="START MYSTERY BOX"
-          onStart={handleStartGame}
-          onStudy={handleOpenStudy}
-        >
-          {/* 1. TEAM COUNT SELECTOR (When Teams Mode is active) */}
-          {numPlayers > 1 && (
-            <div className="p-4 rounded-3xl bg-sky-50/90 border-2 border-sky-200 border-b-4 border-b-sky-300 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-sm sm:text-base font-black uppercase tracking-wider text-sky-950">
-                  👥 NUMBER OF TEAMS
-                </span>
-                <span className="px-3 py-0.5 rounded-xl bg-blue-600 text-white text-xs sm:text-sm font-black font-mono tabular-nums">
-                  {numPlayers} TEAMS
-                </span>
-              </div>
-              <div className="grid grid-cols-7 gap-2">
-                {[2, 3, 4, 5, 6, 7, 8].map(count => (
-                  <button
-                    key={count}
-                    type="button"
-                    onClick={() => {
-                      playSound('click');
-                      setNumPlayers(count);
-                    }}
-                    className={`py-2.5 rounded-2xl font-black text-sm border-2 border-b-[5px] transition cursor-pointer tabular-nums ${
-                      numPlayers === count
-                        ? 'bg-gradient-to-b from-blue-500 to-blue-700 border-blue-300 border-b-blue-950 text-white -translate-y-0.5'
-                        : 'bg-white hover:bg-sky-50 border-sky-200 border-b-sky-300 text-slate-900'
-                    }`}
-                  >
-                    {count}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 2. MYSTERY BOX CHAOS MODE & SCORING RULES */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 rounded-3xl bg-purple-50/90 border-2 border-purple-200 border-b-4 border-b-purple-300 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm sm:text-base font-black uppercase tracking-wider text-purple-950">
-                  🎁 BOX MODE
-                </span>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { id: 'normal', label: 'NORMAL' },
-                  { id: 'medium', label: 'EXCITING' },
-                  { id: 'difficult', label: 'CHAOS 🔥' }
-                ].map(d => (
-                  <button
-                    key={d.id}
-                    type="button"
-                    onClick={() => {
-                      playSound('click');
-                      setDifficulty(d.id as any);
-                    }}
-                    className={`py-3 rounded-2xl font-black text-xs sm:text-sm border-2 border-b-[5px] transition cursor-pointer ${
-                      difficulty === d.id
-                        ? 'bg-gradient-to-b from-purple-500 to-indigo-600 border-purple-300 border-b-indigo-950 text-white -translate-y-0.5'
-                        : 'bg-white hover:bg-purple-50 border-purple-200 border-b-purple-300 text-slate-900'
-                    }`}
-                  >
-                    {d.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    playSound('click');
-                    setAnswerBonusPoints(!answerBonusPoints);
-                  }}
-                  className={`py-2 px-2 rounded-xl font-black text-[11px] border-2 border-b-4 transition cursor-pointer ${
-                    answerBonusPoints
-                      ? 'bg-emerald-500 border-emerald-300 border-b-emerald-800 text-white'
-                      : 'bg-white border-slate-200 text-slate-400'
-                  }`}
-                >
-                  +50 BONUS {answerBonusPoints ? 'ON' : 'OFF'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    playSound('click');
-                    setWrongAnswerPenalty(!wrongAnswerPenalty);
-                  }}
-                  className={`py-2 px-2 rounded-xl font-black text-[11px] border-2 border-b-4 transition cursor-pointer ${
-                    wrongAnswerPenalty
-                      ? 'bg-rose-500 border-rose-300 border-b-rose-800 text-white'
-                      : 'bg-white border-slate-200 text-slate-400'
-                  }`}
-                >
-                  -50 PENALTY {wrongAnswerPenalty ? 'ON' : 'OFF'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsMuted(!isMuted)}
-                  className={`py-2 px-2 rounded-xl font-black text-[11px] border-2 border-b-4 transition cursor-pointer ${
-                    !isMuted
-                      ? 'bg-sky-500 border-sky-300 border-b-sky-800 text-white'
-                      : 'bg-white border-slate-200 text-slate-400'
-                  }`}
-                >
-                  🔊 SFX {!isMuted ? 'ON' : 'OFF'}
-                </button>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-3xl bg-amber-50/90 border-2 border-amber-200 border-b-4 border-b-amber-300 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm sm:text-base font-black uppercase tracking-wider text-amber-950">
-                  🌈 ARENA THEME
-                </span>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { id: 'theme-sky', name: '☁️ SKY' },
-                  { id: 'theme-ocean', name: '🌊 OCEAN' },
-                  { id: 'theme-space', name: '🚀 SPACE' },
-                  { id: 'theme-jungle', name: '🌴 JUNGLE' },
-                  { id: 'theme-sunset', name: '🌅 SUNSET' },
-                  { id: 'theme-royal', name: '👑 ROYAL' }
-                ].map(t => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => {
-                      playSound('click');
-                      setSelectedTheme(t.id);
-                    }}
-                    className={`py-2.5 px-2 rounded-2xl font-black text-xs border-2 border-b-[5px] transition cursor-pointer ${
-                      selectedTheme === t.id
-                        ? 'bg-gradient-to-b from-amber-400 to-amber-500 border-amber-200 border-b-amber-700 text-slate-950 -translate-y-0.5'
-                        : 'bg-white hover:bg-amber-50 border-amber-200 border-b-amber-300 text-slate-900'
-                    }`}
-                  >
-                    {t.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </UnifiedGameSetup>
+        />
       )}
 
       {/* 3. FULL SCREEN INTERACTIVE STUDY MODE */}

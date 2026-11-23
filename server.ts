@@ -610,6 +610,69 @@ async function startServer() {
     }
   });
 
+  // In-memory + platform-cache handoff for opening a game in a new browser tab from a cross-site iframe
+  const tabLaunchStore = new Map<string, { game: any; savedAt: number }>();
+
+  app.post("/api/platform-cache/tab-launch", (req, res) => {
+    try {
+      const { launchKey, game } = req.body || {};
+      if (!game) {
+        return res.status(400).json({ ok: false, error: "Missing game payload" });
+      }
+      const now = Date.now();
+      for (const [k, v] of tabLaunchStore.entries()) {
+        if (now - v.savedAt > 60 * 60 * 1000) {
+          tabLaunchStore.delete(k);
+        }
+      }
+      if (launchKey) {
+        tabLaunchStore.set(String(launchKey), { game, savedAt: now });
+      }
+      if (game.id) {
+        tabLaunchStore.set(`game_${String(game.id)}`, { game, savedAt: now });
+      }
+      tabLaunchStore.set("latest", { game, savedAt: now });
+      return res.json({ ok: true });
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, error: err?.message || "Tab launch save error" });
+    }
+  });
+
+  app.get("/api/platform-cache/tab-launch", async (req, res) => {
+    try {
+      const launchKey = String(req.query.launchKey || "").trim();
+      const playGame = String(req.query.playGame || "").trim();
+
+      if (launchKey && tabLaunchStore.has(launchKey)) {
+        return res.json({ ok: true, game: tabLaunchStore.get(launchKey)!.game });
+      }
+      if (playGame && tabLaunchStore.has(`game_${playGame}`)) {
+        return res.json({ ok: true, game: tabLaunchStore.get(`game_${playGame}`)!.game });
+      }
+
+      if (playGame) {
+        const cache = await readPlatformCache();
+        if (Array.isArray(cache.games)) {
+          const found = cache.games.find((g: any) => String(g?.id) === playGame);
+          if (found) {
+            return res.json({ ok: true, game: found });
+          }
+        }
+      }
+
+      if (tabLaunchStore.has("latest")) {
+        const latest = tabLaunchStore.get("latest")!;
+        if (!playGame || String(latest.game?.id) === playGame) {
+          return res.json({ ok: true, game: latest.game });
+        }
+      }
+
+      return res.status(404).json({ ok: false, error: "Launched game not found" });
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, error: err?.message || "Tab launch read error" });
+    }
+  });
+
   // ============================================================================
   // SERVER-SIDE HOMEWORK PERSISTENCE & PIN LOOKUP ENDPOINTS
   // Guarantees homework counts, trash bin, student PIN links, & leaderboards work

@@ -33,6 +33,7 @@ import { GameCategoryId, ViewState } from '../types';
 import { GameThumbnail } from '../components/GameThumbnail';
 import { GameModeModal, detectOriginalGameMode, PLAYABLE_GAME_OPTIONS } from '../components/GameModeModal';
 import { CreateHomeworkModal } from '../components/CreateHomeworkModal';
+import { openGameInNewTab } from '../utils/gameTabLauncher';
 import { logUserActivity } from '../utils/activityTracker';
 import noiseControlCardImg from '../assets/images/noise_control_card_1795022921714.jpg';
 import {
@@ -1381,11 +1382,7 @@ export const GamesLibrary = ({
                         e.dataTransfer.effectAllowed = 'move';
                       }}
                       onClick={() => {
-                        if (isInterchangeableGame(game)) {
-                          setInterchangeableGameModal(game);
-                        } else {
-                          onViewChange((game.gameType as any) || "mystery-box", game);
-                        }
+                        openGameInNewTab(game);
                       }}
                       className={`perf-card group bg-white dark:bg-slate-900 rounded-2xl shadow-[0_1px_3px_rgba(15,23,42,0.05)] hover:shadow-md transition-shadow duration-150 border border-slate-200/90 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-500/60 flex flex-col relative cursor-pointer ${
                         openMenuId === game.id ? 'z-50' : 'z-10'
@@ -1477,11 +1474,7 @@ export const GamesLibrary = ({
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              if (isInterchangeableGame(game)) {
-                                setInterchangeableGameModal(game);
-                              } else {
-                                onViewChange((game.gameType as any) || "mystery-box", game);
-                              }
+                              openGameInNewTab(game);
                             }}
                             className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm py-2 px-3.5 rounded-xl shadow-2xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                           >
@@ -2002,7 +1995,7 @@ export const GamesLibrary = ({
         onClose={() => setInterchangeableGameModal(null)}
         onSelectMode={(mode, adaptedData) => {
           setInterchangeableGameModal(null);
-          onViewChange(mode as ViewState, adaptedData);
+          openGameInNewTab(adaptedData, mode);
         }}
       />
 
