@@ -821,6 +821,38 @@ const GAME_TIME_STEPS = [
   { label: '20m', minutes: 20 },
 ];
 
+let sharedLobbyAudioCtx: AudioContext | null = null;
+function playLobbySfx(type: 'select' | 'tick' = 'select') {
+  try {
+    if (!sharedLobbyAudioCtx) {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) sharedLobbyAudioCtx = new AudioCtx();
+    }
+    const ctx = sharedLobbyAudioCtx;
+    if (!ctx) return;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    const now = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type === 'tick' ? 'sine' : 'triangle';
+    const startFreq = type === 'tick' ? 760 : 540;
+    const endFreq = type === 'tick' ? 980 : 920;
+    const dur = type === 'tick' ? 0.035 : 0.075;
+    osc.frequency.setValueAtTime(startFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(endFreq, now + dur);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(type === 'tick' ? 0.14 : 0.22, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0008, now + dur);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + dur + 0.01);
+  } catch {
+    // ignore audio fallback
+  }
+}
+
 function BaamboozleBlueButton({
   onClick,
   children,
@@ -835,7 +867,10 @@ function BaamboozleBlueButton({
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => {
+        playLobbySfx('select');
+        onClick();
+      }}
       title={title}
       className={`group relative rounded-2xl px-6 sm:px-8 py-3 sm:py-3.5 bg-gradient-to-b from-[#4fd1ff] via-[#0ea5e9] to-[#0284c7] border-[3px] border-[#0c2d57] shadow-[0_6px_0_#0c2d57,0_10px_18px_rgba(12,45,87,0.28)] hover:brightness-105 hover:-translate-y-0.5 active:translate-y-1 active:shadow-[0_2px_0_#0c2d57] transition-all duration-150 flex items-center justify-center gap-2.5 cursor-pointer text-white font-black tracking-wide ${className}`}
     >
@@ -902,7 +937,10 @@ function BaamboozleSlider({
             max={safeMax}
             step={1}
             value={clamped}
-            onChange={(e) => onChange(Number(e.target.value))}
+            onChange={(e) => {
+              playLobbySfx('tick');
+              onChange(Number(e.target.value));
+            }}
             className="absolute -inset-x-4 -inset-y-4 w-[calc(100%+32px)] h-12 opacity-0 cursor-pointer z-20"
           />
         </div>
@@ -971,6 +1009,7 @@ export function MysteryBox3DLobby({
   const effectiveAvatars = onChangeTeamAvatar ? teamAvatars : localAvatars;
 
   const handleAssignAvatar = (teamIdx: number, avatarId: number) => {
+    if (!isMuted) playLobbySfx('select');
     if (onChangeTeamAvatar) {
       onChangeTeamAvatar(teamIdx, avatarId);
     } else {
@@ -987,6 +1026,7 @@ export function MysteryBox3DLobby({
   };
 
   const handleRandomizeAllAvatars = () => {
+    if (!isMuted) playLobbySfx('select');
     if (onRandomizeTeamAvatars) {
       onRandomizeTeamAvatars();
       return;
@@ -1001,6 +1041,7 @@ export function MysteryBox3DLobby({
   };
 
   const handleRandomizeSingleTeam = (teamIdx: number) => {
+    if (!isMuted) playLobbySfx('select');
     const usedByOthers = new Set(
       effectiveAvatars.slice(0, numPlayers).filter((_, idx) => idx !== teamIdx)
     );

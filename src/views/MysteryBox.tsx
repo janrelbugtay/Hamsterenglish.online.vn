@@ -107,6 +107,45 @@ function getTransparentChestDataUrl(): Promise<string> {
         }
 
         ctx.putImageData(imageData, 0, 0);
+
+        // Auto-crop transparent outer padding symmetrically around the center so the chest fills its cell richly
+        // while keeping the golden shield plate dead-center at (50%, 50%)
+        let minX = w, minY = h, maxX = 0, maxY = 0;
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            if (data[(y * w + x) * 4 + 3] > 25) {
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+
+        if (maxX > minX && maxY > minY) {
+          const cxCenter = w / 2;
+          const cyCenter = h / 2;
+          const padX = Math.round(w * 0.012);
+          const padY = Math.round(h * 0.012);
+          const halfW = Math.min(cxCenter, Math.max(cxCenter - minX, maxX - cxCenter) + padX);
+          const halfH = Math.min(cyCenter, Math.max(cyCenter - minY, maxY - cyCenter) + padY);
+          const cropX = Math.max(0, Math.floor(cxCenter - halfW));
+          const cropY = Math.max(0, Math.floor(cyCenter - halfH));
+          const cropW = Math.min(w - cropX, Math.ceil(halfW * 2));
+          const cropH = Math.min(h - cropY, Math.ceil(halfH * 2));
+
+          const croppedCanvas = document.createElement('canvas');
+          croppedCanvas.width = cropW;
+          croppedCanvas.height = cropH;
+          const croppedCtx = croppedCanvas.getContext('2d');
+          if (croppedCtx) {
+            croppedCtx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+            cachedTransparentChestUrl = croppedCanvas.toDataURL('image/png');
+            resolve(cachedTransparentChestUrl);
+            return;
+          }
+        }
+
         cachedTransparentChestUrl = canvas.toDataURL('image/png');
         resolve(cachedTransparentChestUrl);
       } catch {
@@ -361,17 +400,20 @@ function MainScoreboard({
             const isAffectedReveal = activeRevealTeamId === t.id && activeRevealDelta !== undefined && activeRevealDelta !== null;
             const isPositiveReveal = isAffectedReveal && (activeRevealDelta ?? 0) >= 0;
 
+            const rawTeamName = (t.name || '').trim();
+            const displayTeamTitle = rawTeamName || `TEAM ${idx + 1}`;
+
             return (
               <div
                 key={t.id}
                 onClick={() => onSelectTeam && onSelectTeam(idx)}
                 title={onSelectTeam ? "Click to set active turn" : undefined}
-                className={`group relative rounded-[20px] sm:rounded-[24px] transition-all duration-300 flex flex-col justify-between overflow-visible select-none ${
+                className={`group relative rounded-[22px] sm:rounded-[26px] transition-all duration-300 flex flex-col justify-between overflow-visible select-none ${
                   onSelectTeam ? 'cursor-pointer hover:scale-[1.02]' : 'cursor-default'
                 } ${
                   isCompact
-                    ? 'px-3.5 py-2 sm:px-4 sm:py-2.5 w-[155px] sm:w-[190px] md:w-[215px]'
-                    : 'p-4 sm:p-5 w-[190px] sm:w-[230px] md:w-[255px]'
+                    ? 'px-3.5 py-2.5 sm:px-4 sm:py-3 w-[185px] sm:w-[235px] md:w-[265px]'
+                    : 'p-4 sm:p-5 w-[215px] sm:w-[260px] md:w-[290px]'
                 } ${
                   isAffectedReveal
                     ? isPositiveReveal
@@ -413,56 +455,57 @@ function MainScoreboard({
                   </div>
                 ) : null}
 
-                {/* Top Row: Circular Hamster Avatar + TEAM N + Subtitle */}
-                <div className="flex items-center gap-2.5 min-w-0 pt-0.5">
+                {/* Top Row: Large Circular Hamster Character Avatar + Single Team Name */}
+                <div className="flex items-center gap-3 min-w-0 pt-0.5">
                   <CuteHamsterAvatar
                     avatarId={t.avatarId || ((idx % 20) + 1)}
-                    className={`${isCompact ? 'w-10 h-10 sm:w-11 sm:h-11' : 'w-12 h-12 sm:w-14 sm:h-14'} shrink-0`}
+                    className={`${
+                      isCompact
+                        ? 'w-14 h-14 sm:w-16 sm:h-16 md:w-[68px] md:h-[68px]'
+                        : 'w-16 h-16 sm:w-20 sm:h-20'
+                    } shrink-0 !border-[3px] shadow-[0_4px_12px_rgba(0,0,0,0.45)]`}
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
                       <p className={`${
-                        isCompact ? 'text-xs sm:text-sm md:text-[15px]' : 'text-sm sm:text-base md:text-lg'
-                      } font-black uppercase tracking-wide truncate text-white leading-tight`}>
-                        TEAM {idx + 1}
+                        isCompact ? 'text-sm sm:text-base md:text-lg' : 'text-base sm:text-lg md:text-xl'
+                      } font-black tracking-wide truncate text-white leading-tight drop-shadow-[0_2px_4px_rgba(0,0,0,0.6)]`}>
+                        {displayTeamTitle}
                       </p>
                       {isLeader && (
-                        <span title="1st Place Leader" className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-400/25 text-amber-200 border border-amber-300/40 shrink-0">
+                        <span title="1st Place Leader" className="text-[10px] font-black px-1.5 py-0.5 rounded bg-amber-400/25 text-amber-200 border border-amber-300/40 shrink-0">
                           👑
                         </span>
                       )}
                       {(t.streak || 0) >= 2 && (
-                        <span className="text-[9px] font-black bg-orange-500 text-white px-1.5 py-0.5 rounded shrink-0">
+                        <span className="text-[10px] font-black bg-orange-500 text-white px-1.5 py-0.5 rounded shrink-0">
                           🔥{t.streak}
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] font-semibold text-white/75 truncate leading-tight mt-0.5">
-                      {t.name}
-                    </p>
                   </div>
                 </div>
 
-                {/* Horizontal Divider + Bottom Score Row */}
-                <div className={`${isCompact ? 'mt-1.5 pt-1.5' : 'mt-2.5 pt-2'} border-t flex items-baseline justify-between ${
+                {/* Horizontal Divider + Large Score Row */}
+                <div className={`${isCompact ? 'mt-2 pt-1.5' : 'mt-2.5 pt-2'} border-t flex items-baseline justify-between ${
                   isCurrent ? 'border-amber-300/30' : 'border-white/15'
                 }`}>
-                  <span className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider text-white/85">
+                  <span className="text-[11px] sm:text-xs font-extrabold uppercase tracking-wider text-white/85">
                     SCORE
                   </span>
-                  <div className="flex items-baseline gap-1">
+                  <div className="flex items-baseline gap-1.5">
                     <div className={`${
                       isCompact
-                        ? 'text-2xl sm:text-3xl'
-                        : 'text-3xl sm:text-4xl md:text-5xl'
+                        ? 'text-3xl sm:text-4xl md:text-[42px]'
+                        : 'text-4xl sm:text-5xl md:text-6xl'
                     } font-black tracking-tight tabular-nums leading-none ${
                       isCurrent
-                        ? 'text-[#fbbf24] drop-shadow-[0_2px_10px_rgba(251,191,36,0.45)]'
-                        : 'text-white'
+                        ? 'text-[#fbbf24] drop-shadow-[0_2px_12px_rgba(251,191,36,0.55)]'
+                        : 'text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]'
                     }`}>
                       <AnimatedScore value={t.score} />
                     </div>
-                    <span className={`text-[10px] sm:text-xs font-black uppercase ${
+                    <span className={`text-xs sm:text-sm font-black uppercase ${
                       isCurrent ? 'text-[#fde68a]' : 'text-white/85'
                     }`}>
                       PTS
@@ -671,6 +714,7 @@ export function MysteryBox({
   const [selectedBoxAnimation, setSelectedBoxAnimation] = useState<number | null>(null);
   const [scoreDeltas, setScoreDeltas] = useState<ScoreDeltaPopup[]>([]);
   const [liveScoreFeed, setLiveScoreFeed] = useState<{ text: string; isPositive: boolean; id: number } | null>(null);
+  const [manualGameEnded, setManualGameEnded] = useState(false);
 
   // Active question & mystery box modal state
   const [activeBoxNum, setActiveBoxNum] = useState<number | null>(null);
@@ -719,180 +763,143 @@ export function MysteryBox({
   const [studySelectedOption, setStudySelectedOption] = useState<number | null>(null);
   const [studyHistory, setStudyHistory] = useState<Record<number, { selected: number; isCorrect: boolean }>>({});
 
-  // Rich Multi-Layered Web Audio Synthesizer
+  // Rich Multi-Layered Web Audio Synthesizer + In-Game Adventure Background Music
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const playSound = (type: string) => {
-    if (isMuted) return;
+  const bgmStepRef = useRef<number>(0);
+  const hasAnnouncedGameOverRef = useRef<boolean>(false);
+
+  const ensureAudioContext = (): AudioContext | null => {
     try {
       if (!audioCtxRef.current) {
         const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
         if (AudioCtx) audioCtxRef.current = new AudioCtx();
       }
       const ctx = audioCtxRef.current;
-      if (!ctx) return;
-      if (ctx.state === 'suspended') ctx.resume();
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+      return ctx;
+    } catch {
+      return null;
+    }
+  };
 
+  const playSound = (type: string) => {
+    if (isMuted) return;
+    try {
+      const ctx = ensureAudioContext();
+      if (!ctx) return;
       const now = ctx.currentTime;
 
-      if (type === 'click') {
+      const playTone = (
+        freq: number,
+        oscType: OscillatorType,
+        startOffset: number,
+        duration: number,
+        peakGain: number,
+        endFreq?: number
+      ) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
+        osc.type = oscType;
+        const t0 = now + startOffset;
+        osc.frequency.setValueAtTime(freq, t0);
+        if (endFreq !== undefined) {
+          osc.frequency.exponentialRampToValueAtTime(Math.max(20, endFreq), t0 + duration);
+        }
+        gain.gain.setValueAtTime(0.001, t0);
+        gain.gain.linearRampToValueAtTime(peakGain, t0 + Math.min(0.014, duration * 0.25));
+        gain.gain.exponentialRampToValueAtTime(0.0008, t0 + duration);
         osc.connect(gain);
         gain.connect(ctx.destination);
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(650, now);
-        osc.frequency.exponentialRampToValueAtTime(920, now + 0.055);
-        gain.gain.setValueAtTime(0.12, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.055);
-        osc.start(now);
-        osc.stop(now + 0.055);
+        osc.start(t0);
+        osc.stop(t0 + duration + 0.01);
+      };
+
+      if (type === 'hover') {
+        // Subtle crisp wooden tick when hovering over treasure chests or options
+        playTone(740, 'sine', 0, 0.032, 0.09, 980);
+      } else if (type === 'click' || type === 'select') {
+        // Crisp 2-stage arcade selection pop + harmonic lock-in chime
+        playTone(540, 'triangle', 0, 0.065, 0.25, 860);
+        playTone(1080, 'sine', 0.035, 0.085, 0.22, 1320);
       } else if (type === 'roulette_tick') {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(980, now);
-        osc.frequency.exponentialRampToValueAtTime(420, now + 0.035);
-        gain.gain.setValueAtTime(0.11, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
-        osc.start(now);
-        osc.stop(now + 0.035);
+        // Mechanical prize-wheel wooden peg click
+        playTone(1080, 'triangle', 0, 0.042, 0.22, 460);
+        playTone(1620, 'sine', 0, 0.025, 0.12, 720);
       } else if (type === 'coin_add') {
-        // Bright arcade coin ding-ding!
-        [987.77, 1318.51].forEach((freq, i) => {
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(freq, now + i * 0.065);
-          gain.gain.setValueAtTime(0.14, now + i * 0.065);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.065 + 0.28);
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.start(now + i * 0.065);
-          osc.stop(now + i * 0.065 + 0.28);
-        });
+        // Bright arcade gold coin ding-ding-shimmer!
+        playTone(987.77, 'sine', 0, 0.16, 0.28);
+        playTone(1318.51, 'sine', 0.065, 0.32, 0.30);
+        playTone(1975.53, 'triangle', 0.09, 0.26, 0.16);
       } else if (type === 'point_deduct') {
-        // Quick descending thud-zap for point deduction
-        [340, 210].forEach((freq, i) => {
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.type = 'sawtooth';
-          osc.frequency.setValueAtTime(freq, now + i * 0.08);
-          osc.frequency.exponentialRampToValueAtTime(freq * 0.65, now + i * 0.08 + 0.16);
-          gain.gain.setValueAtTime(0.11, now + i * 0.08);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.16);
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.start(now + i * 0.08);
-          osc.stop(now + i * 0.08 + 0.16);
-        });
+        // Distinct descending point loss thud-zap
+        playTone(360, 'sawtooth', 0, 0.15, 0.24, 210);
+        playTone(230, 'sawtooth', 0.09, 0.22, 0.24, 115);
+        playTone(130, 'triangle', 0.09, 0.24, 0.26, 72);
       } else if (type === 'box_open') {
-        // Magical chest creak + shimmering crystalline arpeggio
-        [523.25, 659.25, 783.99, 1046.5, 1318.51].forEach((freq, i) => {
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.type = 'triangle';
-          osc.frequency.setValueAtTime(freq, now + i * 0.055);
-          gain.gain.setValueAtTime(0.13, now + i * 0.055);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.055 + 0.32);
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.start(now + i * 0.055);
-          osc.stop(now + i * 0.055 + 0.32);
+        // 3D Treasure Chest selection: wooden thump + metallic latch click + magical crystal arpeggio
+        playTone(165, 'sine', 0, 0.12, 0.30, 75);
+        playTone(1350, 'triangle', 0.03, 0.045, 0.22, 2100);
+        [523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98].forEach((freq, i) => {
+          playTone(freq, 'triangle', 0.05 + i * 0.05, 0.34, 0.24);
+          playTone(freq * 1.5, 'sine', 0.05 + i * 0.05, 0.22, 0.10);
         });
       } else if (type === 'correct') {
-        // Rich game-show major chord chime + high sparkle
-        const notes = [523.25, 659.25, 783.99, 1046.5];
+        // Winning Answer Fanfare: Rich game-show major chord chime + high bell sparkle
+        const notes = [523.25, 659.25, 783.99, 1046.5, 1318.51];
         notes.forEach((freq, i) => {
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.type = 'triangle';
-          osc.frequency.setValueAtTime(freq, now + i * 0.07);
-          gain.gain.setValueAtTime(0.16, now + i * 0.07);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.45);
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.start(now + i * 0.07);
-          osc.stop(now + i * 0.07 + 0.45);
+          playTone(freq, 'triangle', i * 0.065, 0.48, 0.30);
+          playTone(freq * 2, 'sine', i * 0.065 + 0.015, 0.32, 0.14);
+        });
+        // Sustain celebratory triad at top
+        [1046.5, 1318.51, 1567.98].forEach((freq) => {
+          playTone(freq, 'sine', 0.28, 0.45, 0.18);
         });
       } else if (type === 'incorrect') {
-        // Dramatic dual-oscillator game show wrong buzzer
-        [195, 207].forEach((freq) => {
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.type = 'sawtooth';
-          osc.frequency.setValueAtTime(freq, now);
-          osc.frequency.linearRampToValueAtTime(freq * 0.72, now + 0.45);
-          gain.gain.setValueAtTime(0.11, now);
-          gain.gain.linearRampToValueAtTime(0.001, now + 0.45);
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.start(now);
-          osc.stop(now + 0.45);
+        // Losing Answer Sound: Dual-oscillator game show wrong buzzer + descending "wah-wah" slide
+        [185, 198].forEach((freq) => {
+          playTone(freq, 'sawtooth', 0, 0.36, 0.24, freq * 0.78);
+        });
+        playTone(95, 'triangle', 0, 0.38, 0.26, 65);
+        // Comedic descending minor "wah-wah" tail
+        [329.63, 293.66, 246.94].forEach((freq, idx) => {
+          const start = 0.18 + idx * 0.12;
+          const dur = idx === 2 ? 0.32 : 0.11;
+          playTone(freq, 'sawtooth', start, dur, 0.20, idx === 2 ? 185 : freq * 0.94);
+          playTone(freq * 0.5, 'triangle', start, dur, 0.22, idx === 2 ? 92.5 : freq * 0.47);
         });
       } else if (type === 'suspense') {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(260, now);
-        osc.frequency.exponentialRampToValueAtTime(587.33, now + 0.45);
-        gain.gain.setValueAtTime(0.08, now);
-        gain.gain.linearRampToValueAtTime(0.001, now + 0.45);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.45);
+        // Rising mystery shimmer
+        playTone(293.66, 'sine', 0, 0.38, 0.18, 587.33);
+        playTone(440, 'triangle', 0.08, 0.34, 0.15, 880);
       } else if (type === 'win' || type === 'jackpot') {
-        // Triumphant brassy fanfare + coin cascade
+        // Triumphant Treasure Victory Fanfare + harmonic brass chord + coin cascade
         const notes = type === 'jackpot'
-          ? [523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98]
-          : [440, 554.37, 659.25, 880];
+          ? [523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98, 2093.0]
+          : [440, 554.37, 659.25, 880, 1108.73];
         notes.forEach((freq, idx) => {
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.type = 'triangle';
-          osc.frequency.setValueAtTime(freq, now + idx * 0.085);
-          gain.gain.setValueAtTime(0.16, now + idx * 0.085);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.085 + 0.55);
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.start(now + idx * 0.085);
-          osc.stop(now + idx * 0.085 + 0.55);
+          playTone(freq, 'triangle', idx * 0.075, 0.56, 0.30);
+          playTone(freq * 0.5, 'sine', idx * 0.075, 0.45, 0.18);
+          playTone(freq * 1.5, 'sine', idx * 0.075 + 0.015, 0.35, 0.11);
         });
       } else if (type === 'lose') {
-        // Sad trombone / descending minor slide
-        [392, 369.99, 349.23, 311.13].forEach((freq, idx) => {
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.type = 'sawtooth';
-          const start = now + idx * 0.14;
-          const dur = idx === 3 ? 0.4 : 0.13;
-          osc.frequency.setValueAtTime(freq, start);
-          if (idx === 3) osc.frequency.linearRampToValueAtTime(260, start + dur);
-          gain.gain.setValueAtTime(0.12, start);
-          gain.gain.exponentialRampToValueAtTime(0.001, start + dur);
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.start(start);
-          osc.stop(start + dur);
+        // Comedic Sad Trombone "Wah-Wah-Wah-Waaaaah" losing sound effect
+        const wahNotes = [392.0, 369.99, 349.23, 329.63];
+        wahNotes.forEach((freq, idx) => {
+          const start = idx * 0.16;
+          const dur = idx === 3 ? 0.52 : 0.14;
+          const endF = idx === 3 ? 233.08 : freq * 0.96;
+          playTone(freq, 'sawtooth', start, dur, 0.24, endF);
+          playTone(freq * 0.5, 'triangle', start, dur, 0.24, endF * 0.5);
         });
       } else if (type === 'bomb') {
-        // Deep sub-bass explosion impact + filtered noise burst
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(160, now);
-        osc.frequency.exponentialRampToValueAtTime(32, now + 0.65);
-        gain.gain.setValueAtTime(0.28, now);
-        gain.gain.linearRampToValueAtTime(0.001, now + 0.65);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.65);
+        // Deep sub-bass explosion impact + filtered noise burst + losing trombone tail
+        playTone(170, 'sine', 0, 0.68, 0.38, 32);
+        playTone(110, 'sawtooth', 0, 0.45, 0.26, 40);
 
         try {
-          const bufferSize = Math.floor(ctx.sampleRate * 0.5);
+          const bufferSize = Math.floor(ctx.sampleRate * 0.55);
           const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
           const data = buffer.getChannelData(0);
           for (let i = 0; i < bufferSize; i++) {
@@ -902,38 +909,107 @@ export function MysteryBox({
           noise.buffer = buffer;
           const filter = ctx.createBiquadFilter();
           filter.type = 'lowpass';
-          filter.frequency.setValueAtTime(950, now);
-          filter.frequency.exponentialRampToValueAtTime(85, now + 0.5);
+          filter.frequency.setValueAtTime(1150, now);
+          filter.frequency.exponentialRampToValueAtTime(80, now + 0.55);
           const noiseGain = ctx.createGain();
-          noiseGain.gain.setValueAtTime(0.22, now);
-          noiseGain.gain.linearRampToValueAtTime(0.001, now + 0.5);
+          noiseGain.gain.setValueAtTime(0.32, now);
+          noiseGain.gain.linearRampToValueAtTime(0.001, now + 0.55);
           noise.connect(filter);
           filter.connect(noiseGain);
           noiseGain.connect(ctx.destination);
           noise.start(now);
-          noise.stop(now + 0.5);
-        } catch (err) {
+          noise.stop(now + 0.55);
+        } catch {
           // ignore
         }
       } else if (type === 'steal_swap') {
-        // Sci-fi heist warp whoosh + chime
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(280, now);
-        osc.frequency.exponentialRampToValueAtTime(920, now + 0.22);
-        osc.frequency.exponentialRampToValueAtTime(360, now + 0.45);
-        gain.gain.setValueAtTime(0.14, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.45);
+        // Sneaky pirate heist swoop + golden chime
+        playTone(260, 'sine', 0, 0.22, 0.26, 940);
+        playTone(940, 'triangle', 0.20, 0.26, 0.24, 420);
+        playTone(1174.66, 'sine', 0.26, 0.28, 0.22);
       }
-    } catch (e) {
+    } catch {
       // Audio fallback
     }
   };
+
+  // Ambient In-Game Treasure Adventure Background Soundtrack (Plays during active gameplay)
+  useEffect(() => {
+    if (screen !== 'game' || isMuted || manualGameEnded) return;
+
+    // Playful treasure-hunt marimba/pluck melody & warm bass groove in D Dorian / F Major
+    const melodyNotes = [
+      293.66, 349.23, 440.0, 523.25,
+      587.33, 523.25, 440.0, 349.23,
+      392.0, 440.0, 523.25, 659.25,
+      587.33, 523.25, 440.0, 329.63,
+    ];
+    const bassNotes = [146.83, 146.83, 174.61, 196.0];
+
+    const interval = setInterval(() => {
+      try {
+        const ctx = audioCtxRef.current;
+        if (!ctx || ctx.state !== 'running') return;
+        const step = bgmStepRef.current % 16;
+        bgmStepRef.current += 1;
+
+        const now = ctx.currentTime;
+        // Duck background music softly when a question modal is open so SFX & speech stay crystal clear
+        const duckFactor = activeBoxNum !== null ? 0.45 : 1.0;
+
+        // Warm marimba melody note
+        const melFreq = melodyNotes[step];
+        if (melFreq) {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(melFreq, now);
+          gain.gain.setValueAtTime(0.0005, now);
+          gain.gain.linearRampToValueAtTime(0.042 * duckFactor, now + 0.015);
+          gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.22);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.23);
+        }
+
+        // Soft adventure bass pulse on every 4th beat
+        if (step % 4 === 0) {
+          const bassFreq = bassNotes[Math.floor(step / 4) % bassNotes.length];
+          const bOsc = ctx.createOscillator();
+          const bGain = ctx.createGain();
+          bOsc.type = 'triangle';
+          bOsc.frequency.setValueAtTime(bassFreq, now);
+          bGain.gain.setValueAtTime(0.0005, now);
+          bGain.gain.linearRampToValueAtTime(0.05 * duckFactor, now + 0.02);
+          bGain.gain.exponentialRampToValueAtTime(0.0005, now + 0.42);
+          bOsc.connect(bGain);
+          bGain.connect(ctx.destination);
+          bOsc.start(now);
+          bOsc.stop(now + 0.44);
+        }
+
+        // Gentle crystalline cave sparkle on beat 8 and 15
+        if (step === 7 || step === 15) {
+          const sOsc = ctx.createOscillator();
+          const sGain = ctx.createGain();
+          sOsc.type = 'sine';
+          sOsc.frequency.setValueAtTime(step === 7 ? 1174.66 : 1318.51, now);
+          sGain.gain.setValueAtTime(0.0005, now);
+          sGain.gain.linearRampToValueAtTime(0.022 * duckFactor, now + 0.01);
+          sGain.gain.exponentialRampToValueAtTime(0.0005, now + 0.28);
+          sOsc.connect(sGain);
+          sGain.connect(ctx.destination);
+          sOsc.start(now);
+          sOsc.stop(now + 0.3);
+        }
+      } catch {
+        // ignore audio errors
+      }
+    }, 290);
+
+    return () => clearInterval(interval);
+  }, [screen, isMuted, manualGameEnded, activeBoxNum]);
 
   // Trigger floating score delta badge on scoreboard + live banner
   const triggerScoreDeltaPopup = (teamId: number, text: string, isPositive: boolean) => {
@@ -961,7 +1037,8 @@ export function MysteryBox({
 
   // Start Playing
   const handleStartGame = () => {
-    playSound('click');
+    playSound('select');
+    setTimeout(() => playSound('win'), 90);
     const configuredTeams: Team[] = [];
     for (let i = 0; i < numPlayers; i++) {
       const cfg = DEFAULT_TEAM_CONFIGS[i % DEFAULT_TEAM_CONFIGS.length];
@@ -988,13 +1065,65 @@ export function MysteryBox({
     setCelebration(null);
     setSelectedBoxAnimation(null);
     setScoreDeltas([]);
+    setManualGameEnded(false);
+    hasAnnouncedGameOverRef.current = false;
     setRemainingSeconds(gameTimeMinutes > 0 ? gameTimeMinutes * 60 : null);
     setScreen('game');
   };
 
+  // Announce Winner with Fanfare, Confetti & Voice Synthesis
+  const announceWinnerEffect = (currentTeams: Team[]) => {
+    hasAnnouncedGameOverRef.current = true;
+    playSound('jackpot');
+    setTimeout(() => playSound('win'), 360);
+    setTimeout(() => playSound('coin_add'), 720);
+    setCelebration('jackpot');
+    setTimeout(() => setCelebration(null), 4500);
+
+    if (!isMuted && typeof window !== 'undefined' && 'speechSynthesis' in window && currentTeams.length > 0) {
+      try {
+        window.speechSynthesis.cancel();
+        const sorted = [...currentTeams].sort((a, b) => b.score - a.score);
+        const topScore = sorted[0]?.score ?? 0;
+        const winners = sorted.filter((t) => t.score === topScore);
+        let speechText = '';
+        if (currentTeams.length === 1) {
+          speechText = `Game over! ${sorted[0].name} finished with ${topScore} points!`;
+        } else if (winners.length > 1) {
+          const names = winners.map((w) => w.name).join(' and ');
+          speechText = `Game over! It is a tie between ${names} with ${topScore} points!`;
+        } else {
+          speechText = `Game over! The winner is ${winners[0].name} with ${topScore} points! Congratulations!`;
+        }
+        const utterance = new SpeechSynthesisUtterance(speechText);
+        utterance.rate = 1.0;
+        utterance.pitch = 1.08;
+        window.speechSynthesis.speak(utterance);
+      } catch {
+        // ignore speech synthesis errors
+      }
+    }
+  };
+
+  const handleEndGameAndAnnounceWinner = () => {
+    playSound('select');
+    if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+    if (revealCountTimerRef.current) clearTimeout(revealCountTimerRef.current);
+    let latestTeams = teams;
+    if (pendingTeamsRef.current) {
+      latestTeams = pendingTeamsRef.current;
+      setTeams(pendingTeamsRef.current);
+      pendingTeamsRef.current = null;
+    }
+    setActiveBoxNum(null);
+    setAnswerResult(null);
+    setManualGameEnded(true);
+    announceWinnerEffect(latestTeams);
+  };
+
   // Interactive Study Mode Handlers
   const handleOpenStudy = () => {
-    playSound('click');
+    playSound('select');
     setStudyIndex(0);
     setStudySelectedOption(null);
     setStudyHistory({});
@@ -1004,9 +1133,10 @@ export function MysteryBox({
   const handleStudyOptionClick = (optionIdx: number) => {
     const currentQ = activeQuiz.questions[studyIndex];
     if (!currentQ || studySelectedOption !== null) return;
+    playSound('select');
     const isCorrect = optionIdx === currentQ.answerIndex;
     setStudySelectedOption(optionIdx);
-    playSound(isCorrect ? 'correct' : 'incorrect');
+    setTimeout(() => playSound(isCorrect ? 'correct' : 'incorrect'), 75);
     setStudyHistory(prev => ({
       ...prev,
       [studyIndex]: { selected: optionIdx, isCorrect }
@@ -1014,7 +1144,7 @@ export function MysteryBox({
   };
 
   const handleStudyNext = () => {
-    playSound('click');
+    playSound('select');
     if (studyIndex < activeQuiz.questions.length - 1) {
       const nextIdx = studyIndex + 1;
       setStudyIndex(nextIdx);
@@ -1025,7 +1155,7 @@ export function MysteryBox({
   };
 
   const handleStudyPrev = () => {
-    playSound('click');
+    playSound('select');
     if (studyIndex > 0) {
       const prevIdx = studyIndex - 1;
       setStudyIndex(prevIdx);
@@ -1034,7 +1164,7 @@ export function MysteryBox({
   };
 
   const handleStudyRetry = () => {
-    playSound('click');
+    playSound('select');
     setStudySelectedOption(null);
     setStudyHistory(prev => {
       const copy = { ...prev };
@@ -1052,6 +1182,7 @@ export function MysteryBox({
     if (openedBoxes.includes(num)) return;
     if (selectedBoxAnimation !== null) return;
 
+    playSound('select');
     playSound('box_open');
     setSelectedBoxAnimation(num);
     setMysteryHint(MYSTERY_VIBE_HINTS[(num * 7 + openedBoxes.length) % MYSTERY_VIBE_HINTS.length]);
@@ -1077,7 +1208,7 @@ export function MysteryBox({
       clearTimeout(autoAdvanceTimerRef.current);
       autoAdvanceTimerRef.current = null;
     }
-    playSound('click');
+    playSound('select');
     if (teams.length > 1) {
       setModalStep('decision');
     } else {
@@ -1091,7 +1222,7 @@ export function MysteryBox({
       clearTimeout(autoAdvanceTimerRef.current);
       autoAdvanceTimerRef.current = null;
     }
-    playSound('click');
+    playSound('select');
     if (activeBoxNum !== null && !openedBoxes.includes(activeBoxNum)) {
       setOpenedBoxes(prev => [...prev, activeBoxNum]);
       setBoxRecords(prev => ({
@@ -1111,12 +1242,13 @@ export function MysteryBox({
     }
   };
 
-  // AUTO-REVEAL ON OPTION CLICK: Immediately reveals whether chosen answer is right or wrong + Live Point Addition/Deduction!
+  // AUTO-REVEAL ON OPTION CLICK: Immediately plays selection + winning/losing sound effect & updates Live Points!
   const handleOptionSelect = (idx: number) => {
     if (isAnswerRevealed || activeBoxNum === null) return;
     const currentQ = activeQuiz.questions[activeBoxNum - 1];
     if (!currentQ) return;
 
+    playSound('select');
     setSelectedOptionIndex(idx);
     setIsAnswerRevealed(true);
 
@@ -1126,7 +1258,7 @@ export function MysteryBox({
     const activeTeam = teams[currentTeamIdx];
 
     if (isCorrect) {
-      playSound('correct');
+      setTimeout(() => playSound('correct'), 65);
       const newStreak = (activeTeam?.streak || 0) + 1;
       const streakBonus = newStreak >= 2 ? (newStreak - 1) * 25 : 0;
       const basePoints = answerBonusPoints ? 50 + streakBonus : 0;
@@ -1142,7 +1274,7 @@ export function MysteryBox({
         const label = newStreak >= 2
           ? `+${basePoints} PTS (🔥${newStreak}x)`
           : `+${basePoints} PTS`;
-        setTimeout(() => playSound('coin_add'), 180);
+        setTimeout(() => playSound('coin_add'), 240);
         triggerScoreDeltaPopup(activeTeam.id, label, true);
       }
 
@@ -1150,13 +1282,14 @@ export function MysteryBox({
       if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
       autoAdvanceTimerRef.current = setTimeout(() => {
         if (teams.length > 1) {
+          playSound('suspense');
           setModalStep('decision');
         } else {
           handleExecuteDecision(0);
         }
       }, 1750);
     } else {
-      playSound('incorrect');
+      setTimeout(() => playSound('incorrect'), 65);
       const penalty = wrongAnswerPenalty ? -50 : 0;
       setLastAnswerPointChange(penalty);
 
@@ -1167,7 +1300,7 @@ export function MysteryBox({
       } : t));
 
       if (penalty < 0 && activeTeam) {
-        setTimeout(() => playSound('point_deduct'), 180);
+        setTimeout(() => playSound('point_deduct'), 260);
         triggerScoreDeltaPopup(activeTeam.id, `${penalty} PTS`, false);
       }
 
@@ -1507,10 +1640,12 @@ export function MysteryBox({
       triggerScoreDeltaPopup(Number(teamIdStr), d.label, d.isPositive);
     });
 
-    // Play appropriate dramatic outcome sound
+    // Play appropriate dramatic winning or losing outcome sound effect
     const mainDelta = afterScore - beforeScore;
     if (outcome.category === 'bomb' || outcome.id.startsWith('sub500')) {
       playSound('bomb');
+      setTimeout(() => playSound('lose'), 180);
+      setTimeout(() => playSound('point_deduct'), 340);
       setCelebration('lose');
     } else if (outcome.category === 'trap' || mainDelta < 0) {
       playSound('lose');
@@ -1518,7 +1653,8 @@ export function MysteryBox({
       setCelebration('lose');
     } else if (outcome.category === 'heist') {
       playSound('steal_swap');
-      setTimeout(() => playSound('coin_add'), 240);
+      setTimeout(() => playSound('win'), 180);
+      setTimeout(() => playSound('coin_add'), 320);
       setCelebration('win');
     } else if (outcome.category === 'jackpot' || mainDelta >= 500) {
       playSound('jackpot');
@@ -1578,6 +1714,7 @@ export function MysteryBox({
 
   // Exciting Mystery Unboxing Spin before landing on Outcome
   const handleExecuteDecision = (receiverIdx: number) => {
+    playSound('select');
     setTargetTeamIdx(receiverIdx);
     const outcomes = getOutcomesList();
     const chosenOutcome = outcomes[Math.floor(Math.random() * outcomes.length)];
@@ -1621,6 +1758,7 @@ export function MysteryBox({
   };
 
   const handleTargetSelection = (chosenTargetIdx: number) => {
+    playSound('select');
     if (currentOutcome && targetTeamIdx !== null) {
       applyOutcomeToTeams(currentOutcome, targetTeamIdx, chosenTargetIdx);
     }
@@ -1633,7 +1771,7 @@ export function MysteryBox({
       setTeams(pendingTeamsRef.current);
       pendingTeamsRef.current = null;
     }
-    playSound('click');
+    playSound('select');
     setActiveBoxNum(null);
     setAnswerResult(null);
     if (teams.length > 1) {
@@ -1646,9 +1784,16 @@ export function MysteryBox({
         Math.max(1, selectedQuestionLimit)
       );
       const isGameOver =
-        ((openedBoxes.length >= effectiveTotalBoxes && activeBoxNum === null) ||
+        (manualGameEnded ||
+          (openedBoxes.length >= effectiveTotalBoxes && activeBoxNum === null) ||
           (remainingSeconds !== null && remainingSeconds <= 0 && activeBoxNum === null)) &&
         screen === 'game';
+
+      useEffect(() => {
+        if (isGameOver && !hasAnnouncedGameOverRef.current) {
+          announceWinnerEffect(teams);
+        }
+      }, [isGameOver, teams]);
 
       // Find current 1st place team ID for crown indicator
       const highestScore = teams.length > 0 ? Math.max(...teams.map(t => t.score)) : 0;
@@ -2002,10 +2147,10 @@ export function MysteryBox({
         const numRows = Math.max(1, Math.ceil(totalBoxes / numCols));
         const shieldNumSizeClass =
           numRows >= 5
-            ? 'text-base sm:text-xl md:text-2xl lg:text-3xl'
-            : numRows === 4
             ? 'text-lg sm:text-2xl md:text-3xl lg:text-4xl'
-            : 'text-xl sm:text-3xl md:text-4xl lg:text-[42px]';
+            : numRows === 4
+            ? 'text-xl sm:text-3xl md:text-4xl lg:text-[44px]'
+            : 'text-2xl sm:text-4xl md:text-[46px] lg:text-[52px]';
 
         return (
           <div className={`h-screen max-h-screen w-full relative overflow-hidden flex flex-col justify-between select-none ${celebration === 'lose' ? 'animate-shake' : ''}`}>
@@ -2070,7 +2215,10 @@ export function MysteryBox({
               {/* LEFT: Rounded Back Button, Golden Gift Icon, Title & Boxes Left Subtitle */}
               <div className="flex items-center gap-2.5">
                 <button
-                  onClick={() => setScreen('setup')}
+                  onClick={() => {
+                    playSound('select');
+                    setScreen('setup');
+                  }}
                   className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#43306b]/90 hover:bg-[#563e88] text-white flex items-center justify-center transition-all cursor-pointer border border-white/25 shadow-[0_2px_8px_rgba(0,0,0,0.4)] active:scale-95"
                   title="Return to Setup"
                 >
@@ -2094,11 +2242,11 @@ export function MysteryBox({
                 )}
               </div>
 
-              {/* RIGHT: Yellow Settings Pill, Circular Restart, Circular Sound, Purple Switch Mode Pill */}
+              {/* RIGHT: Yellow Settings Pill, Red/Gold End Game Pill, Circular Sound, Purple Switch Mode Pill */}
               <div className="flex items-center gap-2 sm:gap-2.5">
                 <button
                   onClick={() => {
-                    playSound('click');
+                    playSound('select');
                     setShowInGameSettings(true);
                   }}
                   className="px-4 py-1.5 sm:py-2 rounded-full bg-gradient-to-b from-[#fde047] via-[#fbbf24] to-[#f59e0b] hover:brightness-105 text-[#1e1303] border-2 border-[#fef08a] shadow-[0_3px_0_#b45309,0_6px_14px_rgba(245,158,11,0.4)] font-black text-xs sm:text-sm flex items-center gap-1.5 transition-all cursor-pointer active:translate-y-0.5"
@@ -2108,27 +2256,31 @@ export function MysteryBox({
                   <span>Settings</span>
                 </button>
                 <button
-                  onClick={() => {
-                    playSound('click');
-                    setTeams(teams.map(t => ({ ...t, score: 0, streak: 0 })));
-                    setOpenedBoxes([]);
-                    setBoxRecords({});
-                    setRemainingSeconds(gameTimeMinutes > 0 ? gameTimeMinutes * 60 : null);
-                  }}
-                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#43306b]/90 text-white hover:bg-rose-500 flex items-center justify-center transition-all cursor-pointer border border-white/25 shadow-[0_2px_8px_rgba(0,0,0,0.4)] active:scale-95"
-                  title="Reset Board & Scores"
+                  onClick={handleEndGameAndAnnounceWinner}
+                  className="px-4 py-1.5 sm:py-2 rounded-full bg-gradient-to-b from-[#fb7185] via-[#e11d48] to-[#be123c] hover:brightness-110 text-white border-2 border-[#fecdd3] shadow-[0_3px_0_#881337,0_6px_14px_rgba(225,29,72,0.45)] font-black text-xs sm:text-sm flex items-center gap-1.5 transition-all cursor-pointer active:translate-y-0.5"
+                  title="End Game & Announce the Winner"
                 >
-                  <RefreshCw className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2.4]" />
+                  <Trophy className="w-4 h-4 text-[#fde047] stroke-[2.6]" />
+                  <span>End Game</span>
                 </button>
                 <button
-                  onClick={() => setIsMuted(!isMuted)}
+                  onClick={() => {
+                    const nextMuted = !isMuted;
+                    setIsMuted(nextMuted);
+                    if (!nextMuted) {
+                      setTimeout(() => ensureAudioContext(), 10);
+                    }
+                  }}
                   className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#43306b]/90 text-white hover:bg-[#563e88] flex items-center justify-center transition-all cursor-pointer border border-white/25 shadow-[0_2px_8px_rgba(0,0,0,0.4)] active:scale-95"
                   title="Toggle Sound"
                 >
                   {isMuted ? <VolumeX className="w-4 h-4 sm:w-4.5 sm:h-4.5" /> : <Volume2 className="w-4 h-4 sm:w-4.5 sm:h-4.5" />}
                 </button>
                 <button
-                  onClick={() => setShowModeModal(true)}
+                  onClick={() => {
+                    playSound('select');
+                    setShowModeModal(true);
+                  }}
                   className="px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-gradient-to-b from-[#6d48b5] to-[#4c2f87] hover:brightness-110 border border-[#a78bfa]/50 text-white font-extrabold text-xs sm:text-sm flex items-center gap-1.5 transition-all cursor-pointer shadow-[0_3px_10px_rgba(0,0,0,0.4)] active:scale-95"
                   title="Switch to Bubble Pop, Sumo, or Yoga Quiz"
                 >
@@ -2147,7 +2299,7 @@ export function MysteryBox({
                 highestScore={highestScore}
                 isCompact={true}
                 onSelectTeam={(idx) => {
-                  playSound('click');
+                  playSound('select');
                   setCurrentTeamIdx(idx);
                 }}
               />
@@ -2156,13 +2308,13 @@ export function MysteryBox({
             {/* 4 & 5. GAME INSTRUCTION BAR + MAIN WOODEN TREASURE CHEST BOARD */}
             <main className="flex-1 min-h-0 w-full flex flex-col items-center justify-between px-3 sm:px-6 pb-3 sm:pb-5 pt-1 z-20 relative">
               {/* 4. Game Instruction Bar Capsule */}
-              <div className="shrink-0 w-[86%] sm:w-[76%] lg:w-[68%] max-w-[960px] mx-auto mb-2 sm:mb-2.5 rounded-full bg-gradient-to-r from-[#2c1d52]/90 via-[#382666]/90 to-[#2c1d52]/90 backdrop-blur-xl border-[2px] border-[#a78bfa]/60 shadow-[0_0_22px_rgba(139,92,246,0.4),inset_0_1px_8px_rgba(255,255,255,0.2)] px-3 sm:px-5 py-1.5 sm:py-2 flex flex-wrap items-center justify-between gap-2">
+              <div className="shrink-0 w-[90%] sm:w-[80%] lg:w-[73%] max-w-[1060px] mx-auto mb-1.5 sm:mb-2 rounded-full bg-gradient-to-r from-[#2c1d52]/90 via-[#382666]/90 to-[#2c1d52]/90 backdrop-blur-xl border-[2px] border-[#a78bfa]/60 shadow-[0_0_22px_rgba(139,92,246,0.4),inset_0_1px_8px_rgba(255,255,255,0.2)] px-3 sm:px-5 py-1.5 flex flex-wrap items-center justify-between gap-2">
                 {/* LEFT: Blue Team Pill Indicator */}
                 <div className="flex items-center gap-2.5 sm:gap-3.5">
-                  <span className="pl-1.5 pr-3.5 py-1 rounded-full bg-gradient-to-b from-[#38bdf8] via-[#2563eb] to-[#1d4ed8] border border-[#93c5fd] text-white font-black text-xs sm:text-sm shadow-[0_2px_8px_rgba(37,99,235,0.6)] flex items-center gap-2">
+                  <span className="pl-1.5 pr-4 py-1 rounded-full bg-gradient-to-b from-[#38bdf8] via-[#2563eb] to-[#1d4ed8] border border-[#93c5fd] text-white font-black text-xs sm:text-sm md:text-base shadow-[0_2px_8px_rgba(37,99,235,0.6)] flex items-center gap-2">
                     <CuteHamsterAvatar
                       avatarId={teams[currentTeamIdx]?.avatarId || ((currentTeamIdx % 20) + 1)}
-                      className="w-6 h-6 !border-2"
+                      className="w-8 h-8 sm:w-9 sm:h-9 !border-2"
                     />
                     <span>{teams[currentTeamIdx]?.name || `Team ${currentTeamIdx + 1}`}</span>
                   </span>
@@ -2180,9 +2332,9 @@ export function MysteryBox({
                 </div>
               </div>
 
-              {/* 5. MAIN MYSTERY BOX WOODEN TREASURE BOARD (Sized to keep left hamster & right open chest visible) */}
+              {/* 5. MAIN MYSTERY BOX WOODEN TREASURE BOARD (Balanced, Larger Chests & Tighter Inner Frame) */}
               <div
-                className="flex-1 min-h-0 w-[88%] sm:w-[78%] lg:w-[71%] max-w-[1120px] mx-auto rounded-[28px] sm:rounded-[34px] p-2 sm:p-3 md:p-3.5 relative flex flex-col justify-center"
+                className="flex-1 min-h-0 w-[92%] sm:w-[82%] lg:w-[75%] max-w-[1180px] mx-auto rounded-[28px] sm:rounded-[34px] p-2 sm:p-2.5 md:p-3 relative flex flex-col justify-center"
                 style={{
                   background:
                     'linear-gradient(180deg, #d99b4e 0%, #a86825 18%, #7c4714 52%, #a66724 85%, #e2a556 100%)',
@@ -2193,7 +2345,7 @@ export function MysteryBox({
               >
                 {/* Decorative Carved Inner Wooden Bevel & Dark Purple Treasure Cavern Recess */}
                 <div
-                  className="w-full h-full min-h-0 rounded-[20px] sm:rounded-[26px] px-2.5 py-2 sm:px-5 sm:py-3.5 relative flex flex-col justify-center overflow-hidden"
+                  className="w-full h-full min-h-0 rounded-[20px] sm:rounded-[26px] px-2 py-1.5 sm:px-3.5 sm:py-2 relative flex flex-col justify-center overflow-hidden"
                   style={{
                     background:
                       'radial-gradient(circle at 50% 45%, rgba(84,56,128,0.92) 0%, rgba(49,33,82,0.96) 58%, rgba(32,20,58,0.98) 100%)',
@@ -2204,7 +2356,7 @@ export function MysteryBox({
                 >
                   {/* Dynamic Grid of 3D Treasure Chests on Stone Pedestals */}
                   <div
-                    className="w-full h-full min-h-0 grid gap-1.5 sm:gap-2.5 md:gap-3 mx-auto my-auto place-items-center"
+                    className="w-full h-full min-h-0 grid gap-1 sm:gap-1.5 md:gap-2 mx-auto my-auto place-items-center"
                     style={{
                       gridTemplateColumns: `repeat(${numCols}, minmax(0, 1fr))`,
                       gridTemplateRows: `repeat(${numRows}, minmax(0, 1fr))`,
@@ -2221,37 +2373,42 @@ export function MysteryBox({
                         <button
                           key={q.id}
                           onClick={() => handleBoxClick(boxNum)}
+                          onMouseEnter={() => {
+                            if (!isOpened && selectedBoxAnimation === null) {
+                              playSound('hover');
+                            }
+                          }}
                           disabled={isOpened || selectedBoxAnimation !== null}
-                          className={`group relative w-full h-full min-h-0 flex items-center justify-center transition-all duration-300 select-none ${
+                          className={`group relative w-full h-full min-h-0 flex items-center justify-center p-0.5 transition-all duration-300 select-none ${
                             isOpened
                               ? 'cursor-not-allowed opacity-85 scale-[0.96]'
                               : isAnimating
                               ? 'scale-110 z-50 drop-shadow-[0_0_35px_rgba(251,191,36,0.95)] rotate-2 cursor-pointer'
                               : otherAnimating
                               ? 'opacity-30 blur-[1px] scale-95'
-                              : 'cursor-pointer hover:-translate-y-1.5 hover:scale-[1.05] active:scale-95'
+                              : 'cursor-pointer hover:-translate-y-1.5 hover:scale-[1.06] active:scale-95'
                           }`}
                         >
                           {/* Subtle Golden Pedestal Glow Underneath Unopened Chests */}
                           {!isOpened && (
                             <div
-                              className="pointer-events-none absolute bottom-[6%] left-1/2 -translate-x-1/2 w-[76%] h-[26%] rounded-full opacity-75 group-hover:opacity-100 transition-opacity blur-md"
+                              className="pointer-events-none absolute bottom-[4%] left-1/2 -translate-x-1/2 w-[82%] h-[28%] rounded-full opacity-80 group-hover:opacity-100 transition-opacity blur-md"
                               style={{
                                 background:
-                                  'radial-gradient(ellipse at center, rgba(251,191,36,0.65) 0%, rgba(245,158,11,0.2) 60%, transparent 100%)',
+                                  'radial-gradient(ellipse at center, rgba(251,191,36,0.7) 0%, rgba(245,158,11,0.22) 60%, transparent 100%)',
                               }}
                             />
                           )}
 
-                          {/* 3D Treasure Chest on Stone Pedestal */}
-                          <div className="relative h-full w-full max-h-full max-w-full aspect-square flex items-center justify-center">
+                          {/* 3D Treasure Chest on Stone Pedestal (Cropped tightly & scaled prominently) */}
+                          <div className="relative h-full w-full max-h-full max-w-full flex items-center justify-center">
                             <img
                               src={transparentChestSrc}
                               alt={`Treasure Chest ${boxNum}`}
-                              className={`w-full h-full object-contain pointer-events-none select-none transition-all duration-300 ${
+                              className={`w-full h-full max-h-full object-contain pointer-events-none select-none transition-all duration-300 scale-[1.06] sm:scale-[1.1] ${
                                 isOpened
                                   ? 'brightness-50 saturate-50 contrast-110'
-                                  : 'drop-shadow-[0_10px_16px_rgba(0,0,0,0.65)] group-hover:drop-shadow-[0_12px_22px_rgba(251,191,36,0.55)]'
+                                  : 'drop-shadow-[0_10px_16px_rgba(0,0,0,0.68)] group-hover:drop-shadow-[0_14px_24px_rgba(251,191,36,0.6)]'
                               }`}
                             />
 
@@ -2428,7 +2585,7 @@ export function MysteryBox({
                             Full-Screen Mystery Box Question
                           </span>
                           <div className="text-lg sm:text-2xl font-black text-white flex items-center gap-2 flex-wrap">
-                            <span>Team #{currentTeamIdx + 1}: {activeTeam?.name}&apos;s Turn</span>
+                            <span>{activeTeam?.name || `Team ${currentTeamIdx + 1}`}&apos;s Turn</span>
                             <span className="text-xs sm:text-sm bg-black/25 px-3 py-1 rounded-xl font-black tabular-nums border border-white/20">
                               <AnimatedScore value={activeTeam?.score ?? 0} /> PTS
                             </span>
@@ -2939,76 +3096,116 @@ export function MysteryBox({
             </div>
           )}
 
-          {/* GAME OVER MODAL (PODIUM LEADERBOARD & MEDALS) */}
-          {isGameOver && (
-            <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto">
-              <div className="bg-white border-4 border-amber-400 rounded-3xl sm:rounded-[2.5rem] p-6 sm:p-10 max-w-2xl w-full shadow-2xl my-auto animate-pop-in text-center">
-                <div className="w-20 h-20 mx-auto mb-4 rounded-3xl bg-gradient-to-br from-amber-400 to-yellow-500 text-white flex items-center justify-center text-5xl shadow-xl animate-bounce">
-                  🏆
-                </div>
+          {/* GAME OVER / WINNER ANNOUNCEMENT MODAL (PODIUM LEADERBOARD, BIG HAMSTER AVATAR & MEDALS) */}
+          {isGameOver && (() => {
+            const sortedTeams = [...teams].sort((a, b) => b.score - a.score);
+            const topScore = sortedTeams[0]?.score ?? 0;
+            const tiedWinners = sortedTeams.filter((t) => t.score === topScore);
+            const isTie = teams.length > 1 && tiedWinners.length > 1;
+            const winnerTeam = sortedTeams[0];
 
-                <p className="text-sm font-black text-amber-500 uppercase tracking-widest mb-1">ALL MYSTERY BOXES OPENED!</p>
-                <h2 className="text-3xl sm:text-5xl font-black text-slate-900 uppercase mb-6">
-                  {teams.length === 1 
-                    ? `Final Score: ${teams[0]?.score} PTS!` 
-                    : `👑 ${[...teams].sort((a,b) => b.score - a.score)[0]?.name} WINS!`
-                  }
-                </h2>
+            return (
+              <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto">
+                <div
+                  className="border-[4px] border-[#fbbf24] rounded-3xl sm:rounded-[2.5rem] p-6 sm:p-9 max-w-2xl w-full shadow-[0_25px_80px_rgba(0,0,0,0.85),0_0_40px_rgba(251,191,36,0.4)] my-auto animate-pop-in text-center text-white relative overflow-hidden"
+                  style={{
+                    background:
+                      'linear-gradient(180deg, #2b1d52 0%, #1d1238 55%, #140c29 100%)',
+                  }}
+                >
+                  {/* Winning Hamster Character & Golden Trophy Header */}
+                  <div className="relative mx-auto mb-4 flex flex-col items-center justify-center">
+                    <div className="text-4xl sm:text-5xl mb-1 animate-bounce drop-shadow-[0_4px_12px_rgba(251,191,36,0.8)]">
+                      👑
+                    </div>
+                    <div className="flex items-center justify-center gap-3">
+                      {(isTie ? tiedWinners : [winnerTeam]).filter(Boolean).map((wTeam) => (
+                        <CuteHamsterAvatar
+                          key={wTeam.id}
+                          avatarId={wTeam.avatarId || ((wTeam.id % 20) + 1)}
+                          className="w-24 h-24 sm:w-28 sm:h-28 !border-4 shadow-[0_0_30px_rgba(251,191,36,0.65)]"
+                        />
+                      ))}
+                    </div>
+                  </div>
 
-                {/* Leaderboard Rankings */}
-                <div className="w-full flex flex-col gap-2.5 mb-8 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
-                  {[...teams].sort((a,b) => b.score - a.score).map((t, rank) => {
-                    const medals = ['🥇', '🥈', '🥉'];
-                    const medal = medals[rank] || `#${rank + 1}`;
-                    const isWinner = rank === 0;
-                    return (
-                      <div 
-                        key={t.id}
-                        className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${
-                          isWinner 
-                            ? 'bg-amber-50 border-amber-400 text-amber-950 shadow-md font-black' 
-                            : 'bg-slate-50 border-slate-200 text-slate-700'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="text-2xl sm:text-3xl">{medal}</span>
-                          <div className="flex items-center gap-2">
-                            <span className="px-2 py-0.5 rounded-lg bg-black/10 dark:bg-white/10 text-xs font-black">
-                              Team #{teams.findIndex(tm => tm.id === t.id) + 1}
-                            </span>
-                            <span className="text-lg sm:text-xl font-black">{t.name}</span>
+                  <p className="text-xs sm:text-sm font-black text-[#fde047] uppercase tracking-widest mb-1">
+                    🏆 OFFICIAL WINNER ANNOUNCEMENT 🏆
+                  </p>
+                  <h2 className="text-3xl sm:text-5xl font-black text-white uppercase mb-2 drop-shadow-[0_3px_8px_rgba(0,0,0,0.6)]">
+                    {teams.length === 1
+                      ? `${winnerTeam?.name}: ${winnerTeam?.score} PTS!`
+                      : isTie
+                      ? `🤝 IT'S A TIE! (${topScore} PTS)`
+                      : `👑 ${winnerTeam?.name} WINS!`}
+                  </h2>
+                  {teams.length > 1 && (
+                    <p className="text-sm sm:text-base font-bold text-amber-200/90 mb-5">
+                      {isTie
+                        ? `${tiedWinners.map((w) => w.name).join(' & ')} tied for 1st Place with ${topScore} PTS!`
+                        : `Congratulations to ${winnerTeam?.name} for claiming victory with ${topScore} PTS!`}
+                    </p>
+                  )}
+
+                  {/* Leaderboard Rankings */}
+                  <div className="w-full flex flex-col gap-2.5 mb-7 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
+                    {sortedTeams.map((t, rank) => {
+                      const medals = ['🥇', '🥈', '🥉'];
+                      const medal = medals[rank] || `#${rank + 1}`;
+                      const isWinner = t.score === topScore;
+                      return (
+                        <div
+                          key={t.id}
+                          className={`flex items-center justify-between p-3.5 sm:p-4 rounded-2xl border-2 transition-all ${
+                            isWinner
+                              ? 'bg-gradient-to-r from-[#fbbf24]/25 via-[#f59e0b]/20 to-[#fbbf24]/25 border-[#fbbf24] text-white shadow-[0_0_20px_rgba(251,191,36,0.3)] font-black'
+                              : 'bg-white/10 border-white/15 text-white/90'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="text-2xl sm:text-3xl shrink-0">{medal}</span>
+                            <CuteHamsterAvatar
+                              avatarId={t.avatarId || ((t.id % 20) + 1)}
+                              className="w-12 h-12 sm:w-14 sm:h-14 shrink-0 !border-2"
+                            />
+                            <span className="text-lg sm:text-2xl font-black truncate">{t.name}</span>
+                          </div>
+                          <div className="text-2xl sm:text-3xl font-black text-[#fde047] tabular-nums shrink-0 ml-3">
+                            {t.score} <span className="text-xs sm:text-sm uppercase">PTS</span>
                           </div>
                         </div>
-                        <div className="text-xl sm:text-2xl font-black text-amber-600 tabular-nums">
-                          {t.score > 0 ? `+${t.score}` : t.score} pts
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
 
-                <div className="flex flex-col sm:flex-row gap-3 w-full">
-                  <button 
-                    onClick={() => { 
-                      playSound('click');
-                      setTeams(teams.map(t => ({ ...t, score: 0, streak: 0 }))); 
-                      setOpenedBoxes([]); 
-                      setBoxRecords({});
-                    }} 
-                    className="flex-1 py-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black text-xl rounded-2xl shadow-lg transition-all cursor-pointer"
-                  >
-                    Play Again 🔄
-                  </button>
-                  <button 
-                    onClick={() => setScreen('setup')} 
-                    className="flex-1 py-4 bg-slate-900 hover:bg-slate-800 text-white font-black text-xl rounded-2xl shadow-lg transition-all cursor-pointer"
-                  >
-                    Game Setup ⚙️
-                  </button>
+                  <div className="flex flex-col sm:flex-row gap-3 w-full">
+                    <button
+                      onClick={() => {
+                        playSound('click');
+                        setTeams(teams.map((t) => ({ ...t, score: 0, streak: 0 })));
+                        setOpenedBoxes([]);
+                        setBoxRecords({});
+                        setManualGameEnded(false);
+                        setRemainingSeconds(gameTimeMinutes > 0 ? gameTimeMinutes * 60 : null);
+                      }}
+                      className="flex-1 py-4 bg-gradient-to-b from-[#fde047] via-[#fbbf24] to-[#f59e0b] hover:brightness-105 text-[#1e1303] border-2 border-[#fef08a] font-black text-xl rounded-2xl shadow-lg transition-all cursor-pointer"
+                    >
+                      Play Again 🔄
+                    </button>
+                    <button
+                      onClick={() => {
+                        setManualGameEnded(false);
+                        setScreen('setup');
+                      }}
+                      className="flex-1 py-4 bg-[#43306b] hover:bg-[#563e88] border-2 border-[#a78bfa]/60 text-white font-black text-xl rounded-2xl shadow-lg transition-all cursor-pointer"
+                    >
+                      Game Setup ⚙️
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
         );
       })()}

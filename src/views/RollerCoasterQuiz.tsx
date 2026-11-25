@@ -15,6 +15,7 @@ import {
   acquireMacSafeCameraStream,
   waitForVideoReady,
   ensureMediaPipeFaceMeshLoaded,
+  getCanvasImageFromVideo,
 } from '../utils/mediapipeHandsManager';
 import {
   ArrowLeft,
@@ -1441,17 +1442,20 @@ function Coaster3DGameplay({
           const loopFrames = async (t: number) => {
             if (!active) return;
             const vid = webcamVideoRef.current;
+            if (vid && vid.paused && vid.srcObject) {
+              vid.play().catch(() => {});
+            }
             if (
               vid &&
               vid.readyState >= 2 &&
               vid.videoWidth > 0 &&
               vid.videoHeight > 0 &&
-              !(window as any).__mpWebGLContextUnavailable &&
               t - lastSend > 50
             ) {
               lastSend = t;
               try {
-                await faceMesh.send({ image: vid });
+                const frameImg = getCanvasImageFromVideo(vid) || vid;
+                await faceMesh.send({ image: frameImg });
               } catch {}
             }
             if (active) animId = requestAnimationFrame(loopFrames);

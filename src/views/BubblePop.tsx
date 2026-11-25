@@ -24,6 +24,7 @@ import {
   acquireMacSafeCameraStream,
   formatMacFriendlyCameraError,
   ensureMediaPipeFaceMeshLoaded,
+  getCanvasImageFromVideo,
 } from "../utils/mediapipeHandsManager";
 
 type GameScreen = 'intro' | 'lobby' | 'editor' | 'setup' | 'loading' | 'game' | 'results' | 'study';
@@ -391,9 +392,11 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
       if (cameraRef.current && cameraRef.current.stop) {
           cameraRef.current.stop();
       }
-      if (handsRef.current && handsRef.current.close) {
-          try { handsRef.current.close(); } catch(e) {}
+      if (handsSessionTokenRef.current) {
+          releaseSharedHands(handsSessionTokenRef.current);
+          handsSessionTokenRef.current = 0;
       }
+      handsRef.current = null;
       if (faceMeshRef.current && faceMeshRef.current.close) {
           try { faceMeshRef.current.close(); } catch(e) {}
       }
@@ -1836,7 +1839,8 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                     if (currentMode === 'nose') {
                         const fm = await ensureFaceMeshInitialized();
                         if (fm) {
-                            await fm.send({ image: vid });
+                            const frameImg = getCanvasImageFromVideo(vid) || vid;
+                            await fm.send({ image: frameImg });
                         }
                     } else if (handsSessionTokenRef.current) {
                         await sendHandsFrameSafe(vid, handsSessionTokenRef.current, BUBBLE_HANDS_OPTIONS);
@@ -3250,9 +3254,7 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
         onClose={() => setShowModeModal(false)}
         onSelectMode={(mode, adaptedData) => {
           gameState.current.isActive = false;
-          if (cameraRef.current && cameraRef.current.stop) { cameraRef.current.stop(); setIsCameraActive(false); }
-          setIsCameraActive(false);
-          if (handsRef.current && handsRef.current.close) handsRef.current.close();
+          stopCameraCleanly();
           onViewChange(mode as ViewState, adaptedData);
         }}
       />

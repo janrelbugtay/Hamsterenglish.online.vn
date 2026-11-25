@@ -3084,6 +3084,9 @@ function YogaLobbyPoseTester({
         const loop = async (t: number) => {
           if (!active || !testerVideoRef.current || seq !== testerSeqRef.current) return;
           const v = testerVideoRef.current;
+          if (v.paused && v.srcObject) {
+            v.play().catch(() => {});
+          }
           if (v.readyState >= 2 && v.videoWidth > 0 && !v.paused && !busy && t - lastT >= 22) {
             busy = true;
             lastT = t;
@@ -5078,6 +5081,9 @@ function YogaGame({
         const sendFrames = async (time: number) => {
           if (!active || !videoRef.current || startSeq !== cameraStartSeqRef.current) return;
           const vid = videoRef.current;
+          if (vid.paused && vid.srcObject) {
+            vid.play().catch(() => {});
+          }
           if (
             vid.readyState >= 2 &&
             vid.videoWidth > 0 &&

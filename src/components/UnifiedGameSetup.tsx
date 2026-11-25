@@ -2,7 +2,18 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { ArrowLeft, Edit3, Play, Timer, Camera, RefreshCw } from 'lucide-react';
 import { FullscreenButton } from './FullscreenButton';
 import { useLanguage } from '../contexts/LanguageContext';
-import { acquireMacSafeCameraStream, waitForVideoReady } from '../utils/mediapipeHandsManager';
+import {
+  acquireMacSafeCameraStream,
+  waitForVideoReady,
+  acquireSharedHands,
+  releaseSharedHands,
+  sendHandsFrameSafe,
+  listAvailableCameraDevices,
+  setPreferredCameraDeviceId,
+  registerSetupPreviewStreamRelease,
+  releaseActiveSetupPreviewStreams,
+  formatMacFriendlyCameraError,
+} from '../utils/mediapipeHandsManager';
 
 export interface PlayerModeOption {
   id: string | number;
@@ -95,47 +106,227 @@ const COLOR_SCHEMES = {
   }
 };
 
+const PREVIEW_HAND_CONNECTIONS: Array<[number, number]> = [
+  [0, 1], [1, 2], [2, 3], [3, 4],
+  [0, 5], [5, 6], [6, 7], [7, 8],
+  [5, 9], [9, 10], [10, 11], [11, 12],
+  [9, 13], [13, 14], [14, 15], [15, 16],
+  [13, 17], [0, 17], [17, 18], [18, 19], [19, 20],
+];
+
 export const UnifiedARCameraPreviewCard: React.FC<{ config: ARCameraSetupConfig }> = ({ config }) => {
   const { t } = useLanguage();
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const handsTokenRef = useRef<number>(0);
+  const rafRef = useRef<number | null>(null);
+  const setupSeqRef = useRef<number>(0);
+
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraLoading, setCameraLoading] = useState(false);
+  const [cameraErrorMsg, setCameraErrorMsg] = useState<string | null>(null);
+  const [trackedHandsCount, setTrackedHandsCount] = useState(0);
+  const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
+  const [activeDeviceId, setActiveDeviceId] = useState<string | undefined>(undefined);
 
   const isEnabled = config.enabled !== false;
 
   const stopStream = useCallback(() => {
+    setupSeqRef.current++;
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    if (handsTokenRef.current) {
+      releaseSharedHands(handsTokenRef.current);
+      handsTokenRef.current = 0;
+    }
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current.getTracks().forEach((tr) => tr.stop());
       streamRef.current = null;
     }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
     setCameraActive(false);
+    setTrackedHandsCount(0);
   }, []);
 
-  const retrieveCamera = useCallback(async () => {
+  const retrieveCamera = useCallback(async (overrideDeviceId?: string) => {
     if (!navigator.mediaDevices?.getUserMedia) return;
+    const seq = ++setupSeqRef.current;
     setCameraLoading(true);
+    setCameraErrorMsg(null);
     try {
-      stopStream();
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      if (handsTokenRef.current) {
+        releaseSharedHands(handsTokenRef.current);
+        handsTokenRef.current = 0;
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((tr) => tr.stop());
+        streamRef.current = null;
+      }
+
       const stream = await acquireMacSafeCameraStream({
         preferredWidth: 640,
         preferredHeight: 360,
         facingMode: 'user',
+        preferredDeviceId: overrideDeviceId,
       });
+
+      if (seq !== setupSeqRef.current) {
+        stream.getTracks().forEach((tr) => tr.stop());
+        return;
+      }
+
       streamRef.current = stream;
+      const trackSettings = stream.getVideoTracks()[0]?.getSettings?.();
+      if (trackSettings?.deviceId) {
+        setActiveDeviceId(trackSettings.deviceId);
+        if (overrideDeviceId) {
+          setPreferredCameraDeviceId(trackSettings.deviceId);
+        }
+      }
+
+      const devs = await listAvailableCameraDevices();
+      if (seq === setupSeqRef.current) {
+        setCameraDevices(devs);
+      }
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await waitForVideoReady(videoRef.current, 2500);
+        await waitForVideoReady(videoRef.current, 3000);
+      }
+      if (seq !== setupSeqRef.current) {
+        stream.getTracks().forEach((tr) => tr.stop());
+        return;
       }
       setCameraActive(true);
-    } catch {
-      setCameraActive(false);
+
+      // Attach live MediaPipe Hands skeleton preview so users can verify hand tracking in Setup
+      const previewOpts = {
+        maxNumHands: 4,
+        modelComplexity: 0 as const,
+        minDetectionConfidence: 0.45,
+        minTrackingConfidence: 0.42,
+      };
+
+      const acquired = await acquireSharedHands(previewOpts, (results: any) => {
+        if (seq !== setupSeqRef.current) return;
+        const rawHands: Array<Array<{ x: number; y: number }>> = results?.multiHandLandmarks || [];
+        setTrackedHandsCount(rawHands.length);
+
+        const canvas = overlayCanvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const cw = canvas.clientWidth || 320;
+        const ch = canvas.clientHeight || 140;
+        if (canvas.width !== cw || canvas.height !== ch) {
+          canvas.width = cw;
+          canvas.height = ch;
+        }
+        ctx.clearRect(0, 0, cw, ch);
+
+        rawHands.forEach((hand, hIdx) => {
+          const strokeColor = hIdx % 2 === 0 ? '#38bdf8' : '#34d399';
+          ctx.strokeStyle = strokeColor;
+          ctx.lineWidth = 2.5;
+          ctx.lineCap = 'round';
+          PREVIEW_HAND_CONNECTIONS.forEach(([a, b]) => {
+            const pa = hand[a];
+            const pb = hand[b];
+            if (!pa || !pb) return;
+            ctx.beginPath();
+            ctx.moveTo((1 - pa.x) * cw, pa.y * ch);
+            ctx.lineTo((1 - pb.x) * cw, pb.y * ch);
+            ctx.stroke();
+          });
+          hand.forEach((pt, idx) => {
+            ctx.fillStyle = idx % 4 === 0 && idx > 0 ? '#fde047' : '#ffffff';
+            ctx.beginPath();
+            ctx.arc((1 - pt.x) * cw, pt.y * ch, idx % 4 === 0 && idx > 0 ? 4 : 2.5, 0, Math.PI * 2);
+            ctx.fill();
+          });
+        });
+      }).catch(() => null);
+
+      if (seq !== setupSeqRef.current) {
+        if (acquired?.sessionToken) releaseSharedHands(acquired.sessionToken);
+        return;
+      }
+
+      const sessionToken = acquired?.sessionToken || 0;
+      handsTokenRef.current = sessionToken;
+
+      let lastSent = 0;
+      let busy = false;
+      const tick = async (now: number) => {
+        if (seq !== setupSeqRef.current) return;
+        const v = videoRef.current;
+        if (v && v.paused && v.srcObject) {
+          v.play().catch(() => {});
+        }
+        if (
+          v &&
+          sessionToken &&
+          v.readyState >= 2 &&
+          v.videoWidth > 0 &&
+          v.videoHeight > 0 &&
+          !v.paused &&
+          !busy &&
+          now - lastSent >= 32
+        ) {
+          busy = true;
+          lastSent = now;
+          try {
+            await sendHandsFrameSafe(v, sessionToken, previewOpts);
+          } catch {
+            // handled by sendHandsFrameSafe
+          } finally {
+            busy = false;
+          }
+        }
+        if (seq === setupSeqRef.current) {
+          rafRef.current = requestAnimationFrame(tick);
+        }
+      };
+      rafRef.current = requestAnimationFrame(tick);
+    } catch (err: any) {
+      if (seq === setupSeqRef.current) {
+        setCameraActive(false);
+        setCameraErrorMsg(formatMacFriendlyCameraError(err, 'Mouse & Touch controls remain ready!'));
+      }
     } finally {
-      setCameraLoading(false);
+      if (seq === setupSeqRef.current) {
+        setCameraLoading(false);
+      }
     }
+  }, []);
+
+  const handleCycleCameraDevice = useCallback(() => {
+    if (cameraDevices.length < 2) {
+      retrieveCamera();
+      return;
+    }
+    const curIdx = cameraDevices.findIndex((d) => d.deviceId === activeDeviceId);
+    const nextDevice = cameraDevices[(curIdx + 1) % cameraDevices.length];
+    if (nextDevice?.deviceId) {
+      setPreferredCameraDeviceId(nextDevice.deviceId);
+      retrieveCamera(nextDevice.deviceId);
+    }
+  }, [cameraDevices, activeDeviceId, retrieveCamera]);
+
+  useEffect(() => {
+    const unregister = registerSetupPreviewStreamRelease(stopStream);
+    return () => {
+      unregister();
+    };
   }, [stopStream]);
 
   useEffect(() => {
@@ -152,7 +343,7 @@ export const UnifiedARCameraPreviewCard: React.FC<{ config: ARCameraSetupConfig 
   return (
     <div className="p-4 rounded-3xl bg-sky-50/95 border-2 border-sky-200 border-b-4 border-b-sky-300 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm sm:text-base font-black uppercase tracking-wider text-sky-950 flex items-center gap-1.5">
             <Camera size={18} className="text-sky-600 shrink-0" />
             <span>{config.label || t('setup.arCameraTitle')}</span>
@@ -175,9 +366,31 @@ export const UnifiedARCameraPreviewCard: React.FC<{ config: ARCameraSetupConfig 
             <RefreshCw size={12} className={cameraLoading ? 'animate-spin' : ''} />
             <span>{cameraActive ? t('setup.cameraReady') : t('setup.retrieveCamera')}</span>
           </button>
+
+          {cameraActive && cameraDevices.length > 1 && (
+            <button
+              type="button"
+              onClick={handleCycleCameraDevice}
+              className="px-2.5 py-1 rounded-xl text-xs font-black border bg-white hover:bg-sky-100 border-sky-300 text-sky-900 transition cursor-pointer flex items-center gap-1 shadow-xs"
+              title="Switch between built-in FaceTime Camera and external cameras"
+            >
+              <span>🔄 Switch Camera</span>
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
+          {cameraActive && (
+            <span
+              className={`px-2.5 py-1 rounded-xl text-xs font-black uppercase tracking-wide transition ${
+                trackedHandsCount > 0
+                  ? 'bg-emerald-500 text-white shadow-xs'
+                  : 'bg-amber-100 text-amber-900 border border-amber-300'
+              }`}
+            >
+              {trackedHandsCount > 0 ? `✋ ${trackedHandsCount} Hand${trackedHandsCount > 1 ? 's' : ''} Tracked` : '✋ Show Hand to Test'}
+            </span>
+          )}
           {config.badgeText && (
             <span className="px-3 py-1 rounded-xl bg-sky-600 text-white text-xs font-black uppercase tracking-wide">
               {config.badgeText}
@@ -203,23 +416,28 @@ export const UnifiedARCameraPreviewCard: React.FC<{ config: ARCameraSetupConfig 
         <div className="relative w-full h-32 sm:h-36 rounded-2xl overflow-hidden bg-slate-900 border-2 border-sky-300 shadow-inner flex items-center justify-center">
           <video
             ref={videoRef}
+            autoPlay
             muted
             playsInline
             className={`w-full h-full object-cover -scale-x-100 transition-opacity duration-300 ${
-              cameraActive ? 'opacity-100' : 'opacity-0'
+              cameraActive ? 'opacity-100' : 'opacity-[0.01]'
             }`}
           />
+          <canvas
+            ref={overlayCanvasRef}
+            className="absolute inset-0 w-full h-full pointer-events-none z-10"
+          />
           {!cameraActive && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3 text-center">
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3 text-center z-20">
               <span className="text-xs font-bold text-sky-200">
                 {cameraLoading
                   ? t('setup.connectingWebcam')
-                  : t('setup.cameraHelper')}
+                  : cameraErrorMsg || t('setup.cameraHelper')}
               </span>
               {!cameraLoading && (
                 <button
                   type="button"
-                  onClick={retrieveCamera}
+                  onClick={() => retrieveCamera()}
                   className="px-3.5 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-white text-xs font-black shadow cursor-pointer"
                 >
                   📷 {t('setup.retrieveCameraNow')}
@@ -228,7 +446,7 @@ export const UnifiedARCameraPreviewCard: React.FC<{ config: ARCameraSetupConfig 
             </div>
           )}
           {cameraActive && config.helperText && (
-            <div className="absolute bottom-2 inset-x-3 bg-slate-950/65 backdrop-blur-xs text-white text-[11px] font-bold px-3 py-1 rounded-xl text-center">
+            <div className="absolute bottom-2 inset-x-3 bg-slate-950/65 backdrop-blur-xs text-white text-[11px] font-bold px-3 py-1 rounded-xl text-center z-20 pointer-events-none">
               {config.helperText}
             </div>
           )}
@@ -505,7 +723,10 @@ export const UnifiedGameSetup: React.FC<UnifiedGameSetupProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-1">
             <button
               type="button"
-              onClick={onStart}
+              onClick={() => {
+                releaseActiveSetupPreviewStreams();
+                onStart();
+              }}
               disabled={startDisabled}
               className={`${
                 onStudy ? 'sm:col-span-8' : 'sm:col-span-12'

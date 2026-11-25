@@ -1,6 +1,7 @@
-// Centralized, resilient MediaPipe Hands singleton manager shared across Bubble Pop & Yoga Quiz.
+// Centralized, resilient MediaPipe Hands singleton manager shared across Bubble Pop, Slap & Chop, Yoga Quiz, and UnifiedGameSetup.
 // Prevents Emscripten WASM collisions, handles multi-CDN script loading, guards unready 0x0 video frames,
-// falls back to offscreen 2D canvas frame upload on GPU/WebGL quirks, and auto-recovers on WASM errors.
+// falls back to offscreen 2D canvas frame upload on GPU/WebGL quirks, prevents dual-stream hardware lock contention on macOS,
+// and protects the shared WASM singleton from accidental .close() calls.
 
 export interface SharedHandsOptions {
   maxNumHands?: number;
@@ -28,6 +29,7 @@ let activeResultsListener: ((results: any) => void) | null = null;
 let isSendingFrame = false;
 let lastSendStartTimestamp = 0;
 let consecutiveSendErrors = 0;
+let hasReceivedFirstValidFrameResult = false;
 
 // Detect macOS / Safari so we can avoid Continuity Camera hangs and WebKit HTMLVideoElement->WebGL texture stalls
 const isMacOrIOS =
@@ -42,17 +44,75 @@ const isSafariBrowser =
 
 // On Safari / macOS WebKit (or whenever WebGL prefers canvas upload), drawing the video frame onto an offscreen 2D canvas
 // before passing to MediaPipe completely avoids WebKit's YUV hardware video-texture upload failure.
-let useCanvasUploadFallback = isSafariBrowser;
+let useCanvasUploadFallback = isSafariBrowser || isMacOrIOS;
 let forceLiteModel = false;
 let offscreenCanvas: HTMLCanvasElement | null = null;
 let offscreenCtx: CanvasRenderingContext2D | null = null;
 
+// Remember user's explicitly selected camera deviceId across setup -> game transitions
+let preferredCameraDeviceId: string | undefined = undefined;
+
+export function getPreferredCameraDeviceId(): string | undefined {
+  return preferredCameraDeviceId;
+}
+
+export function setPreferredCameraDeviceId(deviceId: string | undefined): void {
+  preferredCameraDeviceId = deviceId;
+}
+
+// Registry of active setup preview camera cleanup callbacks so starting a game can synchronously
+// release the setup preview camera stream BEFORE requesting the in-game stream (prevents macOS dual-stream lock contention).
+const setupPreviewReleaseCallbacks = new Set<() => void>();
+
+export function registerSetupPreviewStreamRelease(cb: () => void): () => void {
+  setupPreviewReleaseCallbacks.add(cb);
+  return () => {
+    setupPreviewReleaseCallbacks.delete(cb);
+  };
+}
+
+export function releaseActiveSetupPreviewStreams(): void {
+  setupPreviewReleaseCallbacks.forEach((cb) => {
+    try {
+      cb();
+    } catch {
+      // ignore cleanup error
+    }
+  });
+}
+
+/**
+ * List available videoinput devices (useful for macOS users with Continuity Camera or external webcams).
+ */
+export async function listAvailableCameraDevices(): Promise<MediaDeviceInfo[]> {
+  if (typeof navigator === 'undefined' || typeof navigator.mediaDevices?.enumerateDevices !== 'function') {
+    return [];
+  }
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.filter((d) => d.kind === 'videoinput' && Boolean(d.deviceId));
+  } catch {
+    return [];
+  }
+}
+
+function isBuiltInMacCameraLabel(label: string): boolean {
+  return (
+    /FaceTime|Built-in|Internal|MacBook|iSight|Apple Camera/i.test(label) &&
+    !/Desk View|Continuity|Virtual|OBS|Zoom|ManyCam|Camo|iPhone|iPad/i.test(label)
+  );
+}
+
+function isContinuityOrVirtualCameraLabel(label: string): boolean {
+  return /Desk View|Continuity|OBS|Virtual|Zoom|ManyCam|Camo|Snap Camera|iPhone|iPad/i.test(label);
+}
+
 /**
  * macOS-Safe Webcam Stream Acquisition Helper
- * - Prioritizes the MacBook's built-in FaceTime HD Camera over wireless iPhone "Continuity Camera" / Desk View virtual cameras
- *   (unless the user explicitly selected a custom deviceId or no built-in camera exists).
- * - Uses progressively relaxed constraints (no rigid frameRate locks that fail on older Intel MacBooks)
- * - Explicitly sets videoEl.muted, playsInline, and autoplay, and verifies frames are actually advancing.
+ * - Prioritizes the MacBook's built-in FaceTime HD Camera over wireless iPhone "Continuity Camera" / Desk View / Virtual cameras
+ *   (unless the user explicitly selected a custom deviceId via the Switch Camera button).
+ * - Uses progressively relaxed constraints (no rigid frameRate locks that fail on older Intel MacBooks).
+ * - Automatically switches to the built-in FaceTime camera post-grant if macOS defaulted to an iPhone Continuity or Virtual camera.
  */
 export async function acquireMacSafeCameraStream(options?: {
   preferredWidth?: number;
@@ -67,7 +127,7 @@ export async function acquireMacSafeCameraStream(options?: {
   const width = options?.preferredWidth ?? 640;
   const height = options?.preferredHeight ?? 480;
   const facingMode = options?.facingMode ?? 'user';
-  let targetDeviceId = options?.preferredDeviceId;
+  let targetDeviceId = options?.preferredDeviceId || preferredCameraDeviceId;
 
   // On macOS, inspect available videoinputs if permissions were already granted so we prefer the built-in FaceTime HD Camera
   // over sleeping wireless iPhone Continuity Cameras or virtual OBS/Zoom cameras that output black frames.
@@ -75,10 +135,7 @@ export async function acquireMacSafeCameraStream(options?: {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoInputs = devices.filter((d) => d.kind === 'videoinput' && d.deviceId);
-      const builtInMacCam = videoInputs.find((d) =>
-        /FaceTime|Built-in|Internal|MacBook|iSight/i.test(d.label || '') &&
-        !/Desk View|Continuity|Virtual|OBS/i.test(d.label || '')
-      );
+      const builtInMacCam = videoInputs.find((d) => isBuiltInMacCameraLabel(d.label || ''));
       if (builtInMacCam?.deviceId) {
         targetDeviceId = builtInMacCam.deviceId;
       }
@@ -90,6 +147,14 @@ export async function acquireMacSafeCameraStream(options?: {
   const constraintAttempts: MediaStreamConstraints[] = [];
 
   if (targetDeviceId) {
+    constraintAttempts.push({
+      video: {
+        deviceId: { exact: targetDeviceId },
+        width: { ideal: width },
+        height: { ideal: height },
+      },
+      audio: false,
+    });
     constraintAttempts.push({
       video: {
         deviceId: { ideal: targetDeviceId },
@@ -129,26 +194,26 @@ export async function acquireMacSafeCameraStream(options?: {
     try {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       if (stream && stream.getVideoTracks().length > 0) {
-        // After permission is granted on macOS, check if macOS accidentally routed to "Desk View" or a virtual camera
-        // when a real FaceTime / built-in camera is available
+        // After permission is granted on macOS, check if macOS routed to an iPhone Continuity Camera, "Desk View", or Virtual Camera
+        // when a real built-in FaceTime HD Camera is available!
         const activeTrack = stream.getVideoTracks()[0];
         const trackLabel = activeTrack?.label || '';
+        const explicitUserDevice = options?.preferredDeviceId || preferredCameraDeviceId;
         if (
           isMacOrIOS &&
-          !options?.preferredDeviceId &&
-          /Desk View|OBS Virtual|Zoom/i.test(trackLabel) &&
+          !explicitUserDevice &&
+          !isBuiltInMacCameraLabel(trackLabel) &&
+          isContinuityOrVirtualCameraLabel(trackLabel) &&
           typeof navigator.mediaDevices.enumerateDevices === 'function'
         ) {
           try {
             const devices = await navigator.mediaDevices.enumerateDevices();
             const builtIn = devices.find(
-              (d) =>
-                d.kind === 'videoinput' &&
-                d.deviceId &&
-                /FaceTime|Built-in|Internal|MacBook/i.test(d.label || '') &&
-                !/Desk View/i.test(d.label || '')
+              (d) => d.kind === 'videoinput' && d.deviceId && isBuiltInMacCameraLabel(d.label || '')
             );
             if (builtIn?.deviceId) {
+              // Stop the virtual/Continuity track first before opening the built-in camera
+              stream.getTracks().forEach((t) => t.stop());
               const betterStream = await navigator.mediaDevices.getUserMedia({
                 video: {
                   deviceId: { exact: builtIn.deviceId },
@@ -157,11 +222,16 @@ export async function acquireMacSafeCameraStream(options?: {
                 },
                 audio: false,
               });
-              stream.getTracks().forEach((t) => t.stop());
+              preferredCameraDeviceId = builtIn.deviceId;
               return betterStream;
             }
           } catch {
-            // Keep the already working stream
+            // If switching failed, re-open default stream
+            try {
+              return await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            } catch {
+              // fall through
+            }
           }
         }
         return stream;
@@ -190,8 +260,8 @@ export function formatMacFriendlyCameraError(err: any, fallbackModeText = 'Mouse
     }
     return `Camera permission denied. Please allow camera access in your browser address bar. (${fallbackModeText})`;
   }
-  if (name === 'NotReadableError' || name === 'TrackStartError') {
-    return `Camera is currently in use by another app or tab. Close other camera tabs and click Retrieve Camera. (${fallbackModeText})`;
+  if (name === 'NotReadableError' || name === 'TrackStartError' || name === 'AbortError') {
+    return `Camera is busy or locked by another app/tab. Close other camera apps or click Retrieve Camera. (${fallbackModeText})`;
   }
   return `Camera unavailable. ${fallbackModeText}`;
 }
@@ -242,7 +312,7 @@ function loadScriptTag(src: string): Promise<void> {
     const timeout = window.setTimeout(() => {
       script.remove();
       reject(new Error(`Timed out loading ${src}`));
-    }, 12000);
+    }, 15000);
     script.onload = () => {
       window.clearTimeout(timeout);
       resolve();
@@ -271,7 +341,7 @@ async function ensureHandsScriptLoaded(): Promise<void> {
     // First wait briefly in case the index.html <script> tag is still finishing load
     for (let i = 0; i < 20; i++) {
       if (typeof win.Hands === 'function') return;
-      await new Promise(r => setTimeout(r, 120));
+      await new Promise((r) => setTimeout(r, 120));
     }
 
     // Otherwise dynamically load from pinned CDN fallbacks
@@ -316,8 +386,16 @@ async function createOrGetHandsInstance(initialOptions?: SharedHandsOptions): Pr
       locateFile: (file: string) => `${activeCdnBase}/${file}`,
     });
 
+    // Guard the singleton from accidental .close() calls by individual game views on unmount
+    if (typeof hands.close === 'function') {
+      hands.__internalClose = hands.close.bind(hands);
+      hands.close = () => {
+        // No-op for external callers so the shared singleton WASM instance stays alive across views
+      };
+    }
+
     // On macOS Safari, default to modelComplexity 0 (lite model) for smoother 60fps Metal/WebGL execution
-    const defaultComplexity = (forceLiteModel || isSafariBrowser) ? 0 : (initialOptions?.modelComplexity ?? 1);
+    const defaultComplexity = forceLiteModel || isSafariBrowser ? 0 : (initialOptions?.modelComplexity ?? 1);
 
     const opts: Required<SharedHandsOptions> = {
       maxNumHands: initialOptions?.maxNumHands ?? 4,
@@ -330,6 +408,7 @@ async function createOrGetHandsInstance(initialOptions?: SharedHandsOptions): Pr
     lastAppliedOptionsKey = JSON.stringify(opts);
 
     hands.onResults((results: any) => {
+      hasReceivedFirstValidFrameResult = true;
       if (activeResultsListener) {
         try {
           activeResultsListener(results);
@@ -342,7 +421,7 @@ async function createOrGetHandsInstance(initialOptions?: SharedHandsOptions): Pr
     if (typeof hands.initialize === 'function') {
       await Promise.race([
         Promise.resolve(hands.initialize()).catch(() => undefined),
-        new Promise(resolve => setTimeout(resolve, 6000)),
+        new Promise((resolve) => setTimeout(resolve, 20000)),
       ]);
     }
 
@@ -392,7 +471,7 @@ export async function acquireSharedHands(
     return { sessionToken, hands };
   }
 
-  const defaultComplexity = (forceLiteModel || isSafariBrowser) ? 0 : (options.modelComplexity ?? 1);
+  const defaultComplexity = forceLiteModel || isSafariBrowser ? 0 : (options.modelComplexity ?? 1);
   const normalized: Required<SharedHandsOptions> = {
     maxNumHands: options.maxNumHands ?? 4,
     modelComplexity: defaultComplexity,
@@ -429,13 +508,14 @@ export function releaseSharedHands(sessionToken: number): void {
  * Safely attach a MediaStream to an HTMLVideoElement and wait for valid non-zero dimensions
  * and active playback on macOS Safari & Chrome.
  */
-export async function waitForVideoReady(videoEl: HTMLVideoElement, timeoutMs = 3000): Promise<void> {
+export async function waitForVideoReady(videoEl: HTMLVideoElement, timeoutMs = 3500): Promise<void> {
   videoEl.muted = true;
   videoEl.playsInline = true;
   videoEl.autoplay = true;
   videoEl.setAttribute('muted', '');
   videoEl.setAttribute('playsinline', '');
   videoEl.setAttribute('webkit-playsinline', '');
+  videoEl.setAttribute('autoplay', '');
 
   if (videoEl.paused && videoEl.srcObject) {
     try {
@@ -448,7 +528,7 @@ export async function waitForVideoReady(videoEl: HTMLVideoElement, timeoutMs = 3
   if (videoEl.readyState >= 2 && videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
     return;
   }
-  await new Promise<void>(resolve => {
+  await new Promise<void>((resolve) => {
     let settled = false;
     const done = () => {
       if (settled) return;
@@ -477,7 +557,7 @@ export async function waitForVideoReady(videoEl: HTMLVideoElement, timeoutMs = 3
   });
 }
 
-function getCanvasImageFromVideo(videoEl: HTMLVideoElement): HTMLCanvasElement | null {
+export function getCanvasImageFromVideo(videoEl: HTMLVideoElement): HTMLCanvasElement | null {
   const vw = videoEl.videoWidth;
   const vh = videoEl.videoHeight;
   if (!vw || !vh) return null;
@@ -498,7 +578,7 @@ function getCanvasImageFromVideo(videoEl: HTMLVideoElement): HTMLCanvasElement |
 
 /**
  * Send one video frame to the shared MediaPipe Hands singleton safely.
- * Serializes frames, auto-clears any >1200ms hung WASM send promise, skips 0x0/unready video frames,
+ * Serializes frames, auto-clears any >1800ms hung WASM send promise, skips 0x0/unready video frames,
  * uses 2D canvas upload on Safari/macOS WebGL quirks, and auto-recovers on WASM errors.
  */
 export async function sendHandsFrameSafe(
@@ -509,10 +589,10 @@ export async function sendHandsFrameSafe(
   if (sessionToken !== activeSessionToken) return false;
   if (!sharedHandsInstance) return false;
 
-  // Watchdog: if a previous WASM frame send hung for >1200ms (e.g., during macOS resolution/tab switch), unlock
+  // Watchdog: if a previous WASM frame send hung for >1800ms (e.g., during macOS resolution/tab switch), unlock
   const now = Date.now();
   if (isSendingFrame) {
-    if (lastSendStartTimestamp > 0 && now - lastSendStartTimestamp > 1200) {
+    if (lastSendStartTimestamp > 0 && now - lastSendStartTimestamp > 1800) {
       isSendingFrame = false;
     } else {
       return false;
@@ -541,6 +621,9 @@ export async function sendHandsFrameSafe(
     useCanvasUploadFallback = true;
   }
 
+  // First frame on a fresh session can take up to 3500ms while WASM compiles shaders on Intel MacBooks
+  const frameTimeoutMs = hasReceivedFirstValidFrameResult ? 1400 : 3500;
+
   isSendingFrame = true;
   lastSendStartTimestamp = now;
   try {
@@ -552,7 +635,7 @@ export async function sendHandsFrameSafe(
 
     await Promise.race([
       sharedHandsInstance.send({ image: imageSource }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Hands frame send timeout')), 1100)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Hands frame send timeout')), frameTimeoutMs)),
     ]);
 
     consecutiveSendErrors = 0;
@@ -568,7 +651,9 @@ export async function sendHandsFrameSafe(
         if (canvasImg && sharedHandsInstance && sessionToken === activeSessionToken) {
           await Promise.race([
             sharedHandsInstance.send({ image: canvasImg }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Hands canvas retry timeout')), 1100)),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Hands canvas retry timeout')), frameTimeoutMs)
+            ),
           ]);
           consecutiveSendErrors = 0;
           return true;
@@ -579,7 +664,7 @@ export async function sendHandsFrameSafe(
     }
 
     // Rebuild with lite model (modelComplexity: 0) if repeated frame errors occur
-    if (consecutiveSendErrors >= 4 && rebuildAttemptsThisSession < 2) {
+    if (consecutiveSendErrors >= 5 && rebuildAttemptsThisSession < 2) {
       rebuildAttemptsThisSession++;
       console.warn('Recovering MediaPipe Hands after frame errors:', err);
       const broken = sharedHandsInstance;
@@ -589,7 +674,7 @@ export async function sendHandsFrameSafe(
       consecutiveSendErrors = 0;
       forceLiteModel = true;
       try {
-        broken?.close?.();
+        broken?.__internalClose?.();
       } catch {
         // ignore close errors on corrupted instance
       }
@@ -603,7 +688,7 @@ export async function sendHandsFrameSafe(
       } catch {
         webglCircuitBrokenUntil = Date.now() + 4000;
       }
-    } else if (consecutiveSendErrors >= 6) {
+    } else if (consecutiveSendErrors >= 7) {
       webglCircuitBrokenUntil = Date.now() + 3000;
       consecutiveSendErrors = 0;
     }

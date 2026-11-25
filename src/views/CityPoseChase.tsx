@@ -212,6 +212,49 @@ export function ensureMediaPipePoseLoaded(): Promise<any> {
   return poseScriptPromise;
 }
 
+let sharedPoseInstance: any = null;
+let sharedPoseListener: ((results: any) => void) | null = null;
+let sharedPoseSessionId = 0;
+
+async function acquireSharedPoseDetector(onResults: (results: any) => void): Promise<{ sessionId: number; pose: any } | null> {
+  const sessionId = ++sharedPoseSessionId;
+  sharedPoseListener = onResults;
+  const PoseClass = await ensureMediaPipePoseLoaded();
+  if (!PoseClass) return null;
+
+  if (!sharedPoseInstance) {
+    const inst = new PoseClass({
+      locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
+    });
+    inst.setOptions({
+      modelComplexity: 0,
+      smoothLandmarks: true,
+      minDetectionConfidence: 0.35,
+      minTrackingConfidence: 0.35,
+    });
+    inst.onResults((res: any) => {
+      if (sharedPoseListener) {
+        try {
+          sharedPoseListener(res);
+        } catch {}
+      }
+    });
+    sharedPoseInstance = inst;
+  }
+
+  if (sessionId === sharedPoseSessionId) {
+    sharedPoseListener = onResults;
+  }
+  return { sessionId, pose: sharedPoseInstance };
+}
+
+function releaseSharedPoseDetector(sessionId: number): void {
+  if (sessionId === sharedPoseSessionId) {
+    sharedPoseListener = null;
+    sharedPoseSessionId++;
+  }
+}
+
 /**
  * Evaluates 33 MediaPipe Pose landmarks from Head (0) to Feet (27-32)
  * and extracts full-body coverage, lane position, jump, punch, wall kick, and yoga/action pose!
@@ -645,6 +688,8 @@ export function BodyHeadToFeetSetupScanner({
     let poseDetector: any = null;
     let lastUpdateUi = 0;
 
+    let poseSessionId = 0;
+
     const startScanner = async () => {
       try {
         setCameraError(null);
@@ -663,51 +708,47 @@ export function BodyHeadToFeetSetupScanner({
           setCameraReady(true);
         }
 
-        const PoseClass = await ensureMediaPipePoseLoaded();
-        if (!active) return;
+        const acquiredPose = await acquireSharedPoseDetector((results: any) => {
+          if (!active) return;
+          const now = performance.now();
+          const lms = results?.poseLandmarks || null;
+          const info = analyzeFullBodyLandmarks(lms, baselineRef.current, now);
 
-        if (PoseClass) {
-          poseDetector = new PoseClass({
-            locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
-          });
-          poseDetector.setOptions({
-            modelComplexity: 0,
-            smoothLandmarks: true,
-            minDetectionConfidence: 0.35,
-            minTrackingConfidence: 0.35,
-          });
-          poseDetector.onResults((results: any) => {
-            if (!active) return;
-            const now = performance.now();
-            const lms = results?.poseLandmarks || null;
-            const info = analyzeFullBodyLandmarks(lms, baselineRef.current, now);
-
-            const canvas = canvasRef.current;
-            if (canvas) {
-              const cw = canvas.clientWidth || 320;
-              const ch = canvas.clientHeight || 240;
-              if (canvas.width !== cw || canvas.height !== ch) {
-                canvas.width = cw;
-                canvas.height = ch;
-              }
-              const ctx = canvas.getContext('2d');
-              if (ctx) {
-                drawFullBodySkeletonOverlay(ctx, cw, ch, lms, info, true);
-              }
+          const canvas = canvasRef.current;
+          if (canvas) {
+            const cw = canvas.clientWidth || 320;
+            const ch = canvas.clientHeight || 240;
+            if (canvas.width !== cw || canvas.height !== ch) {
+              canvas.width = cw;
+              canvas.height = ch;
             }
-
-            if (now - lastUpdateUi > 80) {
-              lastUpdateUi = now;
-              setTelemetry(info);
-              onCalibratedChangeRef.current?.(info.coveragePct >= 75 || info.isCalibrated, info);
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              drawFullBodySkeletonOverlay(ctx, cw, ch, lms, info, true);
             }
-          });
+          }
+
+          if (now - lastUpdateUi > 80) {
+            lastUpdateUi = now;
+            setTelemetry(info);
+            onCalibratedChangeRef.current?.(info.coveragePct >= 75 || info.isCalibrated, info);
+          }
+        });
+
+        if (!active) {
+          if (acquiredPose) releaseSharedPoseDetector(acquiredPose.sessionId);
+          return;
+        }
+
+        if (acquiredPose?.pose) {
+          poseSessionId = acquiredPose.sessionId;
+          poseDetector = acquiredPose.pose;
 
           const poseUploadCanvas = document.createElement('canvas');
           const poseUploadCtx = poseUploadCanvas.getContext('2d', { willReadFrequently: false });
           let busy = false;
           const processFrame = async () => {
-            if (!active) return;
+            if (!active || poseSessionId !== sharedPoseSessionId) return;
             const v = videoRef.current;
             if (v && v.paused && v.srcObject) {
               v.play().catch(() => {});
@@ -754,10 +795,8 @@ export function BodyHeadToFeetSetupScanner({
     return () => {
       active = false;
       if (rafId) cancelAnimationFrame(rafId);
-      if (poseDetector && poseDetector.close) {
-        try {
-          poseDetector.close();
-        } catch {}
+      if (poseSessionId) {
+        releaseSharedPoseDetector(poseSessionId);
       }
       if (stream) {
         stream.getTracks().forEach((t) => t.stop());
@@ -1209,6 +1248,8 @@ export function CityPoseChase3DGameplay({
       calibrated: true,
     };
 
+    let poseSessionId = 0;
+
     const startCam = async () => {
       try {
         stream = await acquireMacSafeCameraStream({
@@ -1225,20 +1266,7 @@ export function CityPoseChase3DGameplay({
           await waitForVideoReady(videoRef.current, 3000);
         }
 
-        const PoseClass = await ensureMediaPipePoseLoaded();
-        if (!active || !PoseClass) return;
-
-        poseDetector = new PoseClass({
-          locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
-        });
-        poseDetector.setOptions({
-          modelComplexity: 0,
-          smoothLandmarks: true,
-          minDetectionConfidence: 0.35,
-          minTrackingConfidence: 0.35,
-        });
-
-        poseDetector.onResults((results: any) => {
+        const acquiredPose = await acquireSharedPoseDetector((results: any) => {
           if (!active) return;
           const now = performance.now();
           const lms = results?.poseLandmarks || null;
@@ -1265,11 +1293,19 @@ export function CityPoseChase3DGameplay({
           }
         });
 
+        if (!active || !acquiredPose?.pose) {
+          if (acquiredPose) releaseSharedPoseDetector(acquiredPose.sessionId);
+          return;
+        }
+
+        poseSessionId = acquiredPose.sessionId;
+        poseDetector = acquiredPose.pose;
+
         const poseUploadCanvas = document.createElement('canvas');
         const poseUploadCtx = poseUploadCanvas.getContext('2d', { willReadFrequently: false });
         let busy = false;
         const loop = async () => {
-          if (!active) return;
+          if (!active || poseSessionId !== sharedPoseSessionId) return;
           const v = videoRef.current;
           if (v && v.paused && v.srcObject) {
             v.play().catch(() => {});
@@ -1312,10 +1348,8 @@ export function CityPoseChase3DGameplay({
     return () => {
       active = false;
       if (rafId) cancelAnimationFrame(rafId);
-      if (poseDetector && poseDetector.close) {
-        try {
-          poseDetector.close();
-        } catch {}
+      if (poseSessionId) {
+        releaseSharedPoseDetector(poseSessionId);
       }
       if (stream) {
         stream.getTracks().forEach((t) => t.stop());

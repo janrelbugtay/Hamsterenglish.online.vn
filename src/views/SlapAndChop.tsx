@@ -21,6 +21,7 @@ import {
   waitForVideoReady,
   acquireMacSafeCameraStream,
   formatMacFriendlyCameraError,
+  releaseActiveSetupPreviewStreams,
 } from "../utils/mediapipeHandsManager";
 
 const slapChopImgCache: Record<string, HTMLImageElement> = {};
@@ -291,19 +292,6 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
   useEffect(() => {
     multiSpawnRateRef.current = multiSpawnRate;
   }, [multiSpawnRate]);
-
-  useEffect(() => {
-    if (handsRef.current) {
-      try {
-        handsRef.current.setOptions({
-          maxNumHands: numPlayers === 2 ? 4 : 2,
-          modelComplexity: 1,
-          minDetectionConfidence: 0.52,
-          minTrackingConfidence: 0.44
-        });
-      } catch (e) {}
-    }
-  }, [numPlayers]);
 
   useEffect(() => {
     textSizeRef.current = textSize;
@@ -2600,7 +2588,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       cameraLoopActiveRef.current = false;
       const targetPlayers = overridePlayersCount ?? engineRef.current.numPlayers ?? numPlayers;
 
-      // 1. Acquire or reuse the live webcam stream via macOS-safe helper (avoids frameRate: 60 rejections & Continuity Camera stalls)
+      // 1. Release any setup preview camera stream first, then acquire or reuse the live webcam stream via macOS-safe helper
+      releaseActiveSetupPreviewStreams();
       let stream = videoRef.current?.srcObject as MediaStream | null;
       const hasLiveTrack = stream && stream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled);
 
@@ -7281,7 +7270,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       <video
         ref={videoRef}
         className={`absolute inset-0 w-full h-full object-cover -scale-x-100 pointer-events-none z-0 transition-opacity duration-200 ${
-          screen === 'game' && cameraActive ? 'opacity-100' : 'opacity-0'
+          screen === 'game' && cameraActive ? 'opacity-100' : 'opacity-[0.01]'
         }`}
         autoPlay
         playsInline
