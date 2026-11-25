@@ -242,9 +242,25 @@ export function adaptGamePayloadForTargetMode(
   const gameTitle = gameData?.topic || gameData?.name || gameData?.title || 'Custom Quiz';
   const normalizedPreview = normalizePreviewQuestions(gameData);
 
+  const isSingleAnswerMode =
+    targetType === 'mystery-box' ||
+    targetType === 'flashcards-match' ||
+    targetType === 'family-feud';
+
   const normalizedQuestions = normalizedPreview.map((nq, idx) => {
-    const opts = nq.options.length >= 2 ? nq.options : [nq.answerText || 'Yes', 'No'];
-    const ansIdx = nq.answerIndex >= 0 && nq.answerIndex < opts.length ? nq.answerIndex : 0;
+    const nonEmptyOpts = nq.options.filter((o) => o && o.trim() !== '');
+    const opts =
+      nonEmptyOpts.length >= 2
+        ? nonEmptyOpts
+        : isSingleAnswerMode && (nonEmptyOpts.length === 1 || nq.answerText)
+        ? [nonEmptyOpts[0] || nq.answerText]
+        : [nonEmptyOpts[0] || nq.answerText || 'Yes', 'No'];
+    const ansIdx =
+      opts.length === 1
+        ? 0
+        : nq.answerIndex >= 0 && nq.answerIndex < opts.length
+        ? nq.answerIndex
+        : 0;
 
     const feudAnswers = [
       { text: opts[ansIdx], points: 50, aliases: [opts[ansIdx].toLowerCase()] },

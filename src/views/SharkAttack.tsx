@@ -34,7 +34,13 @@ import { FullscreenButton } from '../components/FullscreenButton';
 import { GameModeModal } from '../components/GameModeModal';
 import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput, convertQuestionsContentMode } from '../components/SetupSmartControls';
 import { parseOptionContent, formatOptionContent, AnswerContentMode } from '../utils/mediaAndPresets';
-import { UnifiedGameSetup } from '../components/UnifiedGameSetup';
+import {
+  MysteryBox3DLobby,
+  CuteHamsterAvatar,
+  CUTE_HAMSTER_ICONS,
+  TransparentCutoutImage,
+  BoxDifficultyMode,
+} from '../components/MysteryBox3DLobby';
 
 // ============================================================================
 // HELPER: STRIP CONFUSING A. / B. / C. / D. PREFIXES FROM OPTION TEXT
@@ -268,24 +274,48 @@ const playSFX = (
 };
 
 // ============================================================================
-// CUTE HAMSTER ROSTER & SVG COMPONENT
+// 20 UNIQUE 3D CUTE HAMSTER ROSTER & IN-GAME 3D CHARACTER COMPONENT
 // ============================================================================
-export type HamsterCharacterType = 'mochi' | 'ichigo' | 'captain' | 'boba' | 'yuki' | 'oreo';
+export type HamsterCharacterType =
+  | number
+  | 'mochi'
+  | 'ichigo'
+  | 'captain'
+  | 'boba'
+  | 'yuki'
+  | 'oreo';
 
 export interface HamsterCharacterOption {
-  id: HamsterCharacterType;
+  id: number;
   name: string;
   title: string;
 }
 
-export const HAMSTER_CHARACTER_OPTIONS: HamsterCharacterOption[] = [
-  { id: 'mochi', name: 'Mochi Hamster', title: 'Golden Cheeky Puff' },
-  { id: 'ichigo', name: 'Ichigo Hamster', title: 'Strawberry Puff' },
-  { id: 'captain', name: 'Captain Pip', title: 'Sailor Hamster' },
-  { id: 'boba', name: 'Boba Hamster', title: 'Milk Tea Pearl' },
-  { id: 'yuki', name: 'Yuki Hamster', title: 'Snow Marshmallow' },
-  { id: 'oreo', name: 'Oreo Hamster', title: 'Cookies & Cream' },
-];
+export const HAMSTER_CHARACTER_OPTIONS: HamsterCharacterOption[] = CUTE_HAMSTER_ICONS.map(
+  (icon) => ({
+    id: icon.id,
+    name: icon.name,
+    title: icon.personality,
+  })
+);
+
+export function resolveHamsterAvatarId(character?: HamsterCharacterType, fallback = 1): number {
+  if (typeof character === 'number' && Number.isFinite(character)) {
+    return ((Math.max(1, Math.round(character)) - 1) % CUTE_HAMSTER_ICONS.length) + 1;
+  }
+  const legacyMap: Record<string, number> = {
+    mochi: 1,
+    ichigo: 2,
+    captain: 3,
+    boba: 4,
+    yuki: 5,
+    oreo: 6,
+  };
+  if (typeof character === 'string' && character in legacyMap) {
+    return legacyMap[character];
+  }
+  return fallback;
+}
 
 export interface CuteHamsterCharacterProps {
   team: 'left' | 'right';
@@ -304,7 +334,7 @@ export interface CuteHamsterCharacterProps {
 
 export const CuteHamsterCharacter: React.FC<CuteHamsterCharacterProps> = ({
   team,
-  character = 'mochi',
+  character = 1,
   isPushing = false,
   isClimbing = false,
   isDangerEdge = false,
@@ -317,104 +347,40 @@ export const CuteHamsterCharacter: React.FC<CuteHamsterCharacterProps> = ({
   className = '',
 }) => {
   const isLeft = team === 'left';
-  const teamMain = isLeft ? '#0055fe' : '#dc2626';
-  const teamDark = isLeft ? '#1e3a8a' : '#7f1d1d';
-
-  const palettes: Record<
-    HamsterCharacterType,
-    {
-      furTop: string;
-      furBase: string;
-      furStroke: string;
-      belly: string;
-      earOuter: string;
-      earInner: string;
-      cheek: string;
-      headPatch?: string;
-    }
-  > = {
-    mochi: {
-      furTop: '#fbbf24',
-      furBase: '#f59e0b',
-      furStroke: '#92400e',
-      belly: '#fffbeb',
-      earOuter: '#d97706',
-      earInner: '#fda4af',
-      cheek: '#fb7185',
-      headPatch: '#d97706',
-    },
-    ichigo: {
-      furTop: '#f9a8d4',
-      furBase: '#f472b6',
-      furStroke: '#9d174d',
-      belly: '#fff1f2',
-      earOuter: '#ec4899',
-      earInner: '#fecdd3',
-      cheek: '#f43f5e',
-      headPatch: '#ec4899',
-    },
-    captain: {
-      furTop: '#fdba74',
-      furBase: '#ea580c',
-      furStroke: '#7c2d12',
-      belly: '#ffffff',
-      earOuter: '#c2410c',
-      earInner: '#fda4af',
-      cheek: '#fb7185',
-      headPatch: '#c2410c',
-    },
-    boba: {
-      furTop: '#e6ccb2',
-      furBase: '#c89f7c',
-      furStroke: '#582f0e',
-      belly: '#fdf8f5',
-      earOuter: '#7f4f24',
-      earInner: '#f4a261',
-      cheek: '#f28482',
-      headPatch: '#7f4f24',
-    },
-    yuki: {
-      furTop: '#ffffff',
-      furBase: '#e2e8f0',
-      furStroke: '#475569',
-      belly: '#ffffff',
-      earOuter: '#93c5fd',
-      earInner: '#fbcfe8',
-      cheek: '#f472b6',
-      headPatch: '#bae6fd',
-    },
-    oreo: {
-      furTop: '#475569',
-      furBase: '#1e293b',
-      furStroke: '#0f172a',
-      belly: '#f8fafc',
-      earOuter: '#0f172a',
-      earInner: '#fda4af',
-      cheek: '#fb7185',
-      headPatch: '#0f172a',
-    },
-  };
-
-  const pal = palettes[character] || palettes.mochi;
+  const avatarId = resolveHamsterAvatarId(character, isLeft ? 1 : 2);
+  const meta = CUTE_HAMSTER_ICONS[avatarId - 1] || CUTE_HAMSTER_ICONS[0];
   const resolvedSize = size || (compact ? 'compact' : 'normal');
-  const uid = `${team}-${character}-${resolvedSize}`;
+
+  if (resolvedSize === 'icon') {
+    return (
+      <CuteHamsterAvatar
+        avatarId={avatarId}
+        className={`w-[36px] h-[36px] sm:w-[44px] sm:h-[44px] ${className}`}
+      />
+    );
+  }
+
+  if (resolvedSize === 'card') {
+    return (
+      <CuteHamsterAvatar
+        avatarId={avatarId}
+        className={`w-[72px] h-[72px] sm:w-[86px] sm:h-[86px] ${className}`}
+      />
+    );
+  }
 
   const sizeClasses =
-    resolvedSize === 'icon'
-      ? 'w-[34px] h-[34px] sm:w-[42px] sm:h-[42px]'
-      : resolvedSize === 'card'
-        ? 'w-[70px] h-[70px] sm:w-[84px] sm:h-[84px] md:w-[96px] md:h-[96px]'
-        : resolvedSize === 'compact'
-          ? 'w-[100px] h-[100px] sm:w-[122px] sm:h-[122px] md:w-[140px] md:h-[140px]'
-          : 'w-[74px] h-[74px] sm:w-[90px] sm:h-[90px] md:w-[104px] md:h-[104px] lg:w-[116px] lg:h-[116px]';
+    resolvedSize === 'compact'
+      ? 'w-[108px] h-[108px] sm:w-[132px] sm:h-[132px] md:w-[152px] md:h-[152px]'
+      : 'w-[80px] h-[80px] sm:w-[98px] sm:h-[98px] md:w-[114px] md:h-[114px] lg:w-[126px] lg:h-[126px]';
 
   const isPanic = isClimbing || isDangerEdge || hasLost;
 
   return (
     <div
-      className={`relative z-20 ${sizeClasses} transition-all duration-300 ease-out select-none ${className}`}
+      className={`relative z-20 ${sizeClasses} transition-all duration-300 ease-out select-none flex items-center justify-center ${className}`}
       style={{
-        transform: `${!isLeft ? 'scaleX(-1)' : 'scaleX(1)'} ${
+        transform: `${
           isPushing
             ? 'translateY(-14px) scale(1.1)'
             : isClimbing
@@ -423,422 +389,214 @@ export const CuteHamsterCharacter: React.FC<CuteHamsterCharacterProps> = ({
         }`,
       }}
     >
-      <svg viewBox="0 0 140 140" className="w-full h-full overflow-visible">
-        <defs>
-          <linearGradient id={`ham-fur-${uid}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={pal.furTop} />
-            <stop offset="100%" stopColor={pal.furBase} />
-          </linearGradient>
-        </defs>
-
-        {/* Ground Shadow */}
-        {!hasLost && <ellipse cx="70" cy="126" rx="38" ry="8" fill="rgba(15, 23, 42, 0.32)" />}
-
-        {/* Round Win Celebration Glow & Sparkles */}
-        {(isPushing || isWinner) && (
-          <g>
-            <circle
-              cx="70"
-              cy="72"
-              r="58"
-              fill="rgba(250, 204, 21, 0.22)"
-              stroke="#fde047"
-              strokeWidth="3"
-              strokeDasharray="6 4"
-            />
-            <polygon
-              points="16,32 19,40 27,40 21,45 23,53 16,48 9,53 11,45 5,40 13,40"
-              fill="#facc15"
-              stroke="#ca8a04"
-              strokeWidth="1.2"
-            />
-            <polygon
-              points="124,28 126,35 133,35 128,39 130,46 124,42 118,46 120,39 115,35 122,35"
-              fill="#4ade80"
-              stroke="#15803d"
-              strokeWidth="1.2"
-            />
-          </g>
-        )}
-
-        {/* Round Stubby Hamster Tail */}
-        <circle cx="34" cy="102" r="7.5" fill={pal.belly} stroke={pal.furStroke} strokeWidth="2.5" />
-
-        {/* Cute Stubby Feet */}
-        <ellipse
-          cx="50"
-          cy="120"
-          rx="12"
-          ry="6.5"
-          fill="#fde2e4"
-          stroke={pal.furStroke}
-          strokeWidth="2.4"
-          transform={isPanic ? 'rotate(-18 50 120)' : ''}
+      {/* Ground Shadow under 3D Hamster Feet */}
+      {!hasLost && (
+        <div
+          className="pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 w-[66%] h-3 rounded-full"
+          style={{
+            background: 'radial-gradient(ellipse at center, rgba(15,23,42,0.42) 0%, rgba(15,23,42,0) 75%)',
+          }}
         />
-        <ellipse
-          cx="90"
-          cy="120"
-          rx="12"
-          ry="6.5"
-          fill="#fde2e4"
-          stroke={pal.furStroke}
-          strokeWidth="2.4"
-          transform={isPanic ? 'rotate(18 90 120)' : ''}
+      )}
+
+      {/* Victory / Round Win Golden Glow Ring */}
+      {(isPushing || isWinner) && (
+        <div
+          className="pointer-events-none absolute inset-1 rounded-full animate-pulse"
+          style={{
+            background: 'radial-gradient(circle, rgba(250,204,21,0.42) 0%, rgba(250,204,21,0) 72%)',
+            boxShadow: '0 0 24px rgba(250, 204, 21, 0.75)',
+          }}
         />
+      )}
 
-        {/* Round Hamster Ears */}
-        <g transform={isPanic ? 'translate(0, -3)' : ''}>
-          <circle cx="38" cy="34" r="15" fill={pal.earOuter} stroke={pal.furStroke} strokeWidth="2.8" />
-          <circle cx="38" cy="35" r="8.5" fill={pal.earInner} />
-          <circle cx="102" cy="34" r="15" fill={pal.earOuter} stroke={pal.furStroke} strokeWidth="2.8" />
-          <circle cx="102" cy="35" r="8.5" fill={pal.earInner} />
-        </g>
-
-        {/* Chubby Potato/Mochi Hamster Body & Giant Cheeks */}
-        <path
-          d="M 34 56 C 22 74, 22 118, 70 120 C 118 118, 118 74, 106 56 C 98 32, 42 32, 34 56 Z"
-          fill={`url(#ham-fur-${uid})`}
-          stroke={pal.furStroke}
-          strokeWidth="3"
-          strokeLinejoin="round"
+      {/* 3D Full-Body Hamster Character with Transparent Cutout Background */}
+      <div
+        className={`relative w-full h-full flex items-center justify-center ${
+          isPanic ? 'animate-bounce' : ''
+        }`}
+      >
+        <TransparentCutoutImage
+          src={meta.imageSrc}
+          alt={meta.name}
+          className="w-full h-full object-contain drop-shadow-[0_6px_12px_rgba(15,23,42,0.42)] select-none pointer-events-none"
         />
+      </div>
 
-        {/* Head Fur Forehead Patch */}
-        {pal.headPatch && (
-          <path
-            d="M 44 40 Q 70 62 96 40 Q 84 32 70 32 Q 56 32 44 40 Z"
-            fill={pal.headPatch}
-            opacity="0.85"
-          />
-        )}
+      {/* Stunned Dizzy Stars Overlay */}
+      {isStunned && (
+        <div className="pointer-events-none absolute -top-2 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-amber-400/95 border-2 border-white shadow-md text-xs sm:text-sm font-black text-slate-950 animate-bounce whitespace-nowrap">
+          💫 STUNNED!
+        </div>
+      )}
 
-        {/* Creamy White Belly & Lower Cheek Mask */}
-        <path
-          d="M 28 74 Q 44 62 70 66 Q 96 62 112 74 C 116 98, 102 119, 70 119 C 38 119, 24 98, 28 74 Z"
-          fill={pal.belly}
-        />
-
-        {/* Puffy Chubby Cheeks */}
-        <ellipse cx="35" cy="76" rx="14" ry="11" fill={pal.belly} />
-        <ellipse cx="105" cy="76" rx="14" ry="11" fill={pal.belly} />
-        <ellipse cx="38" cy="75" rx="7.5" ry="4.8" fill={pal.cheek} opacity="0.68" />
-        <ellipse cx="102" cy="75" rx="7.5" ry="4.8" fill={pal.cheek} opacity="0.68" />
-
-        {/* Team Bandana / Collar Scarf */}
-        <path
-          d="M 38 88 Q 70 100 102 88 L 96 97 Q 70 107 44 97 Z"
-          fill={teamMain}
-          stroke={teamDark}
-          strokeWidth="2"
-        />
-        <polygon points="70,96 63,108 77,108" fill={teamMain} stroke={teamDark} strokeWidth="1.8" />
-        <circle cx="70" cy="96" r="3.5" fill="#fbbf24" />
-
-        {/* Character-Specific Hats & Accessories */}
-        {character === 'mochi' && (
-          <g>
-            <path d="M 70 33 Q 70 20 78 16" fill="none" stroke="#15803d" strokeWidth="3" strokeLinecap="round" />
-            <ellipse cx="81" cy="16" rx="7" ry="4" transform="rotate(-20 81 16)" fill="#4ade80" stroke="#15803d" strokeWidth="1.8" />
-            <ellipse cx="64" cy="19" rx="6" ry="3.5" transform="rotate(25 64 19)" fill="#22c55e" stroke="#15803d" strokeWidth="1.8" />
-          </g>
-        )}
-        {character === 'ichigo' && (
-          <g>
-            <ellipse cx="70" cy="30" rx="22" ry="10" fill="#f43f5e" stroke="#9f1239" strokeWidth="2.2" />
-            <circle cx="62" cy="29" r="1.4" fill="#fef08a" />
-            <circle cx="70" cy="32" r="1.4" fill="#fef08a" />
-            <circle cx="78" cy="29" r="1.4" fill="#fef08a" />
-            <path d="M 64 21 L 70 24 L 76 21 M 70 16 L 70 24" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" />
-          </g>
-        )}
-        {character === 'captain' && (
-          <g>
-            <ellipse cx="70" cy="29" rx="23" ry="9" fill="#ffffff" stroke="#1e3a8a" strokeWidth="2.4" />
-            <path d="M 49 32 Q 70 37 91 32 L 90 36 Q 70 41 50 36 Z" fill="#0284c7" />
-            <circle cx="70" cy="27" r="3.5" fill="#fbbf24" stroke="#b45309" strokeWidth="1.2" />
-          </g>
-        )}
-        {character === 'boba' && (
-          <g>
-            <circle cx="70" cy="31" r="4.5" fill="#451a03" />
-            <ellipse cx="61" cy="31" rx="7" ry="4.5" fill="#f472b6" stroke="#9d174d" strokeWidth="1.8" />
-            <ellipse cx="79" cy="31" rx="7" ry="4.5" fill="#f472b6" stroke="#9d174d" strokeWidth="1.8" />
-          </g>
-        )}
-        {character === 'yuki' && (
-          <g>
-            <polygon
-              points="56,33 59,19 66,27 70,17 74,27 81,19 84,33"
-              fill="#facc15"
-              stroke="#b45309"
-              strokeWidth="2"
-              strokeLinejoin="round"
-            />
-            <circle cx="70" cy="27" r="2.2" fill="#38bdf8" />
-          </g>
-        )}
-        {character === 'oreo' && (
-          <g>
-            <polygon
-              points="70,17 73,24 80,24 74,28 76,35 70,31 64,35 66,28 60,24 67,24"
-              fill="#fbbf24"
-              stroke="#b45309"
-              strokeWidth="1.6"
-            />
-          </g>
-        )}
-
-        {/* Expressive Eyes, Nose, Whiskers & Mouth */}
-        {isStunned ? (
-          <g stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round">
-            <path d="M 48 56 L 56 64 M 56 56 L 48 64" />
-            <path d="M 84 56 L 92 64 M 92 56 L 84 64" />
-            <circle cx="70" cy="73" r="4" fill="#fb7185" />
-          </g>
-        ) : isPanic ? (
-          <g>
-            <circle cx="52" cy="60" r="8" fill="#ffffff" stroke="#0f172a" strokeWidth="2.4" />
-            <circle cx="52" cy="60" r="3" fill="#0f172a" />
-            <circle cx="88" cy="60" r="8" fill="#ffffff" stroke="#0f172a" strokeWidth="2.4" />
-            <circle cx="88" cy="60" r="3" fill="#0f172a" />
-            <ellipse cx="70" cy="66" rx="3.2" ry="2.2" fill="#fb7185" />
-            <ellipse cx="70" cy="76" rx="7" ry="8.5" fill="#9f1239" stroke="#0f172a" strokeWidth="2" />
-            <rect x="67.5" y="68" width="5" height="3.8" rx="1" fill="#ffffff" />
-            {/* Flying panic sweat drops */}
-            <path d="M 18 44 Q 13 53 18 57 Q 23 53 18 44 Z" fill="#38bdf8" stroke="#0284c7" strokeWidth="1" />
-            <path d="M 122 44 Q 117 53 122 57 Q 127 53 122 44 Z" fill="#38bdf8" stroke="#0284c7" strokeWidth="1" />
-          </g>
-        ) : isPushing || isWinner ? (
-          <g>
-            {/* Happy cheering eyes ^ ^ */}
-            <path d="M 45 61 Q 52 52 59 61" fill="none" stroke="#1e1b4b" strokeWidth="3.4" strokeLinecap="round" />
-            <path d="M 81 61 Q 88 52 95 61" fill="none" stroke="#1e1b4b" strokeWidth="3.4" strokeLinecap="round" />
-            <ellipse cx="70" cy="66" rx="3.5" ry="2.4" fill="#f43f5e" />
-            <path d="M 60 70 Q 70 82 80 70 Z" fill="#fb7185" stroke={pal.furStroke} strokeWidth="2" />
-            <rect x="67.5" y="70" width="5" height="4" rx="1" fill="#ffffff" />
-          </g>
-        ) : (
-          <g>
-            <circle cx="52" cy="60" r="7.2" fill="#1e1b4b" />
-            <circle cx="49.5" cy="57.5" r="2.8" fill="#ffffff" />
-            <circle cx="54.5" cy="62.5" r="1.3" fill="#ffffff" />
-
-            <circle cx="88" cy="60" r="7.2" fill="#1e1b4b" />
-            <circle cx="85.5" cy="57.5" r="2.8" fill="#ffffff" />
-            <circle cx="90.5" cy="62.5" r="1.3" fill="#ffffff" />
-
-            <ellipse cx="70" cy="66" rx="3.5" ry="2.4" fill="#f43f5e" />
-
-            <rect
-              x="67.5"
-              y="70.5"
-              width="5"
-              height="4.8"
-              rx="1.2"
-              fill="#ffffff"
-              stroke={pal.furStroke}
-              strokeWidth="1.4"
-            />
-            <path
-              d="M 61 70 Q 65.5 75 70 70 Q 74.5 75 79 70"
-              fill="none"
-              stroke={pal.furStroke}
-              strokeWidth="2.4"
-              strokeLinecap="round"
-            />
-          </g>
-        )}
-
-        {/* Cute Whiskers */}
-        <g stroke={pal.furStroke} strokeWidth="1.8" strokeLinecap="round" opacity="0.65">
-          <line x1="18" y1="69" x2="31" y2="71" />
-          <line x1="17" y1="76" x2="30" y2="76" />
-          <line x1="122" y1="69" x2="109" y2="71" />
-          <line x1="123" y1="76" x2="110" y2="76" />
-        </g>
-
-        {/* Little Hamster Paws */}
-        {isWinner || isPushing || isPanic ? (
-          <g>
-            <ellipse
-              cx="30"
-              cy="82"
-              rx="9"
-              ry="6"
-              transform="rotate(-40 30 82)"
-              fill="#fde2e4"
-              stroke={pal.furStroke}
-              strokeWidth="2.2"
-            />
-            <ellipse
-              cx="110"
-              cy="82"
-              rx="9"
-              ry="6"
-              transform="rotate(40 110 82)"
-              fill="#fde2e4"
-              stroke={pal.furStroke}
-              strokeWidth="2.2"
-            />
-          </g>
-        ) : (
-          <g>
-            <ellipse
-              cx="53"
-              cy="98"
-              rx="8.5"
-              ry="5.5"
-              transform="rotate(18 53 98)"
-              fill="#fde2e4"
-              stroke={pal.furStroke}
-              strokeWidth="2.2"
-            />
-            <ellipse
-              cx="87"
-              cy="98"
-              rx="8.5"
-              ry="5.5"
-              transform="rotate(-18 87 98)"
-              fill="#fde2e4"
-              stroke={pal.furStroke}
-              strokeWidth="2.2"
-            />
-            {character === 'mochi' && (
-              <ellipse
-                cx="70"
-                cy="99"
-                rx="5"
-                ry="7.5"
-                fill="#451a03"
-                stroke="#fef3c7"
-                strokeWidth="1.5"
-              />
-            )}
-          </g>
-        )}
-
-        {/* Frozen Ice Cube Effect */}
-        {isFrozen && (
-          <g>
-            <rect
-              x="16"
-              y="14"
-              width="108"
-              height="114"
-              rx="20"
-              fill="rgba(125, 211, 252, 0.52)"
-              stroke="#e0f2fe"
-              strokeWidth="4"
-            />
-            <line x1="30" y1="30" x2="55" y2="55" stroke="#ffffff" strokeWidth="4" strokeLinecap="round" opacity="0.8" />
-            <line x1="90" y1="80" x2="112" y2="105" stroke="#ffffff" strokeWidth="3.5" strokeLinecap="round" opacity="0.8" />
-          </g>
-        )}
-      </svg>
+      {/* Frozen Ice Cube Overlay */}
+      {isFrozen && (
+        <div className="pointer-events-none absolute inset-1 rounded-2xl bg-sky-300/55 border-4 border-sky-100 shadow-[0_0_20px_rgba(56,189,248,0.85)] flex items-center justify-center">
+          <span className="px-2 py-0.5 rounded-full bg-sky-900/85 text-white font-black text-[10px] sm:text-xs border border-sky-200">
+            ❄️ FROZEN
+          </span>
+        </div>
+      )}
     </div>
   );
 };
 
 // ============================================================================
-// IN-GAME HAMSTER PICKER MODAL
+// IN-GAME 20-CHARACTER 3D HAMSTER PICKER MODAL
 // ============================================================================
 export const HamsterCharacterPickerModal: React.FC<{
   isOpen: boolean;
   leftCharacter: HamsterCharacterType;
   rightCharacter: HamsterCharacterType;
-  onSelectLeft: (c: HamsterCharacterType) => void;
-  onSelectRight: (c: HamsterCharacterType) => void;
+  leftTeamName?: string;
+  rightTeamName?: string;
+  onSelectLeft: (c: number) => void;
+  onSelectRight: (c: number) => void;
   onClose: () => void;
-}> = ({ isOpen, leftCharacter, rightCharacter, onSelectLeft, onSelectRight, onClose }) => {
+}> = ({
+  isOpen,
+  leftCharacter,
+  rightCharacter,
+  leftTeamName = 'Team 1',
+  rightTeamName = 'Team 2',
+  onSelectLeft,
+  onSelectRight,
+  onClose,
+}) => {
+  const [activeTeamSide, setActiveTeamSide] = useState<'left' | 'right'>('left');
+
   if (!isOpen) return null;
 
+  const leftId = resolveHamsterAvatarId(leftCharacter, 1);
+  const rightId = resolveHamsterAvatarId(rightCharacter, 2);
+
   return (
-    <div className="fixed inset-0 z-[120] bg-black/65 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+    <div
+      className="fixed inset-0 z-[120] bg-slate-950/65 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-150"
+      onClick={onClose}
+    >
       <div
-        className="bg-slate-900 border-4 border-amber-400 rounded-[2.2rem] max-w-4xl w-full p-5 sm:p-7 shadow-2xl text-white max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-5xl rounded-[36px] p-5 sm:p-7 border-[5px] border-white ring-4 ring-[#6bc2ff]/85 shadow-[0_26px_65px_rgba(7,48,94,0.55),0_8px_0_#4ca6ee] flex flex-col gap-5 max-h-[92vh] overflow-y-auto"
+        style={{
+          fontFamily: '"Fredoka", "Baloo 2", "Plus Jakarta Sans", "Nunito", sans-serif',
+          background:
+            'linear-gradient(180deg, #b8e1ff 0%, #dff2ff 24%, #f2faff 54%, #b5deff 100%)',
+        }}
       >
-        <div className="flex items-center justify-between border-b border-white/15 pb-4 mb-5">
-          <div>
-            <h2 className="text-2xl sm:text-3xl font-black uppercase italic tracking-tight text-white">
-              🐹 Choose Cute Hamsters
-            </h2>
-            <p className="text-xs sm:text-sm text-amber-300 font-bold">
-              Pick a cute hamster climber for Blue Team and Red Team!
-            </p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-2xl sm:text-3xl font-black text-[#0c2d57] uppercase tracking-tight drop-shadow-[0_2px_0_rgba(255,255,255,0.95)]">
+            CHOOSE TEAM HAMSTERS
+          </h2>
+
+          {/* Team Switcher Tabs */}
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => setActiveTeamSide('left')}
+              className={`px-4 py-2 rounded-2xl font-black text-sm sm:text-base border-[2.5px] transition-all cursor-pointer flex items-center gap-2 ${
+                activeTeamSide === 'left'
+                  ? 'bg-gradient-to-b from-[#3b82f6] to-[#1d4ed8] text-white border-[#0c2d57] shadow-[0_4px_0_#0c2d57]'
+                  : 'bg-white/80 text-[#0c2d57] border-[#0c2d57]/30 hover:bg-white'
+              }`}
+            >
+              <span className="w-3 h-3 rounded-full bg-blue-400 border border-white" />
+              <span>{leftTeamName}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTeamSide('right')}
+              className={`px-4 py-2 rounded-2xl font-black text-sm sm:text-base border-[2.5px] transition-all cursor-pointer flex items-center gap-2 ${
+                activeTeamSide === 'right'
+                  ? 'bg-gradient-to-b from-[#ef4444] to-[#b91c1c] text-white border-[#450a0a] shadow-[0_4px_0_#450a0a]'
+                  : 'bg-white/80 text-[#0c2d57] border-[#0c2d57]/30 hover:bg-white'
+              }`}
+            >
+              <span className="w-3 h-3 rounded-full bg-red-400 border border-white" />
+              <span>{rightTeamName}</span>
+            </button>
           </div>
+
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+            className="w-10 h-10 rounded-full bg-white hover:bg-rose-50 text-[#0c2d57] hover:text-rose-600 border-2 border-[#0c2d57]/20 shadow-[0_3px_0_rgba(12,45,87,0.2)] flex items-center justify-center cursor-pointer"
           >
-            <X size={22} />
+            <X size={20} className="stroke-[3]" />
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {/* Blue Team */}
-          <div className="bg-blue-950/70 border-2 border-blue-500/50 rounded-3xl p-4">
-            <div className="font-black text-blue-300 uppercase tracking-wider text-sm sm:text-base mb-3 flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-blue-500 inline-block" />
-              Blue Team Hamster
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-              {HAMSTER_CHARACTER_OPTIONS.map((opt) => {
-                const selected = leftCharacter === opt.id;
-                return (
-                  <button
-                    key={`modal-left-${opt.id}`}
-                    onClick={() => onSelectLeft(opt.id)}
-                    className={`p-2.5 rounded-2xl border-2 flex flex-col items-center text-center transition-all cursor-pointer ${
-                      selected
-                        ? 'bg-gradient-to-b from-blue-500 to-blue-700 text-white border-amber-300 shadow-lg scale-[1.03]'
-                        : 'bg-slate-900/80 hover:bg-blue-900/40 text-slate-200 border-blue-500/30'
-                    }`}
-                  >
-                    <CuteHamsterCharacter team="left" character={opt.id} size="card" />
-                    <div className="font-black text-xs mt-1 leading-tight">{opt.name}</div>
-                    <div className="text-[10px] text-blue-200/80 font-semibold">{opt.title}</div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+        {/* 20 Unique 3D Hamsters Grid */}
+        <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-10 gap-3 items-center justify-items-center py-2">
+          {CUTE_HAMSTER_ICONS.map((icon) => {
+            const isLeftSelected = leftId === icon.id;
+            const isRightSelected = rightId === icon.id;
+            const isCurrentSelected =
+              activeTeamSide === 'left' ? isLeftSelected : isRightSelected;
 
-          {/* Red Team */}
-          <div className="bg-red-950/70 border-2 border-red-500/50 rounded-3xl p-4">
-            <div className="font-black text-red-300 uppercase tracking-wider text-sm sm:text-base mb-3 flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-red-500 inline-block" />
-              Red Team Hamster
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-              {HAMSTER_CHARACTER_OPTIONS.map((opt) => {
-                const selected = rightCharacter === opt.id;
-                return (
-                  <button
-                    key={`modal-right-${opt.id}`}
-                    onClick={() => onSelectRight(opt.id)}
-                    className={`p-2.5 rounded-2xl border-2 flex flex-col items-center text-center transition-all cursor-pointer ${
-                      selected
-                        ? 'bg-gradient-to-b from-red-500 to-red-700 text-white border-amber-300 shadow-lg scale-[1.03]'
-                        : 'bg-slate-900/80 hover:bg-red-900/40 text-slate-200 border-red-500/30'
-                    }`}
-                  >
-                    <CuteHamsterCharacter team="right" character={opt.id} size="card" />
-                    <div className="font-black text-xs mt-1 leading-tight">{opt.name}</div>
-                    <div className="text-[10px] text-red-200/80 font-semibold">{opt.title}</div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+            const badgeLabel = isLeftSelected
+              ? leftTeamName
+              : isRightSelected
+                ? rightTeamName
+                : `${icon.id}`;
+
+            return (
+              <button
+                key={icon.id}
+                type="button"
+                onClick={() => {
+                  if (activeTeamSide === 'left') {
+                    if (rightId === icon.id) onSelectRight(leftId);
+                    onSelectLeft(icon.id);
+                  } else {
+                    if (leftId === icon.id) onSelectLeft(rightId);
+                    onSelectRight(icon.id);
+                  }
+                }}
+                className="group w-full flex flex-col items-center gap-1.5 cursor-pointer select-none transition-transform duration-150 hover:-translate-y-1"
+                title={`${icon.name} — ${icon.personality}`}
+              >
+                <div
+                  className={`rounded-full p-0.5 transition-all ${
+                    isCurrentSelected
+                      ? 'ring-4 ring-[#f97316] scale-105 shadow-[0_0_18px_rgba(249,115,22,0.85)]'
+                      : 'group-hover:scale-105'
+                  }`}
+                >
+                  <CuteHamsterAvatar
+                    avatarId={icon.id}
+                    className="w-16 h-16 sm:w-20 sm:h-20"
+                  />
+                </div>
+
+                <div
+                  className={`w-full max-w-[96px] py-0.5 px-1.5 rounded-lg border-2 flex items-center justify-center ${
+                    isLeftSelected
+                      ? 'bg-gradient-to-b from-[#3b82f6] to-[#1d4ed8] border-[#0c2d57] text-white'
+                      : isRightSelected
+                        ? 'bg-gradient-to-b from-[#ef4444] to-[#b91c1c] border-[#450a0a] text-white'
+                        : 'bg-gradient-to-b from-[#fff380] via-[#ffd426] to-[#f59e0b] border-[#78350f] text-[#2d1203]'
+                  }`}
+                >
+                  <span className="text-[11px] sm:text-xs font-black truncate">
+                    {badgeLabel}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
         </div>
 
-        <div className="mt-6 flex justify-end">
+        <div className="flex justify-center pt-1">
           <button
+            type="button"
             onClick={onClose}
-            className="px-8 py-3 rounded-full bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-base shadow-[0_5px_0_#ca8a04] active:translate-y-0.5 cursor-pointer"
+            className="relative rounded-2xl px-8 py-3 bg-gradient-to-b from-[#4fd1ff] via-[#0ea5e9] to-[#0284c7] border-[3px] border-[#0c2d57] shadow-[0_5px_0_#0c2d57] hover:brightness-105 active:translate-y-0.5 flex items-center justify-center gap-2 cursor-pointer text-white font-black text-lg"
           >
-            Done
+            <Check className="w-5 h-5 stroke-[3.5]" />
+            <span>Okay</span>
           </button>
         </div>
       </div>
@@ -1687,8 +1445,14 @@ export function SharkAttack({
   );
   const [showModeModal, setShowModeModal] = useState(false);
   const [showCharacterModal, setShowCharacterModal] = useState(false);
-  const [leftCharacter, setLeftCharacter] = useState<HamsterCharacterType>('mochi');
-  const [rightCharacter, setRightCharacter] = useState<HamsterCharacterType>('ichigo');
+  const [leftCharacter, setLeftCharacter] = useState<HamsterCharacterType>(1);
+  const [rightCharacter, setRightCharacter] = useState<HamsterCharacterType>(2);
+  const [playerNames, setPlayerNames] = useState<string[]>(['Team 1', 'Team 2']);
+  const [selectedQuestionLimit, setSelectedQuestionLimit] = useState<number>(25);
+  const [lobbyDifficulty, setLobbyDifficulty] = useState<BoxDifficultyMode>('normal');
+  const [answerBonusPoints, setAnswerBonusPoints] = useState<boolean>(true);
+  const [wrongAnswerPenalty, setWrongAnswerPenalty] = useState<boolean>(false);
+  const [selectedTheme, setSelectedTheme] = useState<string>('theme-ocean');
   const [fontSizeScale, setFontSizeScale] = useState<'small' | 'medium' | 'large'>('medium');
   const [showFontSizePopup, setShowFontSizePopup] = useState(false);
 
@@ -1815,9 +1579,20 @@ export function SharkAttack({
     }
   };
 
-  const questionsDB =
+  const allQuestionsDB =
     activeGame?.questions && activeGame.questions.filter((q) => q.text.trim() || q.image).length > 0
       ? activeGame.questions.filter((q) => q.text.trim() || q.image)
+      : DEFAULT_QUESTIONS;
+
+  useEffect(() => {
+    if (allQuestionsDB.length > 0) {
+      setSelectedQuestionLimit(allQuestionsDB.length);
+    }
+  }, [allQuestionsDB.length]);
+
+  const questionsDB =
+    allQuestionsDB.length > 0
+      ? allQuestionsDB.slice(0, Math.max(1, Math.min(allQuestionsDB.length, selectedQuestionLimit)))
       : DEFAULT_QUESTIONS;
 
   const [questionMode, setQuestionMode] = useState<'single' | 'split'>('single');
@@ -1924,16 +1699,16 @@ export function SharkAttack({
   const [sharkLungeSide, setSharkLungeSide] = useState<'left' | 'right' | 'center' | null>(null);
   const [soundMuted, setSoundMuted] = useState(false);
 
-  // 1 to 10 Minutes Match Timer Slider & Countdown State
-  const [timerMinutes, setTimerMinutes] = useState<number>(3);
+  // Match Timer Slider & Countdown State (0 = OFF in Lobby, or 1..20 Minutes)
+  const [timerMinutes, setTimerMinutes] = useState<number>(0);
   const [timeLeftSeconds, setTimeLeftSeconds] = useState<number>(3 * 60);
   const [timerPaused, setTimerPaused] = useState<boolean>(false);
   const [timeUpBanner, setTimeUpBanner] = useState<string | null>(null);
 
   const handleTimerSliderChange = useCallback((mins: number) => {
-    const clamped = Math.max(1, Math.min(10, mins));
+    const clamped = Math.max(0, Math.min(20, mins));
     setTimerMinutes(clamped);
-    setTimeLeftSeconds(clamped * 60);
+    setTimeLeftSeconds(clamped > 0 ? clamped * 60 : 3 * 60);
     setTimerPaused(false);
   }, []);
 
@@ -2006,7 +1781,7 @@ export function SharkAttack({
     setTimeUpBanner(null);
     setFallingPhase('none');
     setSharkLungeSide(null);
-    setTimeLeftSeconds(timerMinutes * 60);
+    setTimeLeftSeconds(timerMinutes > 0 ? timerMinutes * 60 : 3 * 60);
     setTimerPaused(false);
     matchOverRef.current = false;
     setShowStartBattleModal(false);
@@ -2044,13 +1819,12 @@ export function SharkAttack({
     }, 2600);
   }, []);
 
-  // When the 1-10 minute timer ends, the character with the highest steps (closest to the edge) is eaten by the shark!
+  // When the match timer ends, the character with the highest steps (closest to the edge) is eaten by the shark!
   const handleTimeExpired = useCallback(() => {
     if (matchOverRef.current || stateRef.current.screen !== 'playing') return;
     const lTeam = stateRef.current.leftTeam;
     const rTeam = stateRef.current.rightTeam;
 
-    // Determine which hamster is closer to the edge (highest step); tie-break by lower score / more mistakes
     let blueEaten = false;
     if (lTeam.step > rTeam.step) {
       blueEaten = true;
@@ -2065,7 +1839,6 @@ export function SharkAttack({
     }
 
     if (blueEaten) {
-      // Blue Hamster has highest step / closest to edge -> eaten by Shark! Red Team wins!
       setLeftTeam((prev: any) => ({ ...prev, step: MAX_STAIR_STEPS + 1 }));
       setSharkLungeSide('left');
       showTeamFeedback('left', '⏰ TIME UP! EATEN BY SHARK!', 'bg-red-600 text-white');
@@ -2077,7 +1850,6 @@ export function SharkAttack({
       );
       triggerSharkVictory('Red Team');
     } else {
-      // Red Hamster has highest step / closest to edge -> eaten by Shark! Blue Team wins!
       setRightTeam((prev: any) => ({ ...prev, step: MAX_STAIR_STEPS + 1 }));
       setSharkLungeSide('right');
       showTeamFeedback('right', '⏰ TIME UP! EATEN BY SHARK!', 'bg-red-600 text-white');
@@ -2092,7 +1864,7 @@ export function SharkAttack({
   }, [showTeamFeedback, triggerSharkVictory]);
 
   useEffect(() => {
-    if (screen !== 'playing' || timerPaused) return;
+    if (screen !== 'playing' || timerPaused || timerMinutes <= 0) return;
     const interval = setInterval(() => {
       if (matchOverRef.current) return;
       setTimeLeftSeconds((prev) => {
@@ -2108,7 +1880,7 @@ export function SharkAttack({
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, [screen, timerPaused, handleTimeExpired]);
+  }, [screen, timerPaused, timerMinutes, handleTimeExpired]);
 
   const handleAnswer = useCallback(
     (teamStr: 'left' | 'right', selectedIndex: number) => {
@@ -2646,249 +2418,163 @@ export function SharkAttack({
     );
   }
 
+  const blueDisplayName =
+    playerNames[0] && playerNames[0].trim() && playerNames[0].trim().toLowerCase() !== 'team 1'
+      ? playerNames[0].trim()
+      : 'Team 1';
+  const redDisplayName =
+    playerNames[1] && playerNames[1].trim() && playerNames[1].trim().toLowerCase() !== 'team 2'
+      ? playerNames[1].trim()
+      : 'Team 2';
+
+  const leftAvatarId = resolveHamsterAvatarId(leftCharacter, 1);
+  const rightAvatarId = resolveHamsterAvatarId(rightCharacter, 2);
+
+  const renderChooseBattleModeModal = () => {
+    if (!showStartBattleModal) return null;
+    return (
+      <div
+        className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-950/65 backdrop-blur-md animate-in fade-in duration-150"
+        onClick={() => setShowStartBattleModal(false)}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="relative w-full max-w-[620px] rounded-[40px] p-6 sm:p-8 border-[6px] border-white ring-4 ring-[#6bc2ff]/85 shadow-[0_26px_65px_rgba(7,48,94,0.55),0_10px_0_#4ca6ee,inset_0_4px_14px_rgba(255,255,255,0.98)] flex flex-col items-center gap-6"
+          style={{
+            fontFamily: '"Fredoka", "Baloo 2", "Plus Jakarta Sans", "Nunito", sans-serif',
+            background:
+              'linear-gradient(180deg, #b8e1ff 0%, #dff2ff 24%, #f2faff 54%, #b5deff 100%)',
+          }}
+        >
+          {/* Top Glossy Highlight */}
+          <div className="pointer-events-none absolute inset-x-10 top-1.5 h-3.5 rounded-full bg-gradient-to-b from-white/95 to-transparent" />
+
+          {/* Close Button */}
+          <button
+            type="button"
+            onClick={() => setShowStartBattleModal(false)}
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white hover:bg-rose-50 text-[#0c2d57] hover:text-rose-600 border-2 border-[#0c2d57]/20 shadow-[0_3px_0_rgba(12,45,87,0.2)] flex items-center justify-center transition-colors cursor-pointer"
+            title="Close"
+          >
+            <X className="w-5 h-5 stroke-[3]" />
+          </button>
+
+          {/* 2 Team 3D Hamster Avatars Showcase */}
+          <div className="flex items-center justify-center gap-3 pt-1">
+            <CuteHamsterAvatar avatarId={leftAvatarId} className="w-14 h-14 sm:w-16 sm:h-16" />
+            <div className="px-3 py-1 rounded-xl bg-gradient-to-b from-[#fff380] via-[#ffd426] to-[#f59e0b] border-[2.5px] border-[#451a03] shadow-[0_3px_0_#451a03] font-black text-sm sm:text-base text-[#2d1203] italic">
+              VS
+            </div>
+            <CuteHamsterAvatar avatarId={rightAvatarId} className="w-14 h-14 sm:w-16 sm:h-16" />
+          </div>
+
+          {/* Clean Bold Title Only (Unnecessary words and redundant timer removed) */}
+          <h2 className="text-3xl sm:text-4xl font-black text-[#0c2d57] uppercase tracking-tight text-center drop-shadow-[0_2px_0_rgba(255,255,255,0.95)]">
+            CHOOSE BATTLE MODE
+          </h2>
+
+          {/* Clean 2-Card Battle Mode Buttons */}
+          <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+            <button
+              type="button"
+              onClick={() => startGame(false, 'single')}
+              className="group relative rounded-[28px] p-6 sm:p-7 bg-gradient-to-b from-[#fff380] via-[#ffd426] to-[#f59e0b] border-[3.5px] border-[#451a03] shadow-[0_7px_0_#451a03,0_14px_24px_rgba(69,26,3,0.25)] hover:brightness-105 hover:-translate-y-1 active:translate-y-1 active:shadow-[0_2px_0_#451a03] transition-all duration-150 flex flex-col items-center justify-center gap-3 cursor-pointer"
+            >
+              <div className="pointer-events-none absolute inset-x-5 top-1.5 h-2.5 rounded-full bg-gradient-to-b from-white/75 to-transparent" />
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/85 border-2 border-[#451a03]/20 shadow-inner flex items-center justify-center text-4xl sm:text-5xl group-hover:scale-110 transition-transform">
+                🎯
+              </div>
+              <span className="text-xl sm:text-2xl font-black text-[#2d1203] uppercase tracking-tight text-center leading-tight drop-shadow-[0_1px_0_rgba(255,255,255,0.85)]">
+                SINGLE QUESTION
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => startGame(false, 'split')}
+              className="group relative rounded-[28px] p-6 sm:p-7 bg-gradient-to-b from-[#4fd1ff] via-[#0ea5e9] to-[#0284c7] border-[3.5px] border-[#0c2d57] shadow-[0_7px_0_#0c2d57,0_14px_24px_rgba(12,45,87,0.28)] hover:brightness-105 hover:-translate-y-1 active:translate-y-1 active:shadow-[0_2px_0_#0c2d57] transition-all duration-150 flex flex-col items-center justify-center gap-3 cursor-pointer"
+            >
+              <div className="pointer-events-none absolute inset-x-5 top-1.5 h-2.5 rounded-full bg-gradient-to-b from-white/70 to-transparent" />
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/25 border-2 border-white/45 shadow-inner flex items-center justify-center text-4xl sm:text-5xl group-hover:scale-110 transition-transform">
+                ⚡
+              </div>
+              <span className="text-xl sm:text-2xl font-black text-white uppercase tracking-tight text-center leading-tight drop-shadow-[0_2px_0_#035388]">
+                SPLIT QUESTIONS
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // ==========================================================================
-  // SCREEN 3: CHOOSE CUTE HAMSTER MENU
+  // SCREEN 3: MYSTERY BOX 3D LOBBY STYLE MENU (FIXED TO 2 TEAMS MODE)
   // ==========================================================================
   if (screen === 'menu') {
-    const leftInfo = HAMSTER_CHARACTER_OPTIONS.find((c) => c.id === leftCharacter);
-    const rightInfo = HAMSTER_CHARACTER_OPTIONS.find((c) => c.id === rightCharacter);
-
     return (
       <div
         id="game-container"
         className="w-full min-h-full flex-1 relative select-none"
       >
-        <UnifiedGameSetup
-          title={activeGame?.title || 'SHARK ATTACK 3D'}
-          containerId="game-container"
-          questionCount={activeGame?.questions?.length}
-          onBack={() => onViewChange('home', { __stepBack: true })}
-          onOpenGameSwitcher={() => setShowModeModal(true)}
-          onOpenQuizEditor={() => setScreen('setup')}
-          timerValue={timerMinutes * 60}
-          timerOptions={[
-            { label: '1M', sec: 60 },
-            { label: '2M', sec: 120 },
-            { label: '3M', sec: 180 },
-            { label: '5M', sec: 300 },
-            { label: '10M', sec: 600 }
-          ]}
-          onTimerChange={(sec) => handleTimerSliderChange(Math.max(1, Math.round(sec / 60)))}
-          startLabel="🦈 START BATTLE"
-          onStart={() => setShowStartBattleModal(true)}
-          onStudy={() => {
+        <MysteryBox3DLobby
+          fixedTeamCount={2}
+          numPlayers={2}
+          onSelectNumPlayers={() => {}}
+          questionCount={allQuestionsDB.length}
+          selectedQuestionLimit={selectedQuestionLimit}
+          onSelectQuestionLimit={(limit) => setSelectedQuestionLimit(limit)}
+          gameTimeMinutes={timerMinutes}
+          onSelectGameTime={(mins) => handleTimerSliderChange(mins)}
+          playerNames={playerNames}
+          onChangePlayerName={(idx, value) => {
+            setPlayerNames((prev) => {
+              const next = [...prev];
+              next[idx] = value;
+              return next;
+            });
+          }}
+          teamAvatars={[leftAvatarId, rightAvatarId]}
+          onChangeTeamAvatar={(teamIndex, avatarId) => {
+            if (teamIndex === 0) {
+              if (rightAvatarId === avatarId) setRightCharacter(leftAvatarId);
+              setLeftCharacter(avatarId);
+            } else {
+              if (leftAvatarId === avatarId) setLeftCharacter(rightAvatarId);
+              setRightCharacter(avatarId);
+            }
+          }}
+          onRandomizeTeamAvatars={() => {
+            const pool = Array.from({ length: 20 }, (_, i) => i + 1);
+            for (let i = pool.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [pool[i], pool[j]] = [pool[j], pool[i]];
+            }
+            setLeftCharacter(pool[0]);
+            setRightCharacter(pool[1]);
+          }}
+          difficulty={lobbyDifficulty}
+          onSelectDifficulty={setLobbyDifficulty}
+          answerBonusPoints={answerBonusPoints}
+          onToggleBonus={() => setAnswerBonusPoints((v) => !v)}
+          wrongAnswerPenalty={wrongAnswerPenalty}
+          onTogglePenalty={() => setWrongAnswerPenalty((v) => !v)}
+          isMuted={soundMuted}
+          onToggleMute={() => setSoundMuted((v) => !v)}
+          selectedTheme={selectedTheme}
+          onSelectTheme={(themeId) => setSelectedTheme(themeId)}
+          onStartGame={() => setShowStartBattleModal(true)}
+          onOpenStudy={() => {
             setStudyIndex(0);
             setStudySelectedOption(null);
             setScreen('study');
           }}
-        >
-          {/* 3D BLUE VS RED HAMSTER ROSTER */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-stretch">
-            {/* BLUE TEAM HAMSTER ROSTER (5 cols) */}
-            <div className="lg:col-span-5 bg-blue-50/90 border-2 border-blue-200 border-b-4 border-b-blue-400 rounded-3xl p-3.5 flex flex-col justify-between">
-              <div className="flex items-center justify-between mb-2.5">
-                <span className="font-black text-xs sm:text-sm text-blue-950 uppercase tracking-wider">
-                  🔵 BLUE HAMSTER
-                </span>
-                <span className="bg-blue-600 text-white font-black text-xs px-2.5 py-0.5 rounded-xl">
-                  {leftInfo?.name}
-                </span>
-              </div>
+          onBack={() => onViewChange('home', { __stepBack: true })}
+          onOpenGameSwitcher={() => setShowModeModal(true)}
+          onOpenQuizEditor={() => setScreen('setup')}
+        />
 
-              <div className="grid grid-cols-3 gap-2">
-                {HAMSTER_CHARACTER_OPTIONS.map((opt) => {
-                  const selected = leftCharacter === opt.id;
-                  return (
-                    <button
-                      key={`menu-left-${opt.id}`}
-                      type="button"
-                      onClick={() => setLeftCharacter(opt.id)}
-                      className={`p-2 rounded-2xl border-2 border-b-4 flex flex-col items-center justify-between text-center transition-all cursor-pointer ${
-                        selected
-                          ? 'bg-gradient-to-b from-blue-500 to-blue-600 text-white border-blue-300 border-b-blue-900 shadow-md -translate-y-0.5'
-                          : 'bg-white hover:bg-blue-100/60 text-slate-900 border-blue-200 border-b-blue-300'
-                      }`}
-                    >
-                      <div className="py-0.5 flex items-center justify-center scale-90">
-                        <CuteHamsterCharacter team="left" character={opt.id} size="card" />
-                      </div>
-                      <div className="font-black text-[11px] leading-tight uppercase truncate w-full">
-                        {opt.name}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* CENTER LIVE MATCHUP SHOWCASE (2 cols) */}
-            <div className="lg:col-span-2 bg-gradient-to-b from-sky-100 via-white to-amber-50 text-slate-900 rounded-3xl p-3 border-2 border-amber-300 border-b-4 border-b-amber-500 flex flex-row lg:flex-col items-center justify-around gap-2">
-              <div className="flex flex-col items-center text-center">
-                <span className="text-[10px] font-black uppercase text-white bg-blue-600 px-2.5 py-0.5 rounded-lg mb-1">
-                  {leftInfo?.name}
-                </span>
-                <CuteHamsterCharacter team="left" character={leftCharacter} compact />
-              </div>
-
-              <div className="w-10 h-10 rounded-2xl bg-amber-400 border-2 border-white border-b-4 border-b-amber-600 shadow flex items-center justify-center font-black italic text-base text-slate-950 shrink-0">
-                VS
-              </div>
-
-              <div className="flex flex-col items-center text-center">
-                <CuteHamsterCharacter team="right" character={rightCharacter} compact />
-                <span className="text-[10px] font-black uppercase text-white bg-red-600 px-2.5 py-0.5 rounded-lg mt-1">
-                  {rightInfo?.name}
-                </span>
-              </div>
-            </div>
-
-            {/* RED TEAM HAMSTER ROSTER (5 cols) */}
-            <div className="lg:col-span-5 bg-red-50/90 border-2 border-red-200 border-b-4 border-b-red-400 rounded-3xl p-3.5 flex flex-col justify-between">
-              <div className="flex items-center justify-between mb-2.5">
-                <span className="font-black text-xs sm:text-sm text-red-950 uppercase tracking-wider">
-                  🔴 RED HAMSTER
-                </span>
-                <span className="bg-red-600 text-white font-black text-xs px-2.5 py-0.5 rounded-xl">
-                  {rightInfo?.name}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2">
-                {HAMSTER_CHARACTER_OPTIONS.map((opt) => {
-                  const selected = rightCharacter === opt.id;
-                  return (
-                    <button
-                      key={`menu-right-${opt.id}`}
-                      type="button"
-                      onClick={() => setRightCharacter(opt.id)}
-                      className={`p-2 rounded-2xl border-2 border-b-4 flex flex-col items-center justify-between text-center transition-all cursor-pointer ${
-                        selected
-                          ? 'bg-gradient-to-b from-red-500 to-red-600 text-white border-red-300 border-b-red-900 shadow-md -translate-y-0.5'
-                          : 'bg-white hover:bg-red-100/60 text-slate-900 border-red-200 border-b-red-300'
-                      }`}
-                    >
-                      <div className="py-0.5 flex items-center justify-center scale-90">
-                        <CuteHamsterCharacter team="right" character={opt.id} size="card" />
-                      </div>
-                      <div className="font-black text-[11px] leading-tight uppercase truncate w-full">
-                        {opt.name}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </UnifiedGameSetup>
-
-        {/* Battle Mode Selection Modal */}
-        {showStartBattleModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 md:p-10 max-w-xl w-full text-center shadow-2xl border-4 border-amber-400 relative">
-              <button
-                onClick={() => setShowStartBattleModal(false)}
-                className="absolute top-5 right-5 p-2 rounded-full hover:bg-slate-100 text-slate-500 cursor-pointer"
-                title="Close"
-              >
-                <X size={24} />
-              </button>
-
-              <div className="flex justify-center gap-3 mb-3">
-                <div className="w-8 h-8 rounded-full bg-blue-600 border-2 border-white shadow-md" />
-                <div className="w-8 h-8 rounded-full bg-red-600 border-2 border-white shadow-md" />
-              </div>
-
-              <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-slate-900 uppercase tracking-tight mb-2">
-                Choose Battle Mode
-              </h2>
-              <p className="text-slate-500 text-xs sm:text-sm font-semibold mb-4">
-                Choose how questions will appear in this Shark Attack battle:
-              </p>
-
-              {/* 1 to 10 Minutes Match Timer Slider in Modal */}
-              <div className="bg-slate-100 border-2 border-slate-200 rounded-2xl p-3.5 mb-5 text-left">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                    <Clock size={15} className="text-amber-600" />
-                    Match Timer (1 – 10 Minutes)
-                  </span>
-                  <span className="px-3 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-xs">
-                    {timerMinutes} {timerMinutes === 1 ? 'Minute' : 'Minutes'}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-bold text-slate-500">1m</span>
-                  <input
-                    type="range"
-                    min={1}
-                    max={10}
-                    step={1}
-                    value={timerMinutes}
-                    onChange={(e) => handleTimerSliderChange(Number(e.target.value))}
-                    className="flex-1 accent-amber-500 cursor-pointer h-2 bg-slate-300 rounded-lg"
-                  />
-                  <span className="text-xs font-bold text-slate-500">10m</span>
-                </div>
-                <p className="text-[11px] text-slate-500 font-semibold mt-1">
-                  When time ends, the hamster with the highest steps (closest to the edge) is eaten by the shark!
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 text-left">
-                <button
-                  onClick={() => startGame(false, 'single')}
-                  className="group p-5 rounded-3xl border-3 border-amber-300 hover:border-amber-500 bg-amber-50/70 hover:bg-amber-100/90 transition-all shadow-md hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] cursor-pointer flex flex-col justify-between"
-                >
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-3xl">🎯</span>
-                      <span className="font-black text-base sm:text-lg text-slate-900 uppercase">
-                        Single Question
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-600 font-medium leading-relaxed">
-                      Both Blue and Red race to answer{' '}
-                      <strong className="text-slate-900">1 shared question</strong> centered in the
-                      middle of the arena.
-                    </p>
-                  </div>
-                  <div className="mt-4 inline-flex items-center text-xs font-black text-amber-800 uppercase tracking-wider group-hover:translate-x-1 transition-transform">
-                    Start Single Battle →
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => startGame(false, 'split')}
-                  className="group p-5 rounded-3xl border-3 border-indigo-300 hover:border-indigo-500 bg-indigo-50/70 hover:bg-indigo-100/90 transition-all shadow-md hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] cursor-pointer flex flex-col justify-between"
-                >
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-3xl">⚡</span>
-                      <span className="font-black text-base sm:text-lg text-slate-900 uppercase">
-                        Split Questions
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-600 font-medium leading-relaxed">
-                      Each team has their own{' '}
-                      <strong className="text-slate-900">randomized question order</strong>{' '}
-                      appearing directly on Blue side and Red side.
-                    </p>
-                  </div>
-                  <div className="mt-4 inline-flex items-center text-xs font-black text-indigo-800 uppercase tracking-wider group-hover:translate-x-1 transition-transform">
-                    Start Split Battle →
-                  </div>
-                </button>
-              </div>
-
-              <button
-                onClick={() => setShowStartBattleModal(false)}
-                className="text-slate-400 hover:text-slate-700 text-sm font-bold cursor-pointer"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
+        {renderChooseBattleModeModal()}
 
         <GameModeModal
           isOpen={showModeModal}
@@ -2913,6 +2599,9 @@ export function SharkAttack({
   // SCREEN 4: MATCH END CELEBRATION
   // ==========================================================================
   if (screen === 'end') {
+    const winningDisplayName =
+      winner === 'Blue Team' ? blueDisplayName : redDisplayName;
+
     return (
       <div
         id="game-container"
@@ -2965,7 +2654,7 @@ export function SharkAttack({
               winner === 'Blue Team' ? 'text-blue-600' : 'text-red-600'
             }`}
           >
-            {winner}
+            {winningDisplayName}
           </h2>
           <p className="text-2xl font-black text-slate-800 mb-10 uppercase tracking-widest">
             Wins the Match! 🦈
@@ -3012,8 +2701,8 @@ export function SharkAttack({
   // ==========================================================================
   // SCREEN 5: IN-GAME BATTLE ARENA
   // ==========================================================================
-  const currentQText = leftTeam.q?.text || rightTeam.q?.text || DEFAULT_QUESTIONS[0].text;
-  const isLowTime = timeLeftSeconds <= 30;
+  const currentQText = leftTeam.q?.text || rightTeam.q?.text || DEFAULT_QUESTIONS[0]?.text || '';
+  const isLowTime = timerMinutes > 0 && timeLeftSeconds <= 30;
 
   return (
     <div
@@ -3030,26 +2719,26 @@ export function SharkAttack({
           <ArrowLeft size={22} className="stroke-[2.5]" />
         </button>
 
-        {/* Blue Team Banner, IN-GAME 1-10 MINUTES TIMER SLIDER, and Red Team Banner */}
+        {/* Blue Team Banner, IN-GAME TIMER HUD, and Red Team Banner */}
         <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 md:gap-4">
           {/* Blue Team Scoreboard Banner */}
           <div className="bg-[#0055fe] rounded-2xl md:rounded-3xl px-2.5 sm:px-3.5 md:px-4 py-1 sm:py-1.5 flex items-center gap-1.5 sm:gap-2 shadow-lg shadow-blue-500/25 border-b-4 border-[#0038b3]">
             <button
               onClick={() => setShowCharacterModal(true)}
-              className="bg-white/95 hover:bg-white rounded-full p-0.5 shadow-sm flex items-center justify-center transition-all hover:scale-105 cursor-pointer"
+              className="rounded-full flex items-center justify-center transition-all hover:scale-105 cursor-pointer"
               title="Change Blue Team Hamster"
             >
               <CuteHamsterCharacter team="left" character={leftCharacter} size="icon" />
             </button>
             <span className="font-black italic text-xs sm:text-sm md:text-base lg:text-lg text-white uppercase tracking-wider select-none">
-              BLUE TEAM
+              {blueDisplayName}
             </span>
             <div className="bg-white text-blue-700 font-black text-xs sm:text-sm px-2 py-0.5 sm:px-2.5 rounded-full shadow-sm tracking-wide">
               {leftTeam.wins} WINS
             </div>
           </div>
 
-          {/* IN-GAME 1 TO 10 MINUTES TIMER SLIDER & COUNTDOWN HUD */}
+          {/* IN-GAME TIMER SLIDER & COUNTDOWN HUD */}
           <div
             className={`rounded-2xl md:rounded-3xl px-3 sm:px-4 py-1 sm:py-1.5 flex items-center gap-2 sm:gap-3 shadow-lg border-2 transition-colors ${
               isLowTime
@@ -3063,46 +2752,50 @@ export function SharkAttack({
                 className={isLowTime ? 'text-yellow-300 animate-spin' : 'text-amber-400'}
               />
               <span className="font-mono font-black text-sm sm:text-base md:text-lg tracking-wider tabular-nums">
-                {formatTimer(timeLeftSeconds)}
+                {timerMinutes > 0 ? formatTimer(timeLeftSeconds) : 'OFF'}
               </span>
             </div>
 
-            {/* Interactive 1 to 10 Minutes Slider directly In-Game */}
+            {/* Interactive Timer Slider directly In-Game */}
             <div className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1 rounded-full border border-white/15">
-              <span className="text-[10px] font-black text-amber-300">1m</span>
+              <span className="text-[10px] font-black text-amber-300">OFF</span>
               <input
                 type="range"
-                min={1}
+                min={0}
                 max={10}
                 step={1}
-                value={timerMinutes}
+                value={Math.min(10, timerMinutes)}
                 onChange={(e) => handleTimerSliderChange(Number(e.target.value))}
                 className="w-20 sm:w-28 md:w-32 accent-amber-400 cursor-pointer h-1.5 bg-slate-700 rounded-lg"
-                title="In-Game Timer Slider (1 to 10 Minutes)"
+                title="In-Game Timer Slider (OFF or 1 to 10 Minutes)"
               />
               <span className="text-[10px] font-black text-amber-300">10m</span>
               <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-[10px] whitespace-nowrap">
-                {timerMinutes}m
+                {timerMinutes > 0 ? `${timerMinutes}m` : 'OFF'}
               </span>
             </div>
 
-            <button
-              onClick={() => setTimerPaused((p) => !p)}
-              className="p-1 rounded-full bg-white/15 hover:bg-white/25 text-white transition-all cursor-pointer"
-              title={timerPaused ? 'Resume Timer' : 'Pause Timer'}
-            >
-              {timerPaused ? <Play size={13} /> : <Pause size={13} />}
-            </button>
-            <button
-              onClick={() => {
-                setTimeLeftSeconds(timerMinutes * 60);
-                setTimerPaused(false);
-              }}
-              className="p-1 rounded-full bg-white/15 hover:bg-white/25 text-white transition-all cursor-pointer"
-              title="Reset Timer"
-            >
-              <RotateCcw size={13} />
-            </button>
+            {timerMinutes > 0 && (
+              <>
+                <button
+                  onClick={() => setTimerPaused((p) => !p)}
+                  className="p-1 rounded-full bg-white/15 hover:bg-white/25 text-white transition-all cursor-pointer"
+                  title={timerPaused ? 'Resume Timer' : 'Pause Timer'}
+                >
+                  {timerPaused ? <Play size={13} /> : <Pause size={13} />}
+                </button>
+                <button
+                  onClick={() => {
+                    setTimeLeftSeconds(timerMinutes * 60);
+                    setTimerPaused(false);
+                  }}
+                  className="p-1 rounded-full bg-white/15 hover:bg-white/25 text-white transition-all cursor-pointer"
+                  title="Reset Timer"
+                >
+                  <RotateCcw size={13} />
+                </button>
+              </>
+            )}
           </div>
 
           {/* Red Team Scoreboard Banner */}
@@ -3111,11 +2804,11 @@ export function SharkAttack({
               {rightTeam.wins} WINS
             </div>
             <span className="font-black italic text-xs sm:text-sm md:text-base lg:text-lg text-white uppercase tracking-wider select-none">
-              RED TEAM
+              {redDisplayName}
             </span>
             <button
               onClick={() => setShowCharacterModal(true)}
-              className="bg-white/95 hover:bg-white rounded-full p-0.5 shadow-sm flex items-center justify-center transition-all hover:scale-105 cursor-pointer"
+              className="rounded-full flex items-center justify-center transition-all hover:scale-105 cursor-pointer"
               title="Change Red Team Hamster"
             >
               <CuteHamsterCharacter team="right" character={rightCharacter} size="icon" />
@@ -3506,100 +3199,15 @@ export function SharkAttack({
         isOpen={showCharacterModal}
         leftCharacter={leftCharacter}
         rightCharacter={rightCharacter}
+        leftTeamName={blueDisplayName}
+        rightTeamName={redDisplayName}
         onSelectLeft={setLeftCharacter}
         onSelectRight={setRightCharacter}
         onClose={() => setShowCharacterModal(false)}
       />
 
       {/* In-Game Question Mode Switcher Modal */}
-      {showStartBattleModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 md:p-10 max-w-xl w-full text-center shadow-2xl border-4 border-amber-400 relative">
-            <button
-              onClick={() => setShowStartBattleModal(false)}
-              className="absolute top-5 right-5 p-2 rounded-full hover:bg-slate-100 text-slate-500 cursor-pointer"
-              title="Close"
-            >
-              <X size={24} />
-            </button>
-
-            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 uppercase tracking-tight mb-2">
-              Choose Question Mode
-            </h2>
-            <p className="text-slate-500 text-xs sm:text-sm font-semibold mb-4">
-              Switch between Single Shared Question and Split Questions:
-            </p>
-
-            {/* 1 to 10 Minutes Match Timer Slider in In-Game Modal */}
-            <div className="bg-slate-100 border-2 border-slate-200 rounded-2xl p-3.5 mb-5 text-left">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                  <Clock size={15} className="text-amber-600" />
-                  Match Timer (1 – 10 Minutes)
-                </span>
-                <span className="px-3 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-xs">
-                  {timerMinutes} {timerMinutes === 1 ? 'Minute' : 'Minutes'}
-                </span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-xs font-bold text-slate-500">1m</span>
-                <input
-                  type="range"
-                  min={1}
-                  max={10}
-                  step={1}
-                  value={timerMinutes}
-                  onChange={(e) => handleTimerSliderChange(Number(e.target.value))}
-                  className="flex-1 accent-amber-500 cursor-pointer h-2 bg-slate-300 rounded-lg"
-                />
-                <span className="text-xs font-bold text-slate-500">10m</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 text-left">
-              <button
-                onClick={() => startGame(false, 'single')}
-                className="group p-5 rounded-3xl border-3 border-amber-300 hover:border-amber-500 bg-amber-50/70 hover:bg-amber-100/90 transition-all shadow-md hover:shadow-xl cursor-pointer flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-3xl">🎯</span>
-                    <span className="font-black text-base sm:text-lg text-slate-900 uppercase">
-                      Single Question
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-600 font-medium leading-relaxed">
-                    Both Blue and Red race to answer 1 shared question centered under the arena.
-                  </p>
-                </div>
-                <div className="mt-4 text-xs font-black text-amber-800 uppercase">
-                  Play Single Mode →
-                </div>
-              </button>
-
-              <button
-                onClick={() => startGame(false, 'split')}
-                className="group p-5 rounded-3xl border-3 border-indigo-300 hover:border-indigo-500 bg-indigo-50/70 hover:bg-indigo-100/90 transition-all shadow-md hover:shadow-xl cursor-pointer flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-3xl">⚡</span>
-                    <span className="font-black text-base sm:text-lg text-slate-900 uppercase">
-                      Split Questions
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-600 font-medium leading-relaxed">
-                    Each team gets their own randomized question order on Blue side and Red side.
-                  </p>
-                </div>
-                <div className="mt-4 text-xs font-black text-indigo-800 uppercase">
-                  Play Split Mode →
-                </div>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {renderChooseBattleModeModal()}
 
       {/* Interchangeable Game Mode Modal */}
       <GameModeModal

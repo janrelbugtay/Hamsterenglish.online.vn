@@ -62,6 +62,7 @@ export interface MysteryBox3DLobbyProps {
   modeHeaderTitle?: string;
   startButtonText?: string;
   showModeAndTheme?: boolean;
+  fixedTeamCount?: number;
 }
 
 /* ============================================================================
@@ -120,9 +121,174 @@ export function CuteHamsterAvatar({
 }
 
 /* ============================================================================
- * Helper: Transparent Cutout & Auto-Trimmed Banner Image
+ * Helper: Transparent Cutout & Auto-Trimmed Image (For Banner & In-Game 3D Hamsters)
  * ============================================================================ */
 const cutoutCache = new Map<string, string>();
+
+export function TransparentCutoutImage({
+  src,
+  alt,
+  className = 'w-full h-full object-contain block',
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+}) {
+  const [processedSrc, setProcessedSrc] = useState<string | null>(() => {
+    return cutoutCache.get(src) || null;
+  });
+
+  useEffect(() => {
+    const cached = cutoutCache.get(src);
+    if (cached) {
+      setProcessedSrc(cached);
+      return;
+    }
+
+    let cancelled = false;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      if (cancelled) return;
+      try {
+        const w = img.naturalWidth || img.width;
+        const h = img.naturalHeight || img.height;
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          setProcessedSrc(src);
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
+        const imgData = ctx.getImageData(0, 0, w, h);
+        const data = imgData.data;
+
+        const visited = new Uint8Array(w * h);
+        const isBg = new Uint8Array(w * h);
+        const queue = new Int32Array(w * h * 2);
+        let qHead = 0;
+        let qTail = 0;
+
+        const push = (x: number, y: number) => {
+          if (x < 0 || x >= w || y < 0 || y >= h) return;
+          const idx = y * w + x;
+          if (visited[idx]) return;
+          visited[idx] = 1;
+          queue[qTail++] = x;
+          queue[qTail++] = y;
+        };
+
+        for (let x = 0; x < w; x++) {
+          push(x, 0);
+          push(x, h - 1);
+        }
+        for (let y = 0; y < h; y++) {
+          push(0, y);
+          push(w - 1, y);
+        }
+
+        while (qHead < qTail) {
+          const x = queue[qHead++];
+          const y = queue[qHead++];
+          const idx = y * w + x;
+          const p = idx * 4;
+          const r = data[p];
+          const g = data[p + 1];
+          const b = data[p + 2];
+          const maxC = Math.max(r, g, b);
+          const minC = Math.min(r, g, b);
+          if (minC > 234 && maxC - minC < 24) {
+            isBg[idx] = 1;
+            push(x + 1, y);
+            push(x - 1, y);
+            push(x, y + 1);
+            push(x, y - 1);
+          }
+        }
+
+        let minX = w;
+        let minY = h;
+        let maxX = 0;
+        let maxY = 0;
+
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const idx = y * w + x;
+            const p = idx * 4;
+            if (isBg[idx]) {
+              data[p + 3] = 0;
+            } else {
+              let bgNeighbors = 0;
+              if (x > 0 && isBg[idx - 1]) bgNeighbors++;
+              if (x < w - 1 && isBg[idx + 1]) bgNeighbors++;
+              if (y > 0 && isBg[idx - w]) bgNeighbors++;
+              if (y < h - 1 && isBg[idx + w]) bgNeighbors++;
+              if (bgNeighbors > 0) {
+                const r = data[p];
+                const g = data[p + 1];
+                const b = data[p + 2];
+                const brightness = (r + g + b) / 3;
+                if (brightness > 224) {
+                  data[p + 3] = Math.max(45, Math.round(255 * (1 - (brightness - 224) / 36)));
+                }
+              }
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+
+        ctx.putImageData(imgData, 0, 0);
+
+        if (maxX > minX && maxY > minY) {
+          const pad = Math.round(Math.max(maxX - minX, maxY - minY) * 0.02);
+          const sx = Math.max(0, minX - pad);
+          const sy = Math.max(0, minY - pad);
+          const sw = Math.min(w - sx, maxX - minX + 1 + pad * 2);
+          const sh = Math.min(h - sy, maxY - minY + 1 + pad * 2);
+
+          const trimmed = document.createElement('canvas');
+          trimmed.width = sw;
+          trimmed.height = sh;
+          const tCtx = trimmed.getContext('2d');
+          if (tCtx) {
+            tCtx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+            const dataUrl = trimmed.toDataURL('image/png');
+            cutoutCache.set(src, dataUrl);
+            setProcessedSrc(dataUrl);
+            return;
+          }
+        }
+
+        const fallbackUrl = canvas.toDataURL('image/png');
+        cutoutCache.set(src, fallbackUrl);
+        setProcessedSrc(fallbackUrl);
+      } catch {
+        setProcessedSrc(src);
+      }
+    };
+    img.onerror = () => {
+      if (!cancelled) setProcessedSrc(src);
+    };
+    img.src = src;
+    return () => {
+      cancelled = true;
+    };
+  }, [src]);
+
+  return (
+    <img
+      src={processedSrc || src}
+      alt={alt}
+      referrerPolicy="no-referrer"
+      className={className}
+    />
+  );
+}
 
 function TransparentBannerImage({ src, alt }: { src: string; alt: string }) {
   const [processedSrc, setProcessedSrc] = useState<string | null>(() => {
@@ -983,17 +1149,19 @@ export function MysteryBox3DLobby({
   headerBannerSrc = '/images/mb3d/header-banner-cutout.png',
   headerBannerAlt = 'Mystery Box 3D - Explorer Hamster and Golden Question Chest',
   modeHeaderTitle = 'BOX MODE',
+  fixedTeamCount,
 }: MysteryBox3DLobbyProps) {
   const [lobbyStep, setLobbyStep] = useState<'sliders' | 'teams' | 'picker'>('sliders');
   const [editingTeamIdx, setEditingTeamIdx] = useState<number>(0);
   const [showOptionsModal, setShowOptionsModal] = useState<boolean>(false);
 
+  const effectiveNumPlayers = fixedTeamCount ?? numPlayers;
   const maxQuestions = Math.max(1, questionCount);
   const activeLimit = Math.min(
     maxQuestions,
     Math.max(1, selectedQuestionLimit ?? maxQuestions)
   );
-  const perTeamCount = Math.max(1, Math.floor(activeLimit / Math.max(1, numPlayers)));
+  const perTeamCount = Math.max(1, Math.floor(activeLimit / Math.max(1, effectiveNumPlayers)));
 
   const currentTimeStepIdx = Math.max(
     0,
@@ -1015,7 +1183,7 @@ export function MysteryBox3DLobby({
     } else {
       setLocalAvatars((prev) => {
         const next = [...prev];
-        const existingOwner = next.findIndex((id, i) => i < numPlayers && id === avatarId);
+        const existingOwner = next.findIndex((id, i) => i < effectiveNumPlayers && id === avatarId);
         if (existingOwner !== -1 && existingOwner !== teamIdx) {
           next[existingOwner] = next[teamIdx];
         }
@@ -1043,7 +1211,7 @@ export function MysteryBox3DLobby({
   const handleRandomizeSingleTeam = (teamIdx: number) => {
     if (!isMuted) playLobbySfx('select');
     const usedByOthers = new Set(
-      effectiveAvatars.slice(0, numPlayers).filter((_, idx) => idx !== teamIdx)
+      effectiveAvatars.slice(0, effectiveNumPlayers).filter((_, idx) => idx !== teamIdx)
     );
     const available = Array.from({ length: 20 }, (_, i) => i + 1).filter(
       (id) => !usedByOthers.has(id) && id !== effectiveAvatars[teamIdx]
@@ -1122,9 +1290,9 @@ export function MysteryBox3DLobby({
                   <BaamboozleSlider
                     min={1}
                     max={8}
-                    value={numPlayers}
-                    displayValue={numPlayers}
-                    onChange={(val) => onSelectNumPlayers(val)}
+                    value={effectiveNumPlayers}
+                    displayValue={effectiveNumPlayers}
+                    onChange={(val) => onSelectNumPlayers(fixedTeamCount ?? val)}
                   />
                   <div className="hidden sm:block w-[112px] shrink-0" />
                 </div>
@@ -1141,7 +1309,7 @@ export function MysteryBox3DLobby({
                       QUESTIONS
                     </span>
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-[#0284c7]/15 text-[#0369a1] border border-[#0284c7]/30 font-extrabold text-xs sm:text-[13px] tracking-wide mt-1.5 w-fit">
-                      {numPlayers > 1 ? `${perTeamCount} each` : `${activeLimit} total`}
+                      {effectiveNumPlayers > 1 ? `${perTeamCount} each` : `${activeLimit} total`}
                     </span>
                   </div>
                 </div>
@@ -1228,9 +1396,10 @@ export function MysteryBox3DLobby({
 
               {/* Active Teams Large 3D Hamster Avatars + Golden Nameplates */}
               <div className="w-full flex flex-wrap items-center justify-center gap-6 sm:gap-8 py-2">
-                {Array.from({ length: numPlayers }).map((_, idx) => {
+                {Array.from({ length: effectiveNumPlayers }).map((_, idx) => {
                   const avatarId = ((Math.max(1, effectiveAvatars[idx] || idx + 1) - 1) % 20) + 1;
-                  const teamName = playerNames[idx] || (numPlayers === 1 ? 'Player 1' : `Team ${idx + 1}`);
+                  const teamName =
+                    playerNames[idx] || (effectiveNumPlayers === 1 ? 'Player 1' : `Team ${idx + 1}`);
                   return (
                     <div
                       key={idx}
@@ -1318,9 +1487,11 @@ export function MysteryBox3DLobby({
                 <button
                   type="button"
                   onClick={() =>
-                    setEditingTeamIdx((prev) => (prev - 1 + numPlayers) % numPlayers)
+                    setEditingTeamIdx(
+                      (prev) => (prev - 1 + effectiveNumPlayers) % effectiveNumPlayers
+                    )
                   }
-                  disabled={numPlayers <= 1}
+                  disabled={effectiveNumPlayers <= 1}
                   className="w-14 h-11 sm:w-16 sm:h-12 rounded-xl bg-gradient-to-b from-white to-slate-200 disabled:opacity-40 border-[2.5px] border-[#0c2d57] shadow-[0_4px_0_#0c2d57] flex items-center justify-center text-[#0c2d57] cursor-pointer active:translate-y-0.5"
                   title="Previous Team"
                 >
@@ -1333,7 +1504,7 @@ export function MysteryBox3DLobby({
                     type="text"
                     value={
                       playerNames[editingTeamIdx] ??
-                      (numPlayers === 1 ? 'Player 1' : `Team ${editingTeamIdx + 1}`)
+                      (effectiveNumPlayers === 1 ? 'Player 1' : `Team ${editingTeamIdx + 1}`)
                     }
                     onChange={(e) => onChangePlayerName(editingTeamIdx, e.target.value)}
                     aria-label="Edit Team Name"
@@ -1345,9 +1516,9 @@ export function MysteryBox3DLobby({
                 <button
                   type="button"
                   onClick={() =>
-                    setEditingTeamIdx((prev) => (prev + 1) % numPlayers)
+                    setEditingTeamIdx((prev) => (prev + 1) % effectiveNumPlayers)
                   }
-                  disabled={numPlayers <= 1}
+                  disabled={effectiveNumPlayers <= 1}
                   className="w-14 h-11 sm:w-16 sm:h-12 rounded-xl bg-gradient-to-b from-white to-slate-200 disabled:opacity-40 border-[2.5px] border-[#0c2d57] shadow-[0_4px_0_#0c2d57] flex items-center justify-center text-[#0c2d57] cursor-pointer active:translate-y-0.5"
                   title="Next Team"
                 >
@@ -1359,7 +1530,7 @@ export function MysteryBox3DLobby({
               <div className="w-full flex-1 grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-10 gap-3 sm:gap-4 md:gap-5 items-center justify-items-center py-2 px-1 sm:px-3">
                 {CUTE_HAMSTER_ICONS.map((icon) => {
                   const ownerIdx = effectiveAvatars
-                    .slice(0, numPlayers)
+                    .slice(0, effectiveNumPlayers)
                     .findIndex((id) => ((Math.max(1, id) - 1) % 20) + 1 === icon.id);
                   const isCurrentTeamIcon = ownerIdx === editingTeamIdx;
                   const isOtherTeamIcon = ownerIdx !== -1 && ownerIdx !== editingTeamIdx;

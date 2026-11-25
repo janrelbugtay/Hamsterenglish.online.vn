@@ -197,7 +197,7 @@ export const GamesLibrary = ({
         }
         const hasSentences = Array.isArray(game.customSentences) && game.customSentences.length > 0;
         const questions = game.customQuestions || game.questions;
-        const hasMcqQuestions = Array.isArray(questions) && questions.some((q: any) => q && Array.isArray(q.options) && q.options.length >= 2);
+        const hasMcqQuestions = Array.isArray(questions) && questions.some((q: any) => q && Array.isArray(q.options) && q.options.length >= 1);
         return !hasSentences && Boolean(hasMcqQuestions);
       }
       return false;
@@ -214,7 +214,7 @@ export const GamesLibrary = ({
       }
       const questions = game.customQuestions || game.questions;
       if (Array.isArray(questions) && questions.length > 0) {
-        const hasOptions = questions.some((q: any) => q && (Array.isArray(q.options) && q.options.length >= 2 || Array.isArray(q.answers) && q.answers.length >= 1));
+        const hasOptions = questions.some((q: any) => q && (Array.isArray(q.options) && q.options.length >= 1 || Array.isArray(q.answers) && q.answers.length >= 1));
         const distinctOtherTypes = [
           'squidgamepicker', 'neonchain', 'bubbleisland', 'bubblesentencepro',
           'letterlock', 'phonemicmaster', 'studentrace'

@@ -566,13 +566,21 @@ export function MysteryBox({
         ? initialGame.customQuestions
         : (initialGame.questions && initialGame.questions.length > 0 ? initialGame.questions : [BLANK_MYSTERY_QUESTION]);
 
-      const sanitized = raw.map((q: any, i: number) => ({
-        id: q.id || (i + 1),
-        text: q.text || q.question || "",
-        options: q.options && q.options.length >= 2 ? q.options : ["", "", "", ""],
-        answerIndex: q.answerIndex !== undefined ? q.answerIndex : (q.correctOptionIndex !== undefined ? q.correctOptionIndex : 0),
-        optionImages: q.optionImages || [null, null, null, null],
-      }));
+      const sanitized = raw.map((q: any, i: number) => {
+        const rawOpts: string[] = Array.isArray(q.options) && q.options.length >= 1 ? q.options : ["", "", "", ""];
+        const nonEmptyIndices = rawOpts
+          .map((o, idx) => (o && String(o).trim() ? idx : -1))
+          .filter((idx) => idx !== -1);
+        const rawAnsIdx = q.answerIndex !== undefined ? q.answerIndex : (q.correctOptionIndex !== undefined ? q.correctOptionIndex : 0);
+        const answerIndex = nonEmptyIndices.length === 1 ? nonEmptyIndices[0] : rawAnsIdx;
+        return {
+          id: q.id || (i + 1),
+          text: q.text || q.question || "",
+          options: rawOpts,
+          answerIndex,
+          optionImages: q.optionImages || Array(rawOpts.length).fill(null),
+        };
+      });
 
       return {
         id: initialGame.id || Date.now(),
@@ -599,13 +607,21 @@ export function MysteryBox({
         ? initialGame.customQuestions
         : (initialGame.questions && initialGame.questions.length > 0 ? initialGame.questions : [BLANK_MYSTERY_QUESTION]);
 
-      const sanitized = raw.map((q: any, i: number) => ({
-        id: q.id || (i + 1),
-        text: q.text || q.question || "",
-        options: q.options && q.options.length >= 2 ? q.options : ["", "", "", ""],
-        answerIndex: q.answerIndex !== undefined ? q.answerIndex : (q.correctOptionIndex !== undefined ? q.correctOptionIndex : 0),
-        optionImages: q.optionImages || [null, null, null, null],
-      }));
+      const sanitized = raw.map((q: any, i: number) => {
+        const rawOpts: string[] = Array.isArray(q.options) && q.options.length >= 1 ? q.options : ["", "", "", ""];
+        const nonEmptyIndices = rawOpts
+          .map((o, idx) => (o && String(o).trim() ? idx : -1))
+          .filter((idx) => idx !== -1);
+        const rawAnsIdx = q.answerIndex !== undefined ? q.answerIndex : (q.correctOptionIndex !== undefined ? q.correctOptionIndex : 0);
+        const answerIndex = nonEmptyIndices.length === 1 ? nonEmptyIndices[0] : rawAnsIdx;
+        return {
+          id: q.id || (i + 1),
+          text: q.text || q.question || "",
+          options: rawOpts,
+          answerIndex,
+          optionImages: q.optionImages || Array(rawOpts.length).fill(null),
+        };
+      });
 
       setActiveQuiz({
         id: initialGame.id || Date.now(),
@@ -761,6 +777,7 @@ export function MysteryBox({
   // Study Mode state (Interactive Full-Screen)
   const [studyIndex, setStudyIndex] = useState(0);
   const [studySelectedOption, setStudySelectedOption] = useState<number | null>(null);
+  const [studySingleRevealed, setStudySingleRevealed] = useState(false);
   const [studyHistory, setStudyHistory] = useState<Record<number, { selected: number; isCorrect: boolean }>>({});
 
   // Rich Multi-Layered Web Audio Synthesizer + In-Game Adventure Background Music
@@ -1126,6 +1143,7 @@ export function MysteryBox({
     playSound('select');
     setStudyIndex(0);
     setStudySelectedOption(null);
+    setStudySingleRevealed(false);
     setStudyHistory({});
     setScreen('study');
   };
@@ -1134,7 +1152,11 @@ export function MysteryBox({
     const currentQ = activeQuiz.questions[studyIndex];
     if (!currentQ || studySelectedOption !== null) return;
     playSound('select');
-    const isCorrect = optionIdx === currentQ.answerIndex;
+    const nonEmptyIndices = currentQ.options
+      .map((o, idx) => (o && o.trim() !== '' ? idx : -1))
+      .filter((idx) => idx !== -1);
+    const effectiveAnswerIdx = nonEmptyIndices.length === 1 ? nonEmptyIndices[0] : currentQ.answerIndex;
+    const isCorrect = optionIdx === effectiveAnswerIdx;
     setStudySelectedOption(optionIdx);
     setTimeout(() => playSound(isCorrect ? 'correct' : 'incorrect'), 75);
     setStudyHistory(prev => ({
@@ -1143,12 +1165,32 @@ export function MysteryBox({
     }));
   };
 
+  const handleStudySingleJudge = (isCorrect: boolean) => {
+    const currentQ = activeQuiz.questions[studyIndex];
+    if (!currentQ || studySelectedOption !== null) return;
+    playSound('select');
+    const nonEmptyIndices = currentQ.options
+      .map((o, idx) => (o && o.trim() !== '' ? idx : -1))
+      .filter((idx) => idx !== -1);
+    const effectiveAnswerIdx = nonEmptyIndices.length === 1 ? nonEmptyIndices[0] : currentQ.answerIndex;
+    const recordedSelected = isCorrect ? effectiveAnswerIdx : -1;
+    setStudySelectedOption(recordedSelected);
+    setStudySingleRevealed(true);
+    setTimeout(() => playSound(isCorrect ? 'correct' : 'incorrect'), 75);
+    setStudyHistory(prev => ({
+      ...prev,
+      [studyIndex]: { selected: recordedSelected, isCorrect }
+    }));
+  };
+
   const handleStudyNext = () => {
     playSound('select');
     if (studyIndex < activeQuiz.questions.length - 1) {
       const nextIdx = studyIndex + 1;
       setStudyIndex(nextIdx);
-      setStudySelectedOption(studyHistory[nextIdx]?.selected ?? null);
+      const nextSelected = studyHistory[nextIdx]?.selected ?? null;
+      setStudySelectedOption(nextSelected);
+      setStudySingleRevealed(nextSelected !== null);
     } else {
       setScreen('setup');
     }
@@ -1159,13 +1201,16 @@ export function MysteryBox({
     if (studyIndex > 0) {
       const prevIdx = studyIndex - 1;
       setStudyIndex(prevIdx);
-      setStudySelectedOption(studyHistory[prevIdx]?.selected ?? null);
+      const prevSelected = studyHistory[prevIdx]?.selected ?? null;
+      setStudySelectedOption(prevSelected);
+      setStudySingleRevealed(prevSelected !== null);
     }
   };
 
   const handleStudyRetry = () => {
     playSound('select');
     setStudySelectedOption(null);
+    setStudySingleRevealed(false);
     setStudyHistory(prev => {
       const copy = { ...prev };
       delete copy[studyIndex];
@@ -1252,7 +1297,11 @@ export function MysteryBox({
     setSelectedOptionIndex(idx);
     setIsAnswerRevealed(true);
 
-    const isCorrect = idx === currentQ.answerIndex;
+    const nonEmptyIndices = currentQ.options
+      .map((o, i) => (o && o.trim() !== '' ? i : -1))
+      .filter((i) => i !== -1);
+    const effectiveAnswerIdx = nonEmptyIndices.length === 1 ? nonEmptyIndices[0] : currentQ.answerIndex;
+    const isCorrect = idx === effectiveAnswerIdx;
     setAnswerResult(isCorrect ? 'correct' : 'incorrect');
 
     const activeTeam = teams[currentTeamIdx];
@@ -1326,12 +1375,89 @@ export function MysteryBox({
     }
   };
 
-  // Teacher manual reveal (when no student option was clicked yet)
+  // Teacher manual reveal (used for Single-Answer "Show Answer" button & Teacher Reveal Only)
   const handleTeacherRevealOnly = () => {
     if (isAnswerRevealed) return;
+    playSound('select');
     playSound('suspense');
     setIsAnswerRevealed(true);
     setAnswerResult(null);
+  };
+
+  // Teacher Correct / Incorrect judgement after clicking "Show Answer" (awards/deducts points & plays sounds)
+  const handleManualJudge = (isCorrect: boolean) => {
+    if (answerResult !== null || activeBoxNum === null) return;
+    playSound('select');
+    setIsAnswerRevealed(true);
+    setAnswerResult(isCorrect ? 'correct' : 'incorrect');
+
+    const activeTeam = teams[currentTeamIdx];
+
+    if (isCorrect) {
+      setTimeout(() => playSound('correct'), 65);
+      const newStreak = (activeTeam?.streak || 0) + 1;
+      const streakBonus = newStreak >= 2 ? (newStreak - 1) * 25 : 0;
+      const basePoints = answerBonusPoints ? 50 + streakBonus : 0;
+      setLastAnswerPointChange(basePoints);
+
+      setTeams(prev => prev.map((t, i) => i === currentTeamIdx ? {
+        ...t,
+        score: t.score + basePoints,
+        streak: newStreak
+      } : t));
+
+      if (basePoints > 0 && activeTeam) {
+        const label = newStreak >= 2
+          ? `+${basePoints} PTS (🔥${newStreak}x)`
+          : `+${basePoints} PTS`;
+        setTimeout(() => playSound('coin_add'), 240);
+        triggerScoreDeltaPopup(activeTeam.id, label, true);
+      }
+
+      if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = setTimeout(() => {
+        if (teams.length > 1) {
+          playSound('suspense');
+          setModalStep('decision');
+        } else {
+          handleExecuteDecision(0);
+        }
+      }, 1500);
+    } else {
+      setTimeout(() => playSound('incorrect'), 65);
+      const penalty = wrongAnswerPenalty ? -50 : 0;
+      setLastAnswerPointChange(penalty);
+
+      setTeams(prev => prev.map((t, i) => i === currentTeamIdx ? {
+        ...t,
+        score: t.score + penalty,
+        streak: 0
+      } : t));
+
+      if (penalty < 0 && activeTeam) {
+        setTimeout(() => playSound('point_deduct'), 260);
+        triggerScoreDeltaPopup(activeTeam.id, `${penalty} PTS`, false);
+      }
+
+      if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = setTimeout(() => {
+        setOpenedBoxes(prev => (activeBoxNum !== null && !prev.includes(activeBoxNum) ? [...prev, activeBoxNum] : prev));
+        setBoxRecords(prev => activeBoxNum !== null ? ({
+          ...prev,
+          [activeBoxNum]: {
+            icon: "✗",
+            label: penalty < 0 ? `${penalty} pts` : "Missed",
+            isPositive: false,
+            teamName: activeTeam?.name
+          }
+        }) : prev);
+        setActiveBoxNum(null);
+        setAnswerResult(null);
+        if (teams.length > 1) {
+          setCurrentTeamIdx(prevIdx => (prevIdx + 1) % teams.length);
+        }
+      }, 1900);
+    }
   };
 
   // Rich, Exciting Mystery Box Outcomes Pool
@@ -1994,91 +2120,170 @@ export function MysteryBox({
                   );
                 })()}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-4xl mb-8">
-                  {activeQuiz.questions[studyIndex]?.options.map((opt, i) => {
-                    if (!opt || opt.trim() === '') return null;
-                    const letter = ['A', 'B', 'C', 'D', 'E', 'F'][i] || (i + 1);
-                    const isSelected = studySelectedOption === i;
-                    const isCorrectAnswer = i === activeQuiz.questions[studyIndex].answerIndex;
-                    const hasAnswered = studySelectedOption !== null;
+                {(() => {
+                  const studyQ = activeQuiz.questions[studyIndex];
+                  const studyNonEmptyIndices = (studyQ?.options || [])
+                    .map((o, idx) => (o && o.trim() !== '' ? idx : -1))
+                    .filter((idx) => idx !== -1);
+                  const isSingleStudyQ = studyNonEmptyIndices.length === 1;
+                  const studyEffectiveAnswerIdx = isSingleStudyQ ? studyNonEmptyIndices[0] : (studyQ?.answerIndex ?? 0);
+                  const singleStudyRaw = isSingleStudyQ ? (studyQ?.options?.[studyEffectiveAnswerIdx] || '') : '';
+                  const singleStudyParsed = parseOptionContent(singleStudyRaw);
 
-                    let btnStyle = "bg-white/10 hover:bg-white/20 border-white/20 text-white hover:border-amber-400";
-
-                    if (hasAnswered) {
-                      if (isCorrectAnswer) {
-                        btnStyle = "bg-emerald-500 border-emerald-300 text-white shadow-[0_0_30px_rgba(16,185,129,0.5)] scale-[1.02] z-10";
-                      } else if (isSelected && !isCorrectAnswer) {
-                        btnStyle = "bg-rose-500 border-rose-300 text-white animate-shake";
-                      } else {
-                        btnStyle = "bg-white/5 border-white/10 text-white/40 opacity-40";
-                      }
-                    }
-
+                  if (isSingleStudyQ) {
+                    const hasJudged = studySelectedOption !== null;
                     return (
-                      <button
-                        key={i}
-                        onClick={() => handleStudyOptionClick(i)}
-                        disabled={hasAnswered}
-                        className={`p-5 sm:p-6 rounded-2xl text-lg sm:text-2xl font-bold border-2 transition-all duration-300 flex items-center justify-between text-left gap-4 cursor-pointer ${btnStyle}`}
-                      >
-                        <div className="flex items-center gap-3.5 flex-1">
-                          <span className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-lg shrink-0 ${
-                            hasAnswered && isCorrectAnswer
-                              ? 'bg-white text-emerald-600'
-                              : hasAnswered && isSelected && !isCorrectAnswer
-                              ? 'bg-white text-rose-600'
-                              : 'bg-white/15 text-white'
-                          }`}>
-                            {letter}
-                          </span>
-                          <span className="flex-1 break-words">{opt}</span>
-                        </div>
-                        {hasAnswered && isCorrectAnswer && (
-                          <span className="flex items-center gap-1 bg-white text-emerald-600 px-3 py-1 rounded-xl font-black text-xs shrink-0">
-                            <Check size={16} strokeWidth={3} /> CORRECT
-                          </span>
-                        )}
-                        {hasAnswered && isSelected && !isCorrectAnswer && (
-                          <span className="flex items-center gap-1 bg-white text-rose-600 px-3 py-1 rounded-xl font-black text-xs shrink-0">
-                            <X size={16} strokeWidth={3} /> WRONG
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+                      <div className="w-full max-w-3xl mx-auto flex flex-col items-center gap-6 mb-8">
+                        {!studySingleRevealed && !hasJudged ? (
+                          <button
+                            onClick={() => {
+                              playSound('select');
+                              playSound('suspense');
+                              setStudySingleRevealed(true);
+                            }}
+                            className="px-10 py-5 rounded-3xl bg-gradient-to-b from-amber-300 via-amber-400 to-orange-500 hover:brightness-110 active:translate-y-0.5 text-slate-950 font-black text-2xl sm:text-3xl shadow-[0_8px_0_#b45309,0_16px_35px_rgba(245,158,11,0.4)] border-4 border-amber-200 flex items-center gap-3 cursor-pointer transition-all"
+                          >
+                            <Eye className="w-7 h-7 stroke-[2.8]" />
+                            Show Answer
+                          </button>
+                        ) : (
+                          <>
+                            <div className="w-full p-6 sm:p-8 rounded-3xl bg-emerald-500 border-4 border-emerald-300 text-white shadow-[0_15px_45px_rgba(16,185,129,0.45)] flex flex-col items-center text-center gap-3 animate-pop-in">
+                              <span className="px-4 py-1 rounded-full bg-white text-emerald-700 font-black text-xs sm:text-sm uppercase tracking-widest shadow">
+                                Answer
+                              </span>
+                              {singleStudyParsed.imageUrl && (
+                                <img
+                                  src={singleStudyParsed.imageUrl}
+                                  alt={singleStudyParsed.text || 'Answer'}
+                                  className="max-h-44 rounded-2xl object-contain bg-white p-2 shadow"
+                                />
+                              )}
+                              {singleStudyParsed.text && (
+                                <p className="text-2xl sm:text-4xl font-black leading-snug break-words">
+                                  {singleStudyParsed.text}
+                                </p>
+                              )}
+                            </div>
 
-                {studySelectedOption !== null && (
-                  <div className="w-full max-w-4xl flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 animate-pop-in">
-                    <div>
-                      {studySelectedOption === activeQuiz.questions[studyIndex]?.answerIndex ? (
-                        <div className="text-emerald-300 font-black text-lg">
-                          🎉 Spot On! Correct Answer!
-                        </div>
-                      ) : (
-                        <div className="text-rose-200 font-bold text-base">
-                          Correct Answer: <span className="font-black text-emerald-300 underline">{activeQuiz.questions[studyIndex]?.options[activeQuiz.questions[studyIndex]?.answerIndex]}</span>
-                        </div>
-                      )}
+                            {!hasJudged && (
+                              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full animate-pop-in">
+                                <button
+                                  onClick={() => handleStudySingleJudge(true)}
+                                  className="w-full sm:w-auto min-w-[210px] px-8 py-4 rounded-2xl bg-gradient-to-b from-emerald-400 to-emerald-600 hover:brightness-110 text-white font-black text-xl shadow-[0_6px_0_#047857] border-2 border-emerald-200 flex items-center justify-center gap-2.5 cursor-pointer transition-all"
+                                >
+                                  <Check className="w-6 h-6 stroke-[3]" /> Correct
+                                </button>
+                                <button
+                                  onClick={() => handleStudySingleJudge(false)}
+                                  className="w-full sm:w-auto min-w-[210px] px-8 py-4 rounded-2xl bg-gradient-to-b from-rose-500 to-rose-700 hover:brightness-110 text-white font-black text-xl shadow-[0_6px_0_#9f1239] border-2 border-rose-300 flex items-center justify-center gap-2.5 cursor-pointer transition-all"
+                                >
+                                  <X className="w-6 h-6 stroke-[3]" /> Incorrect
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 max-w-4xl gap-4 w-full mb-8">
+                      {studyQ?.options.map((opt, i) => {
+                        if (!opt || opt.trim() === '') return null;
+                        const letter = ['A', 'B', 'C', 'D', 'E', 'F'][i] || (i + 1);
+                        const isSelected = studySelectedOption === i;
+                        const isCorrectAnswer = i === studyEffectiveAnswerIdx;
+                        const hasAnswered = studySelectedOption !== null;
+
+                        let btnStyle = "bg-white/10 hover:bg-white/20 border-white/20 text-white hover:border-amber-400";
+
+                        if (hasAnswered) {
+                          if (isCorrectAnswer) {
+                            btnStyle = "bg-emerald-500 border-emerald-300 text-white shadow-[0_0_30px_rgba(16,185,129,0.5)] scale-[1.02] z-10";
+                          } else if (isSelected && !isCorrectAnswer) {
+                            btnStyle = "bg-rose-500 border-rose-300 text-white animate-shake";
+                          } else {
+                            btnStyle = "bg-white/5 border-white/10 text-white/40 opacity-40";
+                          }
+                        }
+
+                        return (
+                          <button
+                            key={i}
+                            onClick={() => handleStudyOptionClick(i)}
+                            disabled={hasAnswered}
+                            className={`p-5 sm:p-6 rounded-2xl text-lg sm:text-2xl font-bold border-2 transition-all duration-300 flex items-center justify-between text-left gap-4 cursor-pointer ${btnStyle}`}
+                          >
+                            <div className="flex items-center gap-3.5 flex-1">
+                              <span className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-lg shrink-0 ${
+                                hasAnswered && isCorrectAnswer
+                                  ? 'bg-white text-emerald-600'
+                                  : hasAnswered && isSelected && !isCorrectAnswer
+                                  ? 'bg-white text-rose-600'
+                                  : 'bg-white/15 text-white'
+                              }`}>
+                                {letter}
+                              </span>
+                              <span className="flex-1 break-words">{opt}</span>
+                            </div>
+                            {hasAnswered && isCorrectAnswer && (
+                              <span className="flex items-center gap-1 bg-white text-emerald-600 px-3 py-1 rounded-xl font-black text-xs shrink-0">
+                                <Check size={16} strokeWidth={3} /> CORRECT
+                              </span>
+                            )}
+                            {hasAnswered && isSelected && !isCorrectAnswer && (
+                              <span className="flex items-center gap-1 bg-white text-rose-600 px-3 py-1 rounded-xl font-black text-xs shrink-0">
+                                <X size={16} strokeWidth={3} /> WRONG
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
-                    <div className="flex items-center gap-3">
-                      {studySelectedOption !== activeQuiz.questions[studyIndex]?.answerIndex && (
+                  );
+                })()}
+
+                {studySelectedOption !== null && (() => {
+                  const studyQ = activeQuiz.questions[studyIndex];
+                  const studyNonEmpty = (studyQ?.options || [])
+                    .map((o, idx) => (o && o.trim() !== '' ? idx : -1))
+                    .filter((idx) => idx !== -1);
+                  const effAnsIdx = studyNonEmpty.length === 1 ? studyNonEmpty[0] : (studyQ?.answerIndex ?? 0);
+                  const wasCorrect = studySelectedOption === effAnsIdx;
+                  return (
+                    <div className="w-full max-w-4xl flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 animate-pop-in">
+                      <div>
+                        {wasCorrect ? (
+                          <div className="text-emerald-300 font-black text-lg">
+                            🎉 Spot On! Correct Answer!
+                          </div>
+                        ) : (
+                          <div className="text-rose-200 font-bold text-base">
+                            Correct Answer: <span className="font-black text-emerald-300 underline">{studyQ?.options[effAnsIdx]}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {!wasCorrect && (
+                          <button
+                            onClick={handleStudyRetry}
+                            className="px-5 py-2.5 bg-white/15 hover:bg-white/25 rounded-xl font-bold text-white transition-all cursor-pointer flex items-center gap-2"
+                          >
+                            <RefreshCw size={16} /> Retry
+                          </button>
+                        )}
                         <button
-                          onClick={handleStudyRetry}
-                          className="px-5 py-2.5 bg-white/15 hover:bg-white/25 rounded-xl font-bold text-white transition-all cursor-pointer flex items-center gap-2"
+                          onClick={handleStudyNext}
+                          className="px-6 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl font-black text-base shadow-lg transition-all cursor-pointer"
                         >
-                          <RefreshCw size={16} /> Retry
+                          {studyIndex < activeQuiz.questions.length - 1 ? 'Next Question →' : 'Finish Study 🏆'}
                         </button>
-                      )}
-                      <button
-                        onClick={handleStudyNext}
-                        className="px-6 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl font-black text-base shadow-lg transition-all cursor-pointer"
-                      >
-                        {studyIndex < activeQuiz.questions.length - 1 ? 'Next Question →' : 'Finish Study 🏆'}
-                      </button>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             ) : (
               <div className="text-slate-400 font-bold text-2xl">No questions found in this quiz!</div>
@@ -2571,6 +2776,17 @@ export function MysteryBox({
               {modalStep === 'question' && (() => {
                 const currentQ = activeQuiz.questions[activeBoxNum - 1];
                 const activeTeam = teams[currentTeamIdx];
+                const nonEmptyOptionIndices = (currentQ?.options || [])
+                  .map((o, idx) => (o && o.trim() !== '' ? idx : -1))
+                  .filter((idx) => idx !== -1);
+                const isSingleAnswerQuestion = nonEmptyOptionIndices.length === 1;
+                const effectiveAnswerIdx = isSingleAnswerQuestion
+                  ? nonEmptyOptionIndices[0]
+                  : (currentQ?.answerIndex ?? 0);
+                const singleAnswerRaw = isSingleAnswerQuestion
+                  ? (currentQ?.options?.[effectiveAnswerIdx] || '')
+                  : '';
+                const singleAnswerParsed = parseOptionContent(singleAnswerRaw);
                 return (
                   <div className="w-full min-h-screen flex flex-col justify-between bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-white animate-pop-in">
                     
@@ -2676,85 +2892,144 @@ export function MysteryBox({
                         );
                       })()}
 
-                      {/* Giant Full-Screen Options Grid: Clicking ANY Option Immediately Auto-Reveals! */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 w-full">
-                        {currentQ?.options.map((opt, i) => {
-                          if (!opt || opt.trim() === '') return null;
-                          const letter = ['A', 'B', 'C', 'D', 'E', 'F'][i] || (i + 1);
-                          const isSelected = selectedOptionIndex === i;
-                          const isCorrectOption = currentQ.answerIndex === i;
-                          const isImageOpt = opt.startsWith('data:image') || opt.startsWith('http');
-
-                          let optStyle =
-                            "bg-white border-slate-200 text-slate-900 hover:border-amber-400 hover:bg-amber-50 hover:scale-[1.01] shadow-xl cursor-pointer";
-                          let badgeColor =
-                            "bg-slate-900 text-amber-400 group-hover:bg-amber-500 group-hover:text-white";
-
-                          if (isAnswerRevealed) {
-                            if (isCorrectOption) {
-                              optStyle =
-                                "bg-emerald-500 border-emerald-300 text-white scale-[1.02] shadow-[0_15px_45px_rgba(16,185,129,0.55)] z-10 font-black ring-4 ring-emerald-300/60";
-                              badgeColor = "bg-white text-emerald-600";
-                            } else if (isSelected && !isCorrectOption) {
-                              optStyle =
-                                "bg-rose-600 border-rose-300 text-white animate-shake shadow-[0_15px_40px_rgba(244,63,94,0.5)] font-black ring-4 ring-rose-300/60";
-                              badgeColor = "bg-white text-rose-600";
-                            } else {
-                              optStyle =
-                                "bg-slate-800/60 border-slate-700 text-slate-400 opacity-45 cursor-not-allowed";
-                              badgeColor = "bg-slate-700 text-slate-400";
-                            }
-                          }
-
-                          return (
+                      {/* Giant Full-Screen Options Grid OR Single-Answer Show Answer -> Correct/Incorrect Flow */}
+                      {isSingleAnswerQuestion ? (
+                        <div className="w-full max-w-4xl mx-auto flex flex-col items-center justify-center gap-6 sm:gap-8">
+                          {!isAnswerRevealed ? (
                             <button
-                              key={i}
-                              onClick={() => handleOptionSelect(i)}
-                              disabled={isAnswerRevealed}
-                              className={`group p-5 sm:p-7 lg:p-8 rounded-3xl text-xl sm:text-3xl lg:text-4xl font-black border-4 transition-all duration-200 flex items-center justify-between text-left w-full gap-4 min-h-[96px] sm:min-h-[130px] ${optStyle}`}
+                              onClick={handleTeacherRevealOnly}
+                              className="group px-10 sm:px-14 py-5 sm:py-7 rounded-3xl bg-gradient-to-b from-amber-300 via-amber-400 to-orange-500 hover:brightness-110 active:translate-y-1 text-slate-950 font-black text-2xl sm:text-4xl border-4 border-amber-200 shadow-[0_10px_0_#b45309,0_20px_50px_rgba(245,158,11,0.45)] flex items-center justify-center gap-4 transition-all cursor-pointer hover:scale-[1.03]"
                             >
-                              <div className="flex items-center gap-4 sm:gap-5 flex-1 min-w-0">
-                                <span
-                                  className={`w-12 h-12 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center font-black text-xl sm:text-3xl shrink-0 transition-colors shadow-md ${badgeColor}`}
-                                >
-                                  {letter}
+                              <Eye className="w-8 h-8 sm:w-10 sm:h-10 stroke-[2.8]" />
+                              <span>Show Answer</span>
+                            </button>
+                          ) : (
+                            <>
+                              {/* Revealed Single Answer Card */}
+                              <div className="w-full rounded-3xl sm:rounded-[2.25rem] p-6 sm:p-10 bg-emerald-500 border-4 border-emerald-300 text-white shadow-[0_20px_55px_rgba(16,185,129,0.5)] ring-4 ring-emerald-300/40 flex flex-col items-center justify-center text-center gap-4 animate-pop-in">
+                                <span className="px-4 py-1 rounded-full bg-white text-emerald-700 font-black text-xs sm:text-sm uppercase tracking-widest shadow">
+                                  ✓ Answer
                                 </span>
-                                {(() => {
-                                  const parsedOpt = parseOptionContent(opt);
-                                  return (
-                                    <div className="flex items-center gap-3.5 flex-1 min-w-0">
-                                      {parsedOpt.imageUrl && (
-                                        <img
-                                          src={parsedOpt.imageUrl}
-                                          alt={parsedOpt.text || `Option ${letter}`}
-                                          className="h-20 sm:h-24 w-auto rounded-2xl object-contain bg-white p-1.5 shrink-0"
-                                        />
-                                      )}
-                                      {parsedOpt.text && (
-                                        <span className="flex-1 break-words leading-snug">{parsedOpt.text}</span>
-                                      )}
-                                    </div>
-                                  );
-                                })()}
+                                {singleAnswerParsed.imageUrl && (
+                                  <img
+                                    src={singleAnswerParsed.imageUrl}
+                                    alt={singleAnswerParsed.text || 'Answer'}
+                                    className="max-h-48 sm:max-h-60 max-w-full rounded-2xl object-contain bg-white p-2 shadow-md"
+                                  />
+                                )}
+                                {singleAnswerParsed.text && (
+                                  <p className="text-2xl sm:text-4xl lg:text-5xl font-black leading-snug break-words max-w-4xl">
+                                    {singleAnswerParsed.text}
+                                  </p>
+                                )}
                               </div>
 
-                              {/* Auto-Revealed Status Indicator on Option */}
-                              {isAnswerRevealed && isCorrectOption && (
-                                <span className="flex items-center gap-1.5 bg-white text-emerald-600 px-4 py-2 rounded-2xl font-black text-sm sm:text-lg shrink-0 shadow-lg">
-                                  <Check className="w-5 h-5 sm:w-6 sm:h-6 stroke-[3]" />
-                                  {isSelected ? 'CORRECT!' : 'ANSWER'}
-                                </span>
+                              {/* Ask Teacher: Correct or Incorrect? */}
+                              {answerResult === null && (
+                                <div className="w-full flex flex-col items-center gap-4 animate-pop-in">
+                                  <p className="text-base sm:text-xl font-black text-amber-200 tracking-wide">
+                                    Did {activeTeam?.name || `Team ${currentTeamIdx + 1}`} get it right?
+                                  </p>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 w-full max-w-2xl">
+                                    <button
+                                      onClick={() => handleManualJudge(true)}
+                                      className="py-5 sm:py-6 px-8 rounded-3xl bg-gradient-to-b from-emerald-400 via-emerald-500 to-emerald-600 hover:brightness-110 active:translate-y-1 text-white font-black text-2xl sm:text-3xl border-4 border-emerald-200 shadow-[0_8px_0_#047857,0_16px_35px_rgba(16,185,129,0.45)] flex items-center justify-center gap-3 cursor-pointer transition-all hover:scale-[1.02]"
+                                    >
+                                      <Check className="w-8 h-8 stroke-[3.5]" />
+                                      <span>Correct</span>
+                                    </button>
+                                    <button
+                                      onClick={() => handleManualJudge(false)}
+                                      className="py-5 sm:py-6 px-8 rounded-3xl bg-gradient-to-b from-rose-500 via-rose-600 to-red-700 hover:brightness-110 active:translate-y-1 text-white font-black text-2xl sm:text-3xl border-4 border-rose-300 shadow-[0_8px_0_#9f1239,0_16px_35px_rgba(244,63,94,0.45)] flex items-center justify-center gap-3 cursor-pointer transition-all hover:scale-[1.02]"
+                                    >
+                                      <X className="w-8 h-8 stroke-[3.5]" />
+                                      <span>Incorrect</span>
+                                    </button>
+                                  </div>
+                                </div>
                               )}
-                              {isAnswerRevealed && isSelected && !isCorrectOption && (
-                                <span className="flex items-center gap-1.5 bg-white text-rose-600 px-4 py-2 rounded-2xl font-black text-sm sm:text-lg shrink-0 shadow-lg">
-                                  <X className="w-5 h-5 sm:w-6 sm:h-6 stroke-[3]" />
-                                  WRONG
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
+                            </>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 w-full">
+                          {currentQ?.options.map((opt, i) => {
+                            if (!opt || opt.trim() === '') return null;
+                            const letter = ['A', 'B', 'C', 'D', 'E', 'F'][i] || (i + 1);
+                            const isSelected = selectedOptionIndex === i;
+                            const isCorrectOption = effectiveAnswerIdx === i;
+
+                            let optStyle =
+                              "bg-white border-slate-200 text-slate-900 hover:border-amber-400 hover:bg-amber-50 hover:scale-[1.01] shadow-xl cursor-pointer";
+                            let badgeColor =
+                              "bg-slate-900 text-amber-400 group-hover:bg-amber-500 group-hover:text-white";
+
+                            if (isAnswerRevealed) {
+                              if (isCorrectOption) {
+                                optStyle =
+                                  "bg-emerald-500 border-emerald-300 text-white scale-[1.02] shadow-[0_15px_45px_rgba(16,185,129,0.55)] z-10 font-black ring-4 ring-emerald-300/60";
+                                badgeColor = "bg-white text-emerald-600";
+                              } else if (isSelected && !isCorrectOption) {
+                                optStyle =
+                                  "bg-rose-600 border-rose-300 text-white animate-shake shadow-[0_15px_40px_rgba(244,63,94,0.5)] font-black ring-4 ring-rose-300/60";
+                                badgeColor = "bg-white text-rose-600";
+                              } else {
+                                optStyle =
+                                  "bg-slate-800/60 border-slate-700 text-slate-400 opacity-45 cursor-not-allowed";
+                                badgeColor = "bg-slate-700 text-slate-400";
+                              }
+                            }
+
+                            return (
+                              <button
+                                key={i}
+                                onClick={() => handleOptionSelect(i)}
+                                disabled={isAnswerRevealed}
+                                className={`group p-5 sm:p-7 lg:p-8 rounded-3xl text-xl sm:text-3xl lg:text-4xl font-black border-4 transition-all duration-200 flex items-center justify-between text-left w-full gap-4 min-h-[96px] sm:min-h-[130px] ${optStyle}`}
+                              >
+                                <div className="flex items-center gap-4 sm:gap-5 flex-1 min-w-0">
+                                  <span
+                                    className={`w-12 h-12 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center font-black text-xl sm:text-3xl shrink-0 transition-colors shadow-md ${badgeColor}`}
+                                  >
+                                    {letter}
+                                  </span>
+                                  {(() => {
+                                    const parsedOpt = parseOptionContent(opt);
+                                    return (
+                                      <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                                        {parsedOpt.imageUrl && (
+                                          <img
+                                            src={parsedOpt.imageUrl}
+                                            alt={parsedOpt.text || `Option ${letter}`}
+                                            className="h-20 sm:h-24 w-auto rounded-2xl object-contain bg-white p-1.5 shrink-0"
+                                          />
+                                        )}
+                                        {parsedOpt.text && (
+                                          <span className="flex-1 break-words leading-snug">{parsedOpt.text}</span>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+
+                                {/* Auto-Revealed Status Indicator on Option */}
+                                {isAnswerRevealed && isCorrectOption && (
+                                  <span className="flex items-center gap-1.5 bg-white text-emerald-600 px-4 py-2 rounded-2xl font-black text-sm sm:text-lg shrink-0 shadow-lg">
+                                    <Check className="w-5 h-5 sm:w-6 sm:h-6 stroke-[3]" />
+                                    {isSelected ? 'CORRECT!' : 'ANSWER'}
+                                  </span>
+                                )}
+                                {isAnswerRevealed && isSelected && !isCorrectOption && (
+                                  <span className="flex items-center gap-1.5 bg-white text-rose-600 px-4 py-2 rounded-2xl font-black text-sm sm:text-lg shrink-0 shadow-lg">
+                                    <X className="w-5 h-5 sm:w-6 sm:h-6 stroke-[3]" />
+                                    WRONG
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
 
                     {/* FULL-SCREEN BOTTOM ACTION & LIVE SCORE FEEDBACK BAR */}
@@ -2764,14 +3039,24 @@ export function MysteryBox({
                           <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
                             <p className="text-sm sm:text-base font-bold text-slate-300 flex items-center gap-2">
                               <Sparkles className="w-5 h-5 text-amber-400" />
-                              Click any answer choice above to <span className="text-amber-400 font-black">auto-reveal</span> and update live team points!
+                              {isSingleAnswerQuestion ? (
+                                <>
+                                  Ask <span className="text-amber-400 font-black">{activeTeam?.name || `Team ${currentTeamIdx + 1}`}</span> to answer, then click <span className="text-amber-400 font-black">Show Answer</span>!
+                                </>
+                              ) : (
+                                <>
+                                  Click any answer choice above to <span className="text-amber-400 font-black">auto-reveal</span> and update live team points!
+                                </>
+                              )}
                             </p>
-                            <button
-                              onClick={handleTeacherRevealOnly}
-                              className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm flex items-center gap-2 transition-colors cursor-pointer"
-                            >
-                              <Eye className="w-4 h-4" /> Teacher Reveal Only
-                            </button>
+                            {!isSingleAnswerQuestion && (
+                              <button
+                                onClick={handleTeacherRevealOnly}
+                                className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm flex items-center gap-2 transition-colors cursor-pointer"
+                              >
+                                <Eye className="w-4 h-4" /> Teacher Reveal Only
+                              </button>
+                            )}
                           </div>
                         ) : answerResult === 'correct' ? (
                           <div className="bg-emerald-500/20 border-2 border-emerald-400 rounded-2xl p-4 sm:px-6 sm:py-4 flex flex-col sm:flex-row items-center justify-between gap-4 animate-pop-in">
@@ -2821,7 +3106,7 @@ export function MysteryBox({
                                   )}
                                 </div>
                                 <p className="text-xs sm:text-sm font-bold text-rose-200">
-                                  Correct Answer: <span className="underline font-black text-emerald-300">{currentQ?.options[currentQ.answerIndex]}</span>
+                                  Correct Answer: <span className="underline font-black text-emerald-300">{parseOptionContent(currentQ?.options?.[effectiveAnswerIdx] || '').text || currentQ?.options?.[effectiveAnswerIdx]}</span>
                                 </p>
                               </div>
                             </div>
@@ -2833,17 +3118,21 @@ export function MysteryBox({
                               Next Team&apos;s Turn →
                             </button>
                           </div>
+                        ) : isSingleAnswerQuestion ? (
+                          <div className="text-center text-sm sm:text-base font-bold text-slate-300">
+                            Click <span className="text-emerald-400 font-black">Correct</span> or <span className="text-rose-400 font-black">Incorrect</span> above to continue.
+                          </div>
                         ) : (
-                          /* Teacher Manual Judgement Fallback */
+                          /* Teacher Manual Judgement Fallback for Multiple Choice */
                           <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4 animate-pop-in">
                             <button
-                              onClick={proceedAfterIncorrect}
+                              onClick={() => handleManualJudge(false)}
                               className="flex-1 max-w-[260px] mx-auto sm:mx-0 flex items-center justify-center gap-2 px-6 py-3.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border-2 border-rose-400 rounded-2xl font-black text-lg transition-all cursor-pointer"
                             >
                               <X className="w-6 h-6" /> Mark Incorrect
                             </button>
                             <button
-                              onClick={proceedAfterCorrect}
+                              onClick={() => handleManualJudge(true)}
                               className="flex-1 max-w-[260px] mx-auto sm:mx-0 flex items-center justify-center gap-2 px-6 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-2xl font-black text-lg shadow-lg transition-all cursor-pointer"
                             >
                               <Check className="w-6 h-6" /> Mark Correct
@@ -3293,13 +3582,20 @@ function QuizEditor({
       return;
     }
 
-    const newItems: Question[] = parsed.map((item, i) => ({
-      id: Date.now() + i + Math.random(),
-      text: item.text || "",
-      options: item.options || ["", "", "", ""],
-      answerIndex: item.answerIndex || 0,
-      optionImages: [null, null, null, null],
-    }));
+    const newItems: Question[] = parsed.map((item, i) => {
+      const opts = item.options && item.options.length > 0 ? item.options : ["", "", "", ""];
+      const nonEmptyIndices = opts
+        .map((o, idx) => (o && o.trim() !== "" ? idx : -1))
+        .filter((idx) => idx !== -1);
+      const answerIndex = nonEmptyIndices.length === 1 ? nonEmptyIndices[0] : (item.answerIndex || 0);
+      return {
+        id: Date.now() + i + Math.random(),
+        text: item.text || "",
+        options: opts,
+        answerIndex,
+        optionImages: Array(opts.length).fill(null),
+      };
+    });
 
     if (action === 'replace') {
       setQuestions(newItems);
@@ -3329,13 +3625,20 @@ function QuizEditor({
 
     if (parsedItems.length > 0) {
       e.preventDefault();
-      const newItems: Question[] = parsedItems.map((item, i) => ({
-        id: Date.now() + i + Math.random(),
-        text: item.text || "",
-        options: item.options || ["", "", "", ""],
-        answerIndex: item.answerIndex || 0,
-        optionImages: [null, null, null, null],
-      }));
+      const newItems: Question[] = parsedItems.map((item, i) => {
+        const opts = item.options && item.options.length > 0 ? item.options : ["", "", "", ""];
+        const nonEmptyIndices = opts
+          .map((o, idx) => (o && o.trim() !== "" ? idx : -1))
+          .filter((idx) => idx !== -1);
+        const answerIndex = nonEmptyIndices.length === 1 ? nonEmptyIndices[0] : (item.answerIndex || 0);
+        return {
+          id: Date.now() + i + Math.random(),
+          text: item.text || "",
+          options: opts,
+          answerIndex,
+          optionImages: Array(opts.length).fill(null),
+        };
+      });
 
       setQuestions(prev => {
         const updated = [...prev];
@@ -3383,10 +3686,10 @@ function QuizEditor({
 
   const removeOption = (qId: number | string) => {
     setQuestions(questions.map(q => {
-      if (q.id === qId && q.options.length > 2) {
+      if (q.id === qId && q.options.length > 1) {
         const newOptions = [...q.options];
         newOptions.pop();
-        const newAnswerIndex = q.answerIndex >= newOptions.length ? newOptions.length - 1 : q.answerIndex;
+        const newAnswerIndex = newOptions.length === 1 ? 0 : (q.answerIndex >= newOptions.length ? newOptions.length - 1 : q.answerIndex);
         return { ...q, options: newOptions, answerIndex: newAnswerIndex };
       }
       return q;
@@ -3432,18 +3735,37 @@ function QuizEditor({
     }
   };
 
+  const normalizeSingleOptionQuestions = (list: Question[]): Question[] => {
+    return list.map((q) => {
+      const nonEmptyIndices = (q.options || [])
+        .map((o, idx) => (o && o.trim() !== "" ? idx : -1))
+        .filter((idx) => idx !== -1);
+      if (nonEmptyIndices.length === 1) {
+        const singleIdx = nonEmptyIndices[0];
+        return {
+          ...q,
+          options: [q.options[singleIdx]],
+          answerIndex: 0,
+          optionImages: [q.optionImages?.[singleIdx] ?? null],
+        };
+      }
+      return q;
+    });
+  };
+
   const handleSave = () => {
-    const validQuestions = questions.filter(q => q.text.trim());
+    const validQuestions = normalizeSingleOptionQuestions(questions.filter(q => q.text.trim()));
     if (validQuestions.length === 0) {
       setErrorMsg("Please add at least one complete question.");
       setTimeout(() => setErrorMsg(""), 3000);
       return;
     }
+    setQuestions(prev => normalizeSingleOptionQuestions(prev));
     setShowPublishModal(true);
   };
 
   const confirmSave = (isPublic: boolean) => {
-    const validQuestions = questions.filter(q => q.text.trim());
+    const validQuestions = normalizeSingleOptionQuestions(questions.filter(q => q.text.trim()));
     onSave({
       ...quiz,
       title: topic || "Mystery Box",
@@ -3610,9 +3932,14 @@ function QuizEditor({
                     />
                   ))}
                 </div>
-                <div className="ml-12 mt-3 flex gap-2">
+                <div className="ml-12 mt-3 flex items-center gap-2 flex-wrap">
                   <button onClick={() => addOption(q.id)} disabled={q.options.length >= 6} className="text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1 rounded hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50 cursor-pointer">+ Option</button>
-                  <button onClick={() => removeOption(q.id)} disabled={q.options.length <= 2} className="text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1 rounded hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50 cursor-pointer">- Option</button>
+                  <button onClick={() => removeOption(q.id)} disabled={q.options.length <= 1} className="text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1 rounded hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50 cursor-pointer">- Option</button>
+                  {q.options.filter(o => o && o.trim() !== "").length === 1 && (
+                    <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-lg">
+                      ✓ Single option detected directly as the answer
+                    </span>
+                  )}
                 </div>
               </div>
             ))}
@@ -3795,14 +4122,25 @@ function QuizEditor({
               />
             </div>
 
-            {bulkText.trim() && (
-              <div className="flex items-start gap-2 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                <div className="text-cyan-500 mt-0.5"><Info size={16} /></div>
-                <p className="text-sm text-slate-600 dark:text-slate-300">
-                  Found <span className="font-bold text-slate-800 dark:text-white">{parsePastedQuiz(bulkText).length}</span> items. 
-                </p>
-              </div>
-            )}
+            {bulkText.trim() && (() => {
+              const parsedPreview = parsePastedQuiz(bulkText);
+              const singleOptionCount = parsedPreview.filter(
+                (item) => (item.options || []).filter((o) => o && o.trim() !== "").length === 1
+              ).length;
+              return (
+                <div className="flex items-start gap-2 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <div className="text-cyan-500 mt-0.5"><Info size={16} /></div>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">
+                    Found <span className="font-bold text-slate-800 dark:text-white">{parsedPreview.length}</span> items.
+                    {singleOptionCount > 0 && (
+                      <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold text-xs">
+                        ✓ {singleOptionCount} single-option {singleOptionCount === 1 ? 'answer' : 'answers'} detected directly
+                      </span>
+                    )}
+                  </p>
+                </div>
+              );
+            })()}
 
             <div className="flex flex-col sm:flex-row gap-3 pt-2">
               <button 
@@ -3841,99 +4179,15 @@ function parsePastedQuiz(rawText: string): Partial<Question>[] {
   if (!rawText || !rawText.trim()) return [];
   const items: Partial<Question>[] = [];
 
-  // 1. TSV / Excel paste check
-  if (rawText.includes('\t')) {
-    const lines = rawText.split(/\r?\n/).filter(line => line.trim());
-    lines.forEach(line => {
-      const parts = line.split('\t').map(p => p.trim());
-      if (parts.length >= 2) {
-        // Skip header row if present
-        const p0Lower = parts[0].toLowerCase();
-        if (p0Lower.includes('question') && (parts[1].toLowerCase().includes('option') || parts[1].toLowerCase().includes('answer'))) {
-          return;
-        }
+  // Normalize Word / Google Docs list-marker tabs (e.g. "1.\tWhat's your name?" or "\ta.\tMy name is ...")
+  // so they are parsed as numbered questions & lettered options rather than falsely triggering Excel TSV mode.
+  const cleanedText = rawText
+    .replace(/^[\t ]+/gm, "")
+    .replace(/^((?:question\s*\d+|q\s*\d+|\d+)[\.\)\:\-])\t+/gim, "$1 ")
+    .replace(/^((?:[\(\[]?[A-Fa-f][\)\]\.\:\-]|[\(\[][A-Fa-f1-6][\)\]]|[1-6]\)|[\-\•\*]))\t+/gim, "$1 ");
 
-        let qText = parts[0];
-        let opts = ["", "", "", ""];
-        let ansRaw = "";
-
-        if (/^\d+$/.test(parts[0]) && parts.length >= 6) {
-          // Format: ID \t Question \t Opt1 \t Opt2 \t Opt3 \t Opt4 \t Answer
-          qText = parts[1];
-          opts = [parts[2] || "", parts[3] || "", parts[4] || "", parts[5] || ""];
-          ansRaw = parts[6] || "";
-        } else {
-          opts = [parts[1] || "", parts[2] || "", parts[3] || "", parts[4] || ""];
-          ansRaw = parts[5] || "";
-        }
-
-        let ansIdx = 0;
-        const letterMatch = ansRaw.match(/^[A-Da-d]$/);
-        const numMatch = ansRaw.match(/^[1-4]$/);
-        if (letterMatch) {
-          ansIdx = letterMatch[0].toUpperCase().charCodeAt(0) - 65;
-        } else if (numMatch) {
-          ansIdx = parseInt(numMatch[0]) - 1;
-        } else if (ansRaw) {
-          const found = opts.findIndex(o => o && o.toLowerCase() === ansRaw.toLowerCase());
-          if (found >= 0) ansIdx = found;
-        }
-
-        items.push({
-          text: qText,
-          options: opts,
-          answerIndex: Math.max(0, Math.min(3, ansIdx))
-        });
-      }
-    });
-
-    if (items.length > 0) {
-      items.forEach(q => {
-        if (q.options) {
-          while (q.options.length > 2 && q.options[q.options.length - 1] === "") {
-            q.options.pop();
-          }
-        }
-      });
-      return items;
-    }
-  }
-
-  // 2. Multi-line / Standard Text Parsing
-  const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  let currentQ: Partial<Question> | null = null;
-
-  const isQuestionStart = (line: string) => {
-    return /^(?:question\s*\d+|q\s*\d+|\d+)[\.\)\:\-]\s+(.+)/i.test(line);
-  };
-
-  const getQuestionText = (line: string) => {
-    const m = line.match(/^(?:question\s*\d+|q\s*\d+|\d+)[\.\)\:\-]\s+(.+)/i);
-    return m ? m[1].trim() : line;
-  };
-
-  const isAnswerLine = (line: string) => {
-    return /^(?:correct\s*)?(?:ans(?:wer)?|key)\s*(?:is)?\s*[:=\-]?\s*(.+)/i.test(line);
-  };
-
-  const extractAnswerIndex = (line: string, opts: string[] = ["", "", "", ""]) => {
-    const m = line.match(/^(?:correct\s*)?(?:ans(?:wer)?|key)\s*(?:is)?\s*[:=\-]?\s*(.+)/i);
-    if (!m) return -1;
-    const raw = m[1].trim();
-
-    const letter = raw.match(/[\(\[]?([A-Da-d])[\)\]\.\:]?/);
-    if (letter) {
-      return letter[1].toUpperCase().charCodeAt(0) - 65;
-    }
-    const num = raw.match(/^[1-4]$/);
-    if (num) {
-      return parseInt(num[0]) - 1;
-    }
-    const found = opts.findIndex(o => o && (o.toLowerCase() === raw.toLowerCase() || raw.toLowerCase().includes(o.toLowerCase())));
-    if (found >= 0) return found;
-
-    return 0;
-  };
+  const stripLeadingOptionPrefix = (val: string) =>
+    val.replace(/^(?:[\(\[]?[A-Fa-f][\)\]\.\:\-]|[\(\[][A-Fa-f1-6][\)\]]|[1-6]\)|[\-\•\*])\s+/, "").trim();
 
   const isOptionLine = (line: string) => {
     // Explicit letter options: A., A), A:, A -, (A), [A], a., a), (a), [a]
@@ -3944,10 +4198,149 @@ function parsePastedQuiz(rawText: string): Partial<Question>[] {
     if (/^(?:[\(\[][1-4][\)\]]|[1-4]\))\s*(.*)/.test(line)) {
       return true;
     }
+    // Bullet option: - Option, • Option, * Option
+    if (/^[\-\•\*]\s+(.+)/.test(line)) {
+      return true;
+    }
     return false;
   };
 
-  const extractOption = (line: string) => {
+  const isAnswerLine = (line: string) => {
+    return /^(?:correct\s*)?(?:ans(?:wer)?|key)\s*(?:is)?\s*[:=\-]?\s*(.+)/i.test(line);
+  };
+
+  const rawLines = cleanedText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const hasMultiLineOptions = rawLines.some(l => isOptionLine(l) || isAnswerLine(l));
+
+  // 1. TSV / Excel paste check (only when tabs exist and it's not a multi-line option list)
+  if (cleanedText.includes('\t') && !hasMultiLineOptions) {
+    const lines = cleanedText.split(/\r?\n/).filter(line => line.trim());
+    lines.forEach(line => {
+      const parts = line.split('\t').map(p => p.trim()).filter((_, idx, arr) => idx === 0 || arr.length >= 2);
+      if (parts.length >= 2) {
+        // Skip header row if present
+        const p0Lower = parts[0].toLowerCase();
+        if (p0Lower.includes('question') && (parts[1].toLowerCase().includes('option') || parts[1].toLowerCase().includes('answer'))) {
+          return;
+        }
+
+        let qText = parts[0].replace(/^(?:question\s*\d+|q\s*\d+|\d+)[\.\)\:\-]\s+/i, '').trim() || parts[0];
+        let opts = ["", "", "", ""];
+        let ansRaw = "";
+
+        if (/^\d+$/.test(parts[0]) && parts.length >= 6) {
+          // Format: ID \t Question \t Opt1 \t Opt2 \t Opt3 \t Opt4 \t Answer
+          qText = parts[1];
+          opts = [
+            stripLeadingOptionPrefix(parts[2] || ""),
+            stripLeadingOptionPrefix(parts[3] || ""),
+            stripLeadingOptionPrefix(parts[4] || ""),
+            stripLeadingOptionPrefix(parts[5] || ""),
+          ];
+          ansRaw = parts[6] || "";
+        } else if (/^\d+$/.test(parts[0]) && parts.length === 3) {
+          // Format: ID \t Question \t SingleOption
+          qText = parts[1];
+          opts = [stripLeadingOptionPrefix(parts[2] || ""), "", "", ""];
+          ansRaw = "";
+        } else {
+          opts = [
+            stripLeadingOptionPrefix(parts[1] || ""),
+            stripLeadingOptionPrefix(parts[2] || ""),
+            stripLeadingOptionPrefix(parts[3] || ""),
+            stripLeadingOptionPrefix(parts[4] || ""),
+          ];
+          ansRaw = parts[5] || "";
+        }
+
+        const nonEmptyOpts = opts.filter(o => o && o.trim() !== "");
+        let ansIdx = 0;
+        if (nonEmptyOpts.length === 1) {
+          ansIdx = opts.findIndex(o => o && o.trim() !== "");
+        } else {
+          const letterMatch = ansRaw.match(/^[A-Da-d]$/);
+          const numMatch = ansRaw.match(/^[1-4]$/);
+          if (letterMatch) {
+            ansIdx = letterMatch[0].toUpperCase().charCodeAt(0) - 65;
+          } else if (numMatch) {
+            ansIdx = parseInt(numMatch[0]) - 1;
+          } else if (ansRaw) {
+            const cleanedAns = stripLeadingOptionPrefix(ansRaw);
+            const found = opts.findIndex(o => o && (o.toLowerCase() === ansRaw.toLowerCase() || o.toLowerCase() === cleanedAns.toLowerCase()));
+            if (found >= 0) ansIdx = found;
+          }
+        }
+
+        items.push({
+          text: qText,
+          options: nonEmptyOpts.length === 1 ? [nonEmptyOpts[0]] : opts,
+          answerIndex: nonEmptyOpts.length === 1 ? 0 : Math.max(0, Math.min(3, ansIdx))
+        });
+      }
+    });
+
+    if (items.length > 0) {
+      items.forEach(q => {
+        if (q.options && q.options.length > 1) {
+          while (q.options.length > 2 && q.options[q.options.length - 1] === "") {
+            q.options.pop();
+          }
+        }
+      });
+      return items;
+    }
+  }
+
+  // 2. Multi-line / Standard Text Parsing
+  const lines = rawLines;
+  let currentQ: Partial<Question> | null = null;
+
+  const isQuestionStart = (line: string) => {
+    return /^(?:question\s*\d+|q\s*\d+|\d+)[\.\)\:\-]\s*(.+)/i.test(line);
+  };
+
+  const getQuestionText = (line: string) => {
+    const m = line.match(/^(?:question\s*\d+|q\s*\d+|\d+)[\.\)\:\-]\s*(.+)/i);
+    return m ? m[1].trim() : line;
+  };
+
+  const extractAnswerPayload = (line: string) => {
+    const m = line.match(/^(?:correct\s*)?(?:ans(?:wer)?|key)\s*(?:is)?\s*[:=\-]?\s*(.+)/i);
+    return m ? m[1].trim() : "";
+  };
+
+  const extractAnswerIndex = (line: string, opts: string[] = ["", "", "", ""]) => {
+    const raw = extractAnswerPayload(line);
+    if (!raw) return -1;
+
+    // 1. Check if raw matches an existing option text directly (or with prefix stripped)
+    const strippedRaw = stripLeadingOptionPrefix(raw);
+    const exactMatch = opts.findIndex(
+      (o) => o && (o.toLowerCase() === raw.toLowerCase() || (strippedRaw && o.toLowerCase() === strippedRaw.toLowerCase()))
+    );
+    if (exactMatch >= 0) return exactMatch;
+
+    // 2. Check standalone option letter at start of answer (e.g. "A", "(B)", "C.", "a. My name is ...")
+    const letter = raw.match(/^[\(\[]?([A-Da-d])(?:[\)\]\.\:\-]|\s|$)/);
+    if (letter) {
+      return letter[1].toUpperCase().charCodeAt(0) - 65;
+    }
+
+    // 3. Check standalone option number 1-4
+    const num = raw.match(/^[\(\[]?([1-4])[\)\]]?$/);
+    if (num) {
+      return parseInt(num[1]) - 1;
+    }
+
+    const partialMatch = opts.findIndex(
+      (o) => o && (raw.toLowerCase().includes(o.toLowerCase()) || o.toLowerCase().includes(raw.toLowerCase()))
+    );
+    if (partialMatch >= 0) return partialMatch;
+
+    return 0;
+  };
+
+  const extractOption = (line: string, currentOpts: string[] = ["", "", "", ""]) => {
     const mLetter = line.match(/^(?:[\(\[]?([A-Da-d])[\)\]\.\:\-]|[\(\[]([A-Da-d])[\)\]])\s*(.*)/);
     if (mLetter) {
       const char = (mLetter[1] || mLetter[2]).toUpperCase();
@@ -3959,24 +4352,48 @@ function parsePastedQuiz(rawText: string): Partial<Question>[] {
       const num = parseInt(mNum[1] || mNum[2]) - 1;
       return { index: num, text: mNum[3].trim() };
     }
+    const mBullet = line.match(/^[\-\•\*]\s+(.+)/);
+    if (mBullet) {
+      const nextEmptyIdx = currentOpts.findIndex((o) => !o || !o.trim());
+      return { index: nextEmptyIdx >= 0 ? nextEmptyIdx : 0, text: mBullet[1].trim() };
+    }
     return null;
+  };
+
+  // Helper to check if explicit option lines exist for the current question before the next question start
+  const hasExplicitOptionLinesAhead = (startIdx: number) => {
+    for (let j = startIdx; j < lines.length; j++) {
+      if (isQuestionStart(lines[j])) return false;
+      if (isOptionLine(lines[j])) return true;
+    }
+    return false;
   };
 
   for (let i = 0; i < lines.length; i++) {
     let line = lines[i];
     if (!line) continue;
 
-    // 1. Check if the line is an Answer line (e.g. "Answer: B", "Ans: Paris", "Correct: A")
+    // 1. Check if the line is an Answer line (e.g. "Answer: B", "Ans: Paris", "Answer: My name is ...")
     if (isAnswerLine(line)) {
       if (currentQ) {
-        const ansIdx = extractAnswerIndex(line, currentQ.options || []);
-        if (ansIdx >= 0) currentQ.answerIndex = ansIdx;
+        const hasAnyOption = currentQ.options?.some((o) => Boolean(o && o.trim()));
+        if (!hasAnyOption) {
+          // No options were listed before "Answer: ..."; use the answer payload directly as the single option!
+          const payload = stripLeadingOptionPrefix(extractAnswerPayload(line));
+          if (payload) {
+            currentQ.options = [payload, "", "", ""];
+            currentQ.answerIndex = 0;
+          }
+        } else {
+          const ansIdx = extractAnswerIndex(line, currentQ.options || []);
+          if (ansIdx >= 0) currentQ.answerIndex = ansIdx;
+        }
       }
       continue;
     }
 
     // 2. Check for inline answer at the end of the line (e.g. "... (Answer: B)")
-    const inlineAnsMatch = line.match(/(?:\[|\(|\b)(?:ans(?:wer)?|correct)\s*[:=\-]?\s*([A-Da-d1-4])(?:\b|\)|\b)/i);
+    const inlineAnsMatch = line.match(/(?:\[|\(|\b)(?:ans(?:wer)?|correct)\s*[:=\-]?\s*([A-Da-d1-4])(?:\b|\)|\])/i);
     let inlineAnswerIndex = -1;
     if (inlineAnsMatch) {
       const val = inlineAnsMatch[1].toUpperCase();
@@ -3986,9 +4403,9 @@ function parsePastedQuiz(rawText: string): Partial<Question>[] {
     }
     if (!line) continue;
 
-    // 3. Check if line is an option (e.g. "A) London", "(B) Paris", "C. Berlin", "D - Madrid")
+    // 3. Check if line is an option (e.g. "a. My name is ............", "A) London", "(B) Paris")
     if (isOptionLine(line)) {
-      const opt = extractOption(line);
+      const opt = extractOption(line, currentQ?.options || ["", "", "", ""]);
       if (opt && opt.index >= 0 && opt.index < 4) {
         if (!currentQ) {
           currentQ = { text: "Question", options: ["", "", "", ""], answerIndex: 0 };
@@ -3998,9 +4415,9 @@ function parsePastedQuiz(rawText: string): Partial<Question>[] {
         currentQ.options[opt.index] = opt.text;
         if (inlineAnswerIndex >= 0) currentQ.answerIndex = inlineAnswerIndex;
 
-        // Support multiple inline options on the same line if present (e.g. "A) London  B) Paris")
-        let rest = opt.text;
-        const inlineOpts = [...rest.matchAll(/\s+([B-Db-d])[\.\)\:\-]\s+([^B-Db-d\.\)\:\-]+)/g)];
+        // Support multiple inline options on the same line if separated by 2+ spaces or tab (e.g. "A) London   B) Paris")
+        const rest = opt.text;
+        const inlineOpts = [...rest.matchAll(/(?:\s{2,}|\t)([B-Db-d])[\.\)\:\-]\s+([^\t]+)/g)];
         if (inlineOpts.length > 0) {
           currentQ.options[opt.index] = rest.substring(0, inlineOpts[0].index).trim();
           inlineOpts.forEach(m => {
@@ -4012,23 +4429,44 @@ function parsePastedQuiz(rawText: string): Partial<Question>[] {
       continue;
     }
 
-    // 4. Check if line is a numbered question start (e.g. "1. Question text", "2) Question text")
+    // 4. Check if line is a numbered question start (e.g. "1. What's your name?", "2) Question text")
     if (isQuestionStart(line)) {
-      const qText = getQuestionText(line);
+      let qText = getQuestionText(line);
+      const initialOptions = ["", "", "", ""];
+
+      // Check if an option like "a. My name is ............" was placed on the same line as the question
+      const inlineSingleOpt = qText.match(/^(.*?(?:[\?\.\:\!]|___+|\.\.\.+))\s+(?:[\(\[]?([A-Da-d])[\)\]\.\:\-]|[\(\[]([A-Da-d])[\)\]])\s+(.+)$/);
+      if (inlineSingleOpt) {
+        qText = inlineSingleOpt[1].trim();
+        const optChar = (inlineSingleOpt[2] || inlineSingleOpt[3]).toUpperCase();
+        const optIdx = optChar.charCodeAt(0) - 65;
+        if (optIdx >= 0 && optIdx < 4) {
+          initialOptions[optIdx] = inlineSingleOpt[4].trim();
+        }
+      }
+
       currentQ = {
         text: qText,
-        options: ["", "", "", ""],
+        options: initialOptions,
         answerIndex: inlineAnswerIndex >= 0 ? inlineAnswerIndex : 0
       };
       items.push(currentQ);
       continue;
     }
 
-    // 5. Line does not match option, answer, or question start
+    // 5. Line does not match option, answer, or numbered question start
     if (currentQ) {
-      const hasOptions = currentQ.options?.some(o => Boolean(o));
+      const hasOptions = currentQ.options?.some(o => Boolean(o && o.trim()));
       if (!hasOptions) {
-        currentQ.text += " " + line;
+        // If there are no explicit a./b./c./d. option lines ahead for this question,
+        // treat this line directly as the single answer option!
+        if (!hasExplicitOptionLinesAhead(i + 1)) {
+          if (!currentQ.options) currentQ.options = ["", "", "", ""];
+          currentQ.options[0] = stripLeadingOptionPrefix(line);
+          currentQ.answerIndex = 0;
+        } else {
+          currentQ.text += " " + line;
+        }
       } else {
         currentQ = {
           text: line,
@@ -4046,6 +4484,33 @@ function parsePastedQuiz(rawText: string): Partial<Question>[] {
       items.push(currentQ);
     }
   }
+
+  // 6. Final Patch: If a question has ONLY 1 option (e.g. "1. What's your name? \n a. My name is ............"),
+  // detect that single option directly as the correct answer!
+  items.forEach((q) => {
+    if (!q.options) {
+      q.options = ["", "", "", ""];
+      q.answerIndex = 0;
+      return;
+    }
+
+    const nonEmpty = q.options
+      .map((opt, idx) => ({ text: (opt || "").trim(), idx }))
+      .filter((o) => o.text.length > 0);
+
+    if (nonEmpty.length === 1) {
+      q.options = [nonEmpty[0].text];
+      q.answerIndex = 0;
+    } else if (nonEmpty.length > 1) {
+      while (q.options.length > 2 && (!q.options[q.options.length - 1] || !q.options[q.options.length - 1].trim())) {
+        q.options.pop();
+      }
+      const currentAns = q.answerIndex ?? 0;
+      if (currentAns < 0 || currentAns >= q.options.length || !q.options[currentAns]?.trim()) {
+        q.answerIndex = nonEmpty[0].idx < q.options.length ? nonEmpty[0].idx : 0;
+      }
+    }
+  });
 
   return items;
 }

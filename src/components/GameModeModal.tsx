@@ -649,8 +649,10 @@ export function GameModeModal({
           ? foundCorrectObjIdx
           : 0;
 
-      if (options.length < 2) {
+      if (options.length === 0) {
         options = ['Yes', 'No'];
+        answerIndex = 0;
+      } else if (options.length === 1) {
         answerIndex = 0;
       }
 
@@ -912,7 +914,22 @@ export function GameModeModal({
   };
 
   const handlePlayInterchangeable = (targetType: PlayableGameMode) => {
-    const finalQuestions: any[] = normalizedQuestions;
+    const supportsSingleAnswer =
+      targetType === 'mystery-box' ||
+      targetType === 'flashcards-match' ||
+      targetType === 'family-feud';
+    const finalQuestions: any[] = normalizedQuestions.map((q: any) => {
+      if (supportsSingleAnswer) return q;
+      if (Array.isArray(q.options) && q.options.length === 1) {
+        return {
+          ...q,
+          options: [q.options[0], 'No'],
+          answerIndex: 0,
+          correct: 0,
+        };
+      }
+      return q;
+    });
 
     const existingCards =
       Array.isArray(gameData.cards) && gameData.cards.length > 0 ? gameData.cards : null;
