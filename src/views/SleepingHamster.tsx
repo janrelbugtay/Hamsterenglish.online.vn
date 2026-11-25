@@ -687,6 +687,8 @@ interface HamsterBallPhysicsState {
   vRot: number;
   restY: number;
   driftAngle: number;
+  freeBounceUntil: number;
+  squash: number;
 }
 
 function createInitialHamsterBallsState(): HamsterBallPhysicsState[] {
@@ -700,6 +702,8 @@ function createInitialHamsterBallsState(): HamsterBallPhysicsState[] {
     vRot: 0,
     restY: s.homeY,
     driftAngle: (s.id * 1.37) % (Math.PI * 2),
+    freeBounceUntil: 0,
+    squash: 0,
   }));
 }
 
@@ -826,6 +830,8 @@ export function SleepingHamster({
   const bubbleGroupRefs = useRef<(SVGGElement | null)[]>([]);
   const bubbleShadowRefs = useRef<(SVGEllipseElement | null)[]>([]);
   const bubblesFlyingCountRef = useRef<number>(0);
+  const bubbleExcitedUntilRef = useRef<number>(0);
+  const smoothedBubbleDriveRef = useRef<number>(0);
 
   gameModeRef.current = gameMode;
 
@@ -854,6 +860,66 @@ export function SleepingHamster({
   const currentCoat = COAT_STYLES[coatIndex];
   const currentThreshold = getThresholdsForSensitivity(sensitivityValue);
   const activeUi = STATE_UI[sleepState];
+
+  const sendYouTubePlayCommands = useCallback(() => {
+    const win = musicIframeRef.current?.contentWindow;
+    if (!win) return;
+    try {
+      win.postMessage(
+        JSON.stringify({ event: 'listening', id: activeMusicTrack ?? 1, channel: 'widget' }),
+        '*'
+      );
+      win.postMessage(
+        JSON.stringify({ event: 'command', func: 'unMute', args: [] }),
+        '*'
+      );
+      win.postMessage(
+        JSON.stringify({ event: 'command', func: 'setVolume', args: [100] }),
+        '*'
+      );
+      win.postMessage(
+        JSON.stringify({ event: 'command', func: 'playVideo', args: [] }),
+        '*'
+      );
+    } catch {
+      // ignore cross-origin postMessage errors
+    }
+  }, [activeMusicTrack]);
+
+  // YouTube IFrame API handshake: ensure unMute + setVolume(100) + playVideo fire when YT player finishes initializing
+  useEffect(() => {
+    if (!hasStarted || activeMusicTrack === null) return;
+
+    const retryDelays = [150, 400, 850, 1500, 2500];
+    const timers = retryDelays.map((delay) =>
+      window.setTimeout(() => {
+        sendYouTubePlayCommands();
+      }, delay)
+    );
+
+    const onMessage = (e: MessageEvent) => {
+      if (!e.origin || !e.origin.includes('youtube')) return;
+      try {
+        const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+        if (
+          data?.event === 'onReady' ||
+          data?.event === 'initialDelivery' ||
+          (data?.event === 'infoDelivery' &&
+            (data?.info?.playerState === -1 || data?.info?.playerState === 5))
+        ) {
+          sendYouTubePlayCommands();
+        }
+      } catch {
+        // ignore non-JSON messages
+      }
+    };
+
+    window.addEventListener('message', onMessage);
+    return () => {
+      timers.forEach((id) => window.clearTimeout(id));
+      window.removeEventListener('message', onMessage);
+    };
+  }, [hasStarted, activeMusicTrack, sendYouTubePlayCommands]);
 
   const clearTimerEndSequence = useCallback(() => {
     timerSequenceTimersRef.current.forEach((id) => {
@@ -911,24 +977,25 @@ export function SleepingHamster({
       overrideMode?: NoiseAlertMode,
       forceLoop = false
     ) => {
-      const mode =
-        overrideMode ??
-        (stateSnapshotRef.current.gameMode === 'bubbles' &&
-        (type === 'warning' || type === 'awake')
-          ? 'shush'
-          : stateSnapshotRef.current.noiseAlert);
-      if (mode === 'none' && type !== 'eat') return;
+      // Always respect the user's selected Noise Alert mode across all game modes
+      const mode = overrideMode ?? stateSnapshotRef.current.noiseAlert;
+      if (mode === 'none' && type === 'warning') return;
+      if (mode === 'none' && type === 'awake') return;
 
       try {
         const Ctx = window.AudioContext || (window as any).webkitAudioContext;
-        const ctx = audioCtxRef.current || new Ctx();
-        if (!audioCtxRef.current) audioCtxRef.current = ctx;
-        if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+        if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+          audioCtxRef.current = new Ctx();
+        }
+        const ctx = audioCtxRef.current;
+        if (ctx.state === 'suspended') {
+          ctx.resume().catch(() => {});
+        }
 
-        const now = ctx.currentTime;
+        const now = Math.max(0, ctx.currentTime) + 0.01;
 
         if ((type === 'warning' || type === 'awake') && !forceLoop) {
-          if (now - lastWarningSoundRef.current < 0.55) return;
+          if (now - lastWarningSoundRef.current < 0.75) return;
         }
         if (type === 'warning' || type === 'awake') {
           lastWarningSoundRef.current = now;
@@ -951,8 +1018,13 @@ export function SleepingHamster({
         masterGain.connect(limiter);
         limiter.connect(ctx.destination);
 
-        // Brief duck window (260ms) so speaker burst never blocks listening for silence
-        muteMicUntilRef.current = performance.now() + 260;
+        // Full alert-duration duck window (720ms for warning/awake, 320ms for short SFX)
+        // prevents speaker output from feeding back into the microphone and self-triggering!
+        const duckDurationMs = type === 'warning' || type === 'awake' ? 720 : 320;
+        muteMicUntilRef.current = Math.max(
+          muteMicUntilRef.current,
+          performance.now() + duckDurationMs
+        );
 
         if (type === 'eat') {
           // Cute crispy seed crunch + happy hamster nibble squeak
@@ -1031,17 +1103,17 @@ export function SleepingHamster({
 
         // Loud, Strong Classroom Noise Alert Effects
         if (mode === 'hamster') {
-          // Bold, expressive hamster squeak/chirp using layered triangle + sine carriers
+          // Expressive, cute hamster squeak-chatter using layered triangle + sine carriers
           const chirps =
             type === 'warning'
               ? [
-                  { start: 0, f1: 1280, f2: 1760, dur: 0.15 },
-                  { start: 0.17, f1: 1520, f2: 1080, dur: 0.17 },
+                  { start: 0, f1: 1240, f2: 1780, dur: 0.14 },
+                  { start: 0.16, f1: 1560, f2: 1120, dur: 0.16 },
                 ]
               : [
-                  { start: 0, f1: 1380, f2: 1920, dur: 0.13 },
-                  { start: 0.14, f1: 1560, f2: 2040, dur: 0.13 },
-                  { start: 0.28, f1: 1740, f2: 1120, dur: 0.19 },
+                  { start: 0, f1: 1360, f2: 1940, dur: 0.12 },
+                  { start: 0.14, f1: 1580, f2: 2080, dur: 0.12 },
+                  { start: 0.28, f1: 1760, f2: 1140, dur: 0.18 },
                 ];
 
           chirps.forEach((chirp) => {
@@ -1134,8 +1206,8 @@ export function SleepingHamster({
             harmonic.stop(t0 + 0.24);
           });
         } else if (mode === 'shush') {
-          // Powerful, full-bodied vocal "SHHHH!" with strong mid-band energy (zero harsh hiss)
-          const duration = type === 'awake' ? 0.62 : 0.52;
+          // Natural dual-formant vocal "SHHHH!" (palatal-alveolar fricative resonance + sibilant stream)
+          const duration = type === 'awake' ? 0.58 : 0.48;
           const bufferSize = Math.floor(ctx.sampleRate * duration);
           const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
           const output = noiseBuffer.getChannelData(0);
@@ -1144,41 +1216,48 @@ export function SleepingHamster({
           let b2 = 0;
           for (let i = 0; i < bufferSize; i++) {
             const white = Math.random() * 2 - 1;
-            b0 = 0.997 * b0 + white * 0.036;
-            b1 = 0.985 * b1 + white * 0.042;
-            b2 = 0.95 * b2 + white * 0.064;
-            output[i] = Math.max(-1, Math.min(1, (b0 + b1 + b2 + white * 0.16) * 3.4));
+            b0 = 0.997 * b0 + white * 0.032;
+            b1 = 0.985 * b1 + white * 0.045;
+            b2 = 0.95 * b2 + white * 0.068;
+            output[i] = Math.max(-1, Math.min(1, (b0 + b1 + b2 + white * 0.22) * 3.1));
           }
 
           const noise = ctx.createBufferSource();
           noise.buffer = noiseBuffer;
 
-          const highpass = ctx.createBiquadFilter();
-          highpass.type = 'highpass';
-          highpass.frequency.value = 550;
+          // Formant 1: Palatal-alveolar "SH" cavity (~2050 Hz -> 1850 Hz)
+          const formant1 = ctx.createBiquadFilter();
+          formant1.type = 'bandpass';
+          formant1.frequency.setValueAtTime(2080, now);
+          formant1.frequency.linearRampToValueAtTime(1840, now + duration);
+          formant1.Q.setValueAtTime(2.1, now);
 
-          const formant = ctx.createBiquadFilter();
-          formant.type = 'bandpass';
-          formant.frequency.value = 1750;
-          formant.Q.value = 1.15;
+          // Formant 2: Upper sibilant breath (~3250 Hz)
+          const formant2 = ctx.createBiquadFilter();
+          formant2.type = 'bandpass';
+          formant2.frequency.setValueAtTime(3280, now);
+          formant2.frequency.linearRampToValueAtTime(2950, now + duration);
+          formant2.Q.setValueAtTime(2.4, now);
 
-          const bodyBoost = ctx.createBiquadFilter();
-          bodyBoost.type = 'peaking';
-          bodyBoost.frequency.value = 1600;
-          bodyBoost.gain.value = 7;
+          const f1Gain = ctx.createGain();
+          f1Gain.gain.setValueAtTime(0.75, now);
+          const f2Gain = ctx.createGain();
+          f2Gain.gain.setValueAtTime(0.45, now);
 
-          const gain = ctx.createGain();
-          const peak = type === 'awake' ? 1.15 : 0.95;
-          gain.gain.setValueAtTime(0.001, now);
-          gain.gain.linearRampToValueAtTime(peak, now + 0.05);
-          gain.gain.setValueAtTime(peak * 0.88, now + duration * 0.65);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+          const envGain = ctx.createGain();
+          const peak = type === 'awake' ? 1.15 : 0.96;
+          envGain.gain.setValueAtTime(0.001, now);
+          envGain.gain.linearRampToValueAtTime(peak, now + 0.055);
+          envGain.gain.setValueAtTime(peak * 0.86, now + duration * 0.62);
+          envGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
 
-          noise.connect(highpass);
-          highpass.connect(formant);
-          formant.connect(bodyBoost);
-          bodyBoost.connect(gain);
-          gain.connect(masterGain);
+          noise.connect(formant1);
+          noise.connect(formant2);
+          formant1.connect(f1Gain);
+          formant2.connect(f2Gain);
+          f1Gain.connect(envGain);
+          f2Gain.connect(envGain);
+          envGain.connect(masterGain);
 
           noise.start(now);
           noise.stop(now + duration + 0.02);
@@ -1190,23 +1269,27 @@ export function SleepingHamster({
     []
   );
 
-  // Continuous Noise Alert Loop while Disturbed / Almost Awake / Awake
+  // Continuous Noise Alert Loop while Noisy (with clean listening window between alerts so speaker never self-triggers)
   useEffect(() => {
-    if (!hasStarted || isMicMuted || (noiseAlert === 'none' && gameMode !== 'bubbles')) return;
+    if (!hasStarted || isMicMuted || noiseAlert === 'none') return;
     if (timerEndPhase !== 'idle') return;
-    if (sleepState !== 'DISTURBED' && sleepState !== 'ALMOST_AWAKE' && sleepState !== 'AWAKE') {
+    const isAlertState =
+      sleepState === 'DISTURBED' ||
+      sleepState === 'ALMOST_AWAKE' ||
+      sleepState === 'AWAKE' ||
+      (gameMode === 'bubbles' && sleepState === 'LIGHT_SLEEP');
+    if (!isAlertState) {
       return;
     }
 
     const soundType: 'warning' | 'awake' = sleepState === 'AWAKE' ? 'awake' : 'warning';
     const intervalMs =
-      sleepState === 'AWAKE' ? 620 : sleepState === 'ALMOST_AWAKE' ? 740 : 900;
+      sleepState === 'AWAKE' ? 1350 : sleepState === 'ALMOST_AWAKE' ? 1600 : 1850;
 
     const id = window.setInterval(() => {
       if (
         stateSnapshotRef.current.isMicMuted ||
-        (stateSnapshotRef.current.noiseAlert === 'none' &&
-          stateSnapshotRef.current.gameMode !== 'bubbles') ||
+        stateSnapshotRef.current.noiseAlert === 'none' ||
         timerEndPhaseRef.current !== 'idle'
       ) {
         return;
@@ -1225,7 +1308,13 @@ export function SleepingHamster({
       lastStateChangeRef.current = performance.now();
       setSleepState(next);
 
-      if (next === 'DISTURBED' || next === 'ALMOST_AWAKE') {
+      if (
+        next === 'DISTURBED' ||
+        next === 'ALMOST_AWAKE' ||
+        (stateSnapshotRef.current.gameMode === 'bubbles' &&
+          next === 'LIGHT_SLEEP' &&
+          prev === 'DEEP_SLEEP')
+      ) {
         playAlertSound('warning');
       } else if (next === 'AWAKE' && prev !== 'AWAKE') {
         playAlertSound('awake');
@@ -1347,9 +1436,11 @@ export function SleepingHamster({
         analyser.getByteFrequencyData(freqData);
 
         let rawInput = 0;
-        if (snap.isMicMuted) {
+        const isDuckedForSpeakerAlert = nowPerf < muteMicUntilRef.current;
+        if (snap.isMicMuted || isDuckedForSpeakerAlert) {
+          // While our own speaker alert is playing, ignore mic input so speaker audio never self-triggers!
           rawInput = 0;
-        } else if (nowPerf >= muteMicUntilRef.current) {
+        } else {
           // True logarithmic dBFS calculation over speech-band filtered audio (120Hz–4000Hz)
           let sumSq = 0;
           for (let i = 0; i < timeData.length; i++) {
@@ -1360,13 +1451,11 @@ export function SleepingHamster({
           const dbfs = 20 * Math.log10(Math.max(rms, 1e-5));
           // Map quiet (-60 dBFS) -> 0 and loud speech/clap (-12 dBFS) -> 100 accurately
           rawInput = Math.max(0, Math.min(100, ((dbfs + 60) / 48) * 100));
-        } else {
-          rawInput = sustainedRef.current * 0.96;
         }
 
         // Responsive attack (detects voices accurately in ~200ms) & smooth calm-down release
         const attackRate = 0.13;
-        const releaseRate = snap.isMicMuted ? 0.12 : 0.055;
+        const releaseRate = snap.isMicMuted ? 0.12 : isDuckedForSpeakerAlert ? 0.025 : 0.055;
 
         let energy = sustainedRef.current;
         if (rawInput > energy) {
@@ -1542,243 +1631,270 @@ export function SleepingHamster({
         }
 
         // 60fps Direct-DOM Hardware-Accelerated Hamster Bubbles Physics:
-        // - Free-floating bubbles with smooth 60fps wall rebounds & elastic sphere-to-sphere collisions
-        // - Instant dB response: stay still when quiet, gentle drift at low dB, fast zoom at loud dB
-        // - Smooth anti-clumping floor settling: when quiet again, float down and spread evenly across the bottom floor
+        // - Super-bouncy arcade trampoline rebounds off floor, ceiling & walls with squash-and-stretch
+        // - Smooth hold hysteresis so speech syllable gaps never cause launch/brake twitching
+        // - Same-zLayer soft elastic mid-air collisions (zero multi-body pile jitter)
+        // - Critically damped home settling with soft floor bounces when quiet returns
         if (snap.gameMode === 'bubbles') {
           const balls = hamsterBallsPhysicsRef.current;
-          // Use fast-reacting peak of sustained energy & instantaneous rawInput for instant dB response
           const liveAudio =
             snap.isMicMuted || timerEndPhaseRef.current !== 'idle'
               ? 0
-              : Math.max(energy, rawInput * 0.95);
-          const quietCeiling = Math.max(8, t.light * 0.68);
+              : Math.max(energy, rawInput * 0.9);
+          // Only trigger noise-driven bouncing when sound crosses light sleep / disturbed threshold
+          const quietCeiling = Math.max(14, t.light * 0.92);
 
-          // Continuous dB-to-speed drive:
-          // 0 = Quiet (settle smoothly & stay still)
-          // 0.14..0.48 = Low dB (instant gentle floating drift: 110–260 px/s)
-          // 0.50..1.10 = Medium-High dB (active bouncing flight: 280–640 px/s)
-          // 1.15..2.45 = Loud / Noisier dB (very fast zoom around screen: 660–1280 px/s)
-          let dbDrive = 0;
+          let targetDrive = 0;
           if (liveAudio > quietCeiling) {
             if (liveAudio < t.disturbed) {
               const ratio = (liveAudio - quietCeiling) / Math.max(6, t.disturbed - quietCeiling);
-              dbDrive = 0.14 + ratio * 0.34;
+              targetDrive = 0.45 + ratio * 0.45;
             } else if (liveAudio < t.awake) {
               const ratio = (liveAudio - t.disturbed) / Math.max(8, t.awake - t.disturbed);
-              dbDrive = 0.48 + ratio * 0.64;
+              targetDrive = 0.9 + ratio * 0.55;
             } else {
-              const ratio = Math.min(1.5, (liveAudio - t.awake) / Math.max(10, 92 - t.awake));
-              dbDrive = 1.12 + ratio * 1.35;
+              const ratio = Math.min(1.4, (liveAudio - t.awake) / Math.max(10, 92 - t.awake));
+              targetDrive = 1.45 + ratio * 0.65;
             }
+            // Hold active bounce state across syllable pauses (1.15s) to prevent rapid brake/launch twitching
+            bubbleExcitedUntilRef.current = Math.max(
+              bubbleExcitedUntilRef.current,
+              nowPerf + 1150
+            );
           }
 
+          const isRoomExcited = nowPerf < bubbleExcitedUntilRef.current;
+          const effectiveTargetDrive = isRoomExcited ? Math.max(0.55, targetDrive) : 0;
+          const driveBlend = Math.min(1, (effectiveTargetDrive > smoothedBubbleDriveRef.current ? 10 : 3.2) * dtSec);
+          smoothedBubbleDriveRef.current +=
+            (effectiveTargetDrive - smoothedBubbleDriveRef.current) * driveBlend;
+          const activeDrive = isRoomExcited ? Math.max(0.48, smoothedBubbleDriveRef.current) : 0;
+
           let movingCount = 0;
+          const bouncingFlags = new Uint8Array(balls.length);
 
           for (let i = 0; i < balls.length; i++) {
             const b = balls[i];
             const spec = HAMSTER_BALL_SPECS[i];
-            const minX = spec.r + 12;
-            const maxX = 1200 - spec.r - 12;
-            const minY = spec.r + 14;
-            const maxY = 496 - spec.r;
-            const floorZoneTop = 258 + spec.r * 0.35;
+            const minX = spec.r + 14;
+            const maxX = 1200 - spec.r - 14;
+            const minY = spec.r + 16;
+            const maxY = 494 - spec.r;
+            const floorBounceY = Math.min(maxY, spec.homeY);
 
-            if (dbDrive > 0) {
-              // Target speed scales immediately with classroom dB
-              const speedVar = 0.88 + ((i * 19) % 7) * 0.045;
-              const targetSpeed = (340 * dbDrive + 165 * dbDrive * dbDrive) * speedVar;
+            const isFreeBouncing = nowPerf < (b.freeBounceUntil || 0);
+            const isBouncing = isRoomExcited || isFreeBouncing;
+            bouncingFlags[i] = isBouncing ? 1 : 0;
 
-              // Gently curve the bubble's flight angle like real air-Current bubbles
-              const swirl =
-                Math.sin(nowPerf * 0.0022 + i * 1.71) * 1.35 +
-                Math.cos(nowPerf * 0.0017 + i * 2.33) * 1.15;
-              b.driftAngle += swirl * (0.85 + dbDrive * 0.9) * dtSec;
+            // Recover squash-and-stretch smoothly toward 0
+            b.squash = (b.squash || 0) * Math.pow(0.0008, dtSec);
+            if (Math.abs(b.squash) < 0.002) b.squash = 0;
 
+            if (isBouncing) {
+              const drive = isFreeBouncing ? Math.max(0.95, activeDrive) : activeDrive;
+              const speedScale = 0.86 + ((i * 19) % 9) * 0.04;
+
+              // If starting from near-rest, launch upward immediately with a bouncy pop!
               const curSpeed = Math.hypot(b.vx, b.vy);
-              if (curSpeed < 18) {
-                // Instant launch from rest with upward buoyant lift
-                const launchAngle = -Math.PI * (0.18 + ((i * 23) % 13) * 0.05);
-                b.driftAngle = launchAngle;
-                b.vx = Math.cos(launchAngle) * targetSpeed * 0.85;
-                b.vy = Math.sin(launchAngle) * targetSpeed * 0.85 - 95 * dbDrive;
-              } else {
-                // Blend current velocity vector smoothly with swirling target speed without fighting collisions
-                const velAngle = Math.atan2(b.vy, b.vx);
-                const turnedAngle = velAngle + swirl * 0.55 * dtSec;
-                const desiredSpeed = Math.max(targetSpeed, curSpeed * Math.pow(0.55, dtSec));
-                const accel = Math.min(1, (6.5 + dbDrive * 6.0) * dtSec);
-                b.vx += (Math.cos(turnedAngle) * desiredSpeed - b.vx) * accel;
-                b.vy += (Math.sin(turnedAngle) * desiredSpeed - b.vy) * accel;
+              if (curSpeed < 65 && b.y >= spec.homeY - 24) {
+                const dirSign = (i % 2 === 0 ? 1 : -1) * (0.75 + ((i * 13) % 7) * 0.09);
+                b.vx = dirSign * (210 + drive * 185) * speedScale;
+                b.vy = -(440 + ((i * 41) % 210) + drive * 250) * speedScale;
+                b.squash = -0.14;
               }
 
-              // Upward buoyancy when noisy so bubbles lift off the floor and fill the whole stage
-              if (b.y > 330) {
-                b.vy -= (185 + 240 * dbDrive) * dtSec;
-              } else if (dbDrive < 0.38 && b.y < 190) {
-                // At very low noise ("move a bit"), keep bubbles floating in the lower-mid region
-                b.vy += (190 - b.y) * 1.8 * dtSec;
+              // Bouncy arcade gravity pulls bubbles in high, graceful parabolic arcs
+              const gravity = (580 + drive * 180) * speedScale;
+              b.vy += gravity * dtSec;
+
+              // Keep lively horizontal velocity so bubbles bounce all across the stage
+              const minHoriz = (135 + drive * 150) * speedScale;
+              if (Math.abs(b.vx) < minHoriz) {
+                const hSign = b.vx === 0 ? (i % 2 === 0 ? 1 : -1) : Math.sign(b.vx);
+                b.vx += (hSign * minHoriz - b.vx) * Math.min(1, 4.0 * dtSec);
+              }
+
+              // Gentle air-current swirl in mid-air
+              const airSwirl = Math.sin(nowPerf * 0.0025 + i * 1.63) * 85 * drive;
+              b.vx += airSwirl * dtSec;
+
+              // Cap maximum velocity smoothly
+              const maxVel = 620 + drive * 420;
+              const newSpeed = Math.hypot(b.vx, b.vy);
+              if (newSpeed > maxVel) {
+                const s = maxVel / newSpeed;
+                b.vx *= s;
+                b.vy *= s;
               }
 
               b.x += b.vx * dtSec;
               b.y += b.vy * dtSec;
 
-              // Update resting height organically within the bottom floor band
-              b.restY = Math.max(floorZoneTop, Math.min(maxY, 310 + ((i * 37) % 165)));
-
-              // Playful rotation synced to horizontal speed
-              b.vRot += (b.vx * 0.11 - b.rot * 2.8) * dtSec;
-              b.vRot *= 0.94;
-              b.rot = Math.max(-28, Math.min(28, b.rot + b.vRot * dtSec));
-
-              // Crisp elastic wall rebounds
-              if (b.x < minX) {
-                b.x = minX;
-                b.vx = Math.abs(b.vx) * 0.92;
-                b.driftAngle = Math.atan2(b.vy, b.vx);
-              } else if (b.x > maxX) {
-                b.x = maxX;
-                b.vx = -Math.abs(b.vx) * 0.92;
-                b.driftAngle = Math.atan2(b.vy, b.vx);
-              }
-              if (b.y < minY) {
+              // Super-bouncy trampoline floor rebound!
+              if (b.y >= floorBounceY) {
+                b.y = floorBounceY;
+                const minBounceVy = (430 + ((i * 31) % 210) + drive * 260) * speedScale;
+                b.vy = -Math.max(minBounceVy, Math.abs(b.vy) * 0.95);
+                b.vx += Math.sin(nowPerf * 0.005 + i * 2.1) * 42;
+                b.squash = 0.16;
+              } else if (b.y <= minY) {
+                // High-elasticity ceiling bounce
                 b.y = minY;
-                b.vy = Math.abs(b.vy) * 0.92;
-                b.driftAngle = Math.atan2(b.vy, b.vx);
-              } else if (b.y > maxY) {
-                b.y = maxY;
-                b.vy = -Math.abs(b.vy) * 0.92;
-                b.driftAngle = Math.atan2(b.vy, b.vx);
+                b.vy = Math.max(180, Math.abs(b.vy) * 0.93);
+                b.squash = -0.13;
               }
+
+              // High-elasticity left & right wall bounces
+              if (b.x <= minX) {
+                b.x = minX;
+                b.vx = Math.max(160, Math.abs(b.vx) * 0.95);
+                b.squash = -0.14;
+              } else if (b.x >= maxX) {
+                b.x = maxX;
+                b.vx = -Math.max(160, Math.abs(b.vx) * 0.95);
+                b.squash = -0.14;
+              }
+
+              // Playful rotation synced to horizontal bounce
+              b.vRot += (b.vx * 0.09 - b.rot * 2.4) * dtSec;
+              b.vRot *= Math.pow(0.28, dtSec);
+              b.rot = Math.max(-26, Math.min(26, b.rot + b.vRot * dtSec));
 
               movingCount += 1;
             } else {
-              // Quiet: Smooth anti-clumping floor settling into the bottom zone
-              const dragX = Math.pow(0.05, dtSec);
-              b.vx *= dragX;
+              // Quiet Settling Mode: fall with gravity, bounce softly on homeY, and glide smoothly to homeX/homeY
+              const distToHome = Math.hypot(spec.homeX - b.x, spec.homeY - b.y);
+              const curSpeed = Math.hypot(b.vx, b.vy);
 
-              if (b.y < floorZoneTop) {
-                // Float smoothly downward from upper screen into the bottom floor zone
-                b.vy += 360 * dtSec;
-                b.vy *= Math.pow(0.18, dtSec);
-              } else if (b.y < b.restY - 2) {
-                const dy = b.restY - b.y;
-                b.vy = (b.vy + dy * 5.8 * dtSec) * Math.pow(0.06, dtSec);
-              } else {
-                b.restY = Math.max(floorZoneTop, Math.min(maxY, b.y));
-                b.vy *= Math.pow(0.03, dtSec);
-              }
-
-              b.x += b.vx * dtSec;
-              b.y += b.vy * dtSec;
-
-              if (b.x < minX) {
-                b.x = minX;
-                b.vx = Math.abs(b.vx) * 0.5;
-              } else if (b.x > maxX) {
-                b.x = maxX;
-                b.vx = -Math.abs(b.vx) * 0.5;
-              }
-              if (b.y < minY) {
-                b.y = minY;
-                b.vy = Math.abs(b.vy) * 0.5;
-              } else if (b.y > maxY) {
-                b.y = maxY;
-                b.vy = 0;
-              }
-
-              b.rot *= Math.pow(0.02, dtSec);
-              b.vRot *= Math.pow(0.02, dtSec);
-
-              if (Math.hypot(b.vx, b.vy) < 2.2 && b.y >= floorZoneTop - 4) {
+              if (distToHome <= 1.0 && curSpeed <= 10 && Math.abs(b.rot) <= 0.4) {
+                // Locked cleanly at home position — 0 twitching!
+                b.x = spec.homeX;
+                b.y = spec.homeY;
                 b.vx = 0;
                 b.vy = 0;
+                b.rot = 0;
                 b.vRot = 0;
-                if (Math.abs(b.rot) < 0.25) b.rot = 0;
-              } else if (Math.hypot(b.vx, b.vy) > 22) {
-                movingCount += 1;
-              }
-            }
-          }
+                b.squash = 0;
+              } else {
+                const dx = spec.homeX - b.x;
+                const dy = spec.homeY - b.y;
 
-          // Pairwise Elastic Sphere-to-Sphere Collision & Anti-Clumping Horizontal Distribution (2 solver passes)
-          const restitution = dbDrive > 0 ? 0.86 : 0.25;
-          for (let pass = 0; pass < 2; pass++) {
-            for (let i = 0; i < balls.length; i++) {
-              const b1 = balls[i];
-              const r1 = HAMSTER_BALL_SPECS[i].r;
-              for (let j = i + 1; j < balls.length; j++) {
-                const b2 = balls[j];
-                const r2 = HAMSTER_BALL_SPECS[j].r;
-                const dx = b2.x - b1.x;
-                const dy = b2.y - b1.y;
-                const distSq = dx * dx + dy * dy;
-                const minSep = (r1 + r2) * 0.94;
+                // Smooth horizontal spring-glide toward homeX
+                b.vx += dx * 10.5 * dtSec;
+                b.vx *= Math.pow(0.025, dtSec);
 
-                if (distSq < minSep * minSep) {
-                  const dist = Math.sqrt(Math.max(0.01, distSq));
-                  const nx = dx / dist;
-                  const ny = dy / dist;
-                  const overlap = minSep - dist;
+                if (b.y < spec.homeY - 3) {
+                  // Falling toward homeY with gravity so landing feels bouncy and natural
+                  b.vy += 620 * dtSec;
+                  b.vy *= Math.pow(0.45, dtSec);
+                } else {
+                  b.vy += dy * 12.0 * dtSec;
+                  b.vy *= Math.pow(0.02, dtSec);
+                }
 
-                  // Immediate positional separation weighted by inverse radius so spheres NEVER clump or stack
-                  const totalR = r1 + r2;
-                  const w1 = r2 / totalR;
-                  const w2 = r1 / totalR;
-                  b1.x -= nx * overlap * w1;
-                  b1.y -= ny * overlap * w1;
-                  b2.x += nx * overlap * w2;
-                  b2.y += ny * overlap * w2;
+                b.x += b.vx * dtSec;
+                b.y += b.vy * dtSec;
 
-                  // Clamp back inside stage walls
-                  b1.x = Math.max(r1 + 12, Math.min(1200 - r1 - 12, b1.x));
-                  b1.y = Math.max(r1 + 14, Math.min(496 - r1, b1.y));
-                  b2.x = Math.max(r2 + 12, Math.min(1200 - r2 - 12, b2.x));
-                  b2.y = Math.max(r2 + 14, Math.min(496 - r2, b2.y));
+                // Soft elastic landing bounce when touching homeY from above
+                if (b.y >= spec.homeY && b.vy > 75) {
+                  b.y = spec.homeY;
+                  b.vy = -b.vy * 0.46;
+                  b.squash = Math.min(0.13, Math.abs(b.vy) / 1400);
+                } else if (b.y > spec.homeY && Math.abs(b.vy) <= 75) {
+                  b.y += (spec.homeY - b.y) * Math.min(1, 14 * dtSec);
+                }
 
-                  // Elastic impulse bounce on pass 0
-                  if (pass === 0) {
-                    const rvx = b2.vx - b1.vx;
-                    const rvy = b2.vy - b1.vy;
-                    const velAlongNormal = rvx * nx + rvy * ny;
-                    if (velAlongNormal < 0) {
-                      const impulse = -(1 + restitution) * velAlongNormal * 0.5;
-                      b1.vx -= impulse * nx;
-                      b1.vy -= impulse * ny;
-                      b2.vx += impulse * nx;
-                      b2.vy += impulse * ny;
-                    }
-                  }
-                } else if (pass === 0 && dbDrive === 0 && movingCount > 0) {
-                  // Anti-clumping horizontal spreading force while settling on the floor
-                  const spreadDist = (r1 + r2) * 1.26;
-                  if (distSq < spreadDist * spreadDist && Math.abs(dy) < (r1 + r2) * 0.9) {
-                    const horizSign = dx >= 0 ? 1 : -1;
-                    const push = (1 - Math.sqrt(distSq) / spreadDist) * 110 * dtSec;
-                    b1.vx -= horizSign * push;
-                    b2.vx += horizSign * push;
-                  }
+                b.x = Math.max(minX, Math.min(maxX, b.x));
+                b.y = Math.max(minY, Math.min(maxY, b.y));
+
+                b.rot *= Math.pow(0.015, dtSec);
+                b.vRot *= Math.pow(0.015, dtSec);
+
+                if (distToHome > 6 || curSpeed > 28) {
+                  movingCount += 1;
                 }
               }
             }
           }
 
-          // Direct 60fps DOM Transform Updates (Zero React Re-Render Lag!)
+          // Same-zLayer Elastic Mid-Air Sphere-to-Sphere Bounces (Only for actively bouncing balls!)
+          // Restricting to same zLayer (~11 balls per depth plane) + soft positional separation (0.32)
+          // gives crisp mid-air ball bounces with ZERO dense-pile twitching!
+          for (let i = 0; i < balls.length; i++) {
+            if (!bouncingFlags[i]) continue;
+            const b1 = balls[i];
+            const spec1 = HAMSTER_BALL_SPECS[i];
+            const r1 = spec1.r;
+            for (let j = i + 1; j < balls.length; j++) {
+              if (!bouncingFlags[j]) continue;
+              const spec2 = HAMSTER_BALL_SPECS[j];
+              if (spec1.zLayer !== spec2.zLayer) continue;
+
+              const b2 = balls[j];
+              const r2 = spec2.r;
+              const dx = b2.x - b1.x;
+              const dy = b2.y - b1.y;
+              const distSq = dx * dx + dy * dy;
+              const minSep = (r1 + r2) * 0.92;
+
+              if (distSq < minSep * minSep) {
+                const dist = Math.sqrt(Math.max(0.01, distSq));
+                const nx = dx / dist;
+                const ny = dy / dist;
+                const overlap = minSep - dist;
+
+                // Soft spring positional separation (0.32 factor prevents multi-body teleport jitter)
+                const totalR = r1 + r2;
+                const w1 = (r2 / totalR) * 0.32;
+                const w2 = (r1 / totalR) * 0.32;
+                b1.x -= nx * overlap * w1;
+                b1.y -= ny * overlap * w1;
+                b2.x += nx * overlap * w2;
+                b2.y += ny * overlap * w2;
+
+                const rvx = b2.vx - b1.vx;
+                const rvy = b2.vy - b1.vy;
+                const velAlongNormal = rvx * nx + rvy * ny;
+                if (velAlongNormal < 0) {
+                  const restitution = 0.94;
+                  const impulse = -(1 + restitution) * velAlongNormal * 0.5;
+                  b1.vx -= impulse * nx;
+                  b1.vy -= impulse * ny;
+                  b2.vx += impulse * nx;
+                  b2.vy += impulse * ny;
+                  b1.squash = 0.11;
+                  b2.squash = 0.11;
+                }
+              }
+            }
+          }
+
+          // Direct 60fps DOM Transform Updates with Squash-and-Stretch
           for (let i = 0; i < balls.length; i++) {
             const b = balls[i];
             const spec = HAMSTER_BALL_SPECS[i];
             const groupEl = bubbleGroupRefs.current[i];
             if (groupEl) {
-              groupEl.setAttribute(
-                'transform',
-                `translate(${b.x.toFixed(1)}, ${b.y.toFixed(1)}) rotate(${b.rot.toFixed(1)})`
-              );
+              const sq = b.squash || 0;
+              if (Math.abs(sq) > 0.003) {
+                const sx = (1 + sq).toFixed(3);
+                const sy = (1 - sq * 0.85).toFixed(3);
+                groupEl.setAttribute(
+                  'transform',
+                  `translate(${b.x.toFixed(1)}, ${b.y.toFixed(1)}) rotate(${b.rot.toFixed(1)}) scale(${sx}, ${sy})`
+                );
+              } else {
+                groupEl.setAttribute(
+                  'transform',
+                  `translate(${b.x.toFixed(1)}, ${b.y.toFixed(1)}) rotate(${b.rot.toFixed(1)})`
+                );
+              }
             }
             const shadowEl = bubbleShadowRefs.current[i];
             if (shadowEl) {
-              const baseRestY = b.restY ?? spec.homeY;
+              const baseRestY = spec.homeY;
               const lift = Math.max(0, baseRestY - b.y);
-              const shadowScale = Math.max(0.28, 1 - lift / 360);
+              const shadowScale = Math.max(0.25, 1 - lift / 340);
               const shadowY = Math.min(504, Math.max(b.y, baseRestY) + spec.r * 0.92);
               shadowEl.setAttribute('cx', b.x.toFixed(1));
               shadowEl.setAttribute('cy', shadowY.toFixed(1));
@@ -1788,10 +1904,10 @@ export function SleepingHamster({
             }
           }
 
-          // Only trigger React state update when calm/flying state transitions or when settling completes
+          // Only trigger React state update when calm/flying state transitions
           const wasFlying = bubblesFlyingCountRef.current > 0;
           const isFlying = movingCount > 0;
-          if (wasFlying !== isFlying || (wasFlying && !isFlying)) {
+          if (wasFlying !== isFlying) {
             bubblesFlyingCountRef.current = movingCount;
             setBubblesFlyingCount(movingCount);
             setHamsterBallsState(balls.map((item) => ({ ...item })));
@@ -1987,6 +2103,8 @@ export function SleepingHamster({
     const resetList = createInitialHamsterBallsState();
     hamsterBallsPhysicsRef.current = resetList;
     bubblesFlyingCountRef.current = 0;
+    bubbleExcitedUntilRef.current = 0;
+    smoothedBubbleDriveRef.current = 0;
     setHamsterBallsState(resetList);
     setBubblesFlyingCount(0);
   }, []);
@@ -1994,11 +2112,30 @@ export function SleepingHamster({
   const handleClickHamsterBubble = useCallback(
     (ballId: number) => {
       if (!hasStarted) return;
-      const target = hamsterBallsPhysicsRef.current.find((b) => b.id === ballId);
+      const nowPerf = performance.now();
+      const balls = hamsterBallsPhysicsRef.current;
+      const target = balls.find((b) => b.id === ballId);
       if (target) {
-        target.vy = -380 - Math.random() * 90;
-        target.vx = (Math.random() - 0.5) * 260;
-        target.vRot = (Math.random() - 0.5) * 140;
+        target.vy = -560 - Math.random() * 140;
+        target.vx = (Math.random() - 0.5) * 440;
+        target.vRot = (Math.random() - 0.5) * 180;
+        target.freeBounceUntil = nowPerf + 4500;
+        target.squash = -0.16;
+
+        // Also give nearby bubbles a joyful sympathetic bounce!
+        for (let i = 0; i < balls.length; i++) {
+          const other = balls[i];
+          if (other.id === ballId) continue;
+          const dist = Math.hypot(other.x - target.x, other.y - target.y);
+          if (dist < 175) {
+            const pushDir = other.x >= target.x ? 1 : -1;
+            other.vy = -420 - Math.random() * 160;
+            other.vx = pushDir * (160 + Math.random() * 180);
+            other.freeBounceUntil = Math.max(other.freeBounceUntil || 0, nowPerf + 3200);
+            other.squash = -0.12;
+          }
+        }
+
         bubblesFlyingCountRef.current = Math.max(1, bubblesFlyingCountRef.current);
         setBubblesFlyingCount(bubblesFlyingCountRef.current);
       }
@@ -2029,9 +2166,6 @@ export function SleepingHamster({
       setCageCount(3);
       setCageQuietSeconds(0);
       resetHamsterBallsPositions();
-      if (gameModeRef.current === 'bubbles') {
-        setNoiseAlert('shush');
-      }
       setSleepState('DEEP_SLEEP');
       setSustainedEnergy(8);
       setTimerMode('up');
@@ -2095,7 +2229,6 @@ export function SleepingHamster({
       setCageCount(3);
     }
     if (mode === 'bubbles') {
-      setNoiseAlert('shush');
       resetHamsterBallsPositions();
     }
   };
@@ -2163,7 +2296,22 @@ export function SleepingHamster({
     }
   };
 
+  const ensureAudioContextReady = () => {
+    try {
+      const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+        audioCtxRef.current = new Ctx();
+      }
+      if (audioCtxRef.current.state === 'suspended') {
+        audioCtxRef.current.resume().catch(() => {});
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   const handleMusicButtonClick = (trackId: number) => {
+    ensureAudioContextReady();
     if (activeMusicTrack === trackId) {
       setActiveMusicTrack(null);
       return;
@@ -2177,6 +2325,7 @@ export function SleepingHamster({
 
   const handleConfirmMusicMicChoice = (turnOffMic: boolean) => {
     if (pendingMusicTrack === null) return;
+    ensureAudioContextReady();
     if (turnOffMic) {
       setMicMutedState(true);
     }
@@ -2972,14 +3121,16 @@ export function SleepingHamster({
                   {/* 2. Soft Contact Shadows on the Ground Plane beneath all 44 Hamster Balls */}
                   <g>
                     {HAMSTER_BALL_SPECS.map((spec, idx) => {
-                      const bState = hamsterBallsState[idx] || {
-                        x: spec.homeX,
-                        y: spec.homeY,
-                        restY: spec.homeY,
-                      };
-                      const baseRestY = bState.restY ?? spec.homeY;
+                      const bState =
+                        hamsterBallsPhysicsRef.current[idx] ||
+                        hamsterBallsState[idx] || {
+                          x: spec.homeX,
+                          y: spec.homeY,
+                          restY: spec.homeY,
+                        };
+                      const baseRestY = spec.homeY;
                       const lift = Math.max(0, baseRestY - bState.y);
-                      const shadowScale = Math.max(0.28, 1 - lift / 360);
+                      const shadowScale = Math.max(0.25, 1 - lift / 340);
                       const shadowY = Math.min(504, Math.max(bState.y, baseRestY) + spec.r * 0.92);
                       return (
                         <ellipse
@@ -3004,17 +3155,21 @@ export function SleepingHamster({
                       .map((spec, idx) => ({
                         spec,
                         idx,
-                        bState: hamsterBallsState[idx] || {
-                          id: spec.id,
-                          x: spec.homeX,
-                          y: spec.homeY,
-                          vx: 0,
-                          vy: 0,
-                          rot: 0,
-                          vRot: 0,
-                          restY: spec.homeY,
-                          driftAngle: 0,
-                        },
+                        bState:
+                          hamsterBallsPhysicsRef.current[idx] ||
+                          hamsterBallsState[idx] || {
+                            id: spec.id,
+                            x: spec.homeX,
+                            y: spec.homeY,
+                            vx: 0,
+                            vy: 0,
+                            rot: 0,
+                            vRot: 0,
+                            restY: spec.homeY,
+                            driftAngle: 0,
+                            freeBounceUntil: 0,
+                            squash: 0,
+                          },
                       }))
                       .sort((a, b) => a.spec.zLayer - b.spec.zLayer)
                       .map(({ spec, idx, bState }) => {
@@ -3034,6 +3189,11 @@ export function SleepingHamster({
                             ? 'surprised'
                             : 'wave'
                           : spec.pose;
+                        const sq = bState.squash || 0;
+                        const transformStr =
+                          Math.abs(sq) > 0.003
+                            ? `translate(${bState.x.toFixed(1)}, ${bState.y.toFixed(1)}) rotate(${bState.rot.toFixed(1)}) scale(${(1 + sq).toFixed(3)}, ${(1 - sq * 0.85).toFixed(3)})`
+                            : `translate(${bState.x.toFixed(1)}, ${bState.y.toFixed(1)}) rotate(${bState.rot.toFixed(1)})`;
 
                         return (
                           <g
@@ -3041,7 +3201,7 @@ export function SleepingHamster({
                             ref={(el) => {
                               bubbleGroupRefs.current[idx] = el;
                             }}
-                            transform={`translate(${bState.x.toFixed(1)}, ${bState.y.toFixed(1)}) rotate(${bState.rot.toFixed(1)})`}
+                            transform={transformStr}
                             onClick={() => handleClickHamsterBubble(spec.id)}
                             className="cursor-pointer"
                           >
@@ -5699,7 +5859,11 @@ export function SleepingHamster({
         const track = MUSIC_TRACKS.find((t) => t.id === activeMusicTrack);
         if (!track) return null;
         const startParam = track.startSeconds ? `&start=${track.startSeconds}` : '';
-        const embedUrl = `https://www.youtube.com/embed/${track.videoId}?enablejsapi=1&autoplay=1&loop=1&playlist=${track.videoId}${startParam}&controls=0&disablekb=1&fs=0&playsinline=1`;
+        const originParam =
+          typeof window !== 'undefined' && window.location?.origin
+            ? `&origin=${encodeURIComponent(window.location.origin)}`
+            : '';
+        const embedUrl = `https://www.youtube.com/embed/${track.videoId}?enablejsapi=1&autoplay=1&loop=1&playlist=${track.videoId}${startParam}${originParam}&controls=0&disablekb=1&fs=0&playsinline=1`;
         return (
           <div
             aria-hidden="true"
@@ -5710,8 +5874,8 @@ export function SleepingHamster({
               width: 320,
               height: 240,
               pointerEvents: 'none',
-              opacity: 0.001,
-              zIndex: -999,
+              opacity: 0.002,
+              zIndex: 10,
             }}
           >
             <iframe
@@ -5721,18 +5885,10 @@ export function SleepingHamster({
               width="320"
               height="240"
               src={embedUrl}
-              allow="autoplay; encrypted-media"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerPolicy="strict-origin-when-cross-origin"
               style={{ border: 0 }}
-              onLoad={() => {
-                try {
-                  musicIframeRef.current?.contentWindow?.postMessage(
-                    JSON.stringify({ event: 'command', func: 'playVideo', args: [] }),
-                    '*'
-                  );
-                } catch {
-                  // ignore cross-origin postMessage errors
-                }
-              }}
+              onLoad={sendYouTubePlayCommands}
             />
           </div>
         );

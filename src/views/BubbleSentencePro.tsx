@@ -12,6 +12,9 @@ import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput } from "../
 import { AnswerContentMode, formatOptionContent, parseOptionContent } from "../utils/mediaAndPresets";
 import { fetchAllAvailableFolders, mergeAllFolders } from "../lib/gameStore";
 import { persistUserGameToCloudAndCache } from "../utils/platformCache";
+import { MysteryBox3DLobby, BoxDifficultyMode, ArenaThemeId } from "../components/MysteryBox3DLobby";
+import { GameModeModal } from "../components/GameModeModal";
+import bubbleIslandHamsterHeader from "../assets/images/bubble_island_hamster_header_1795460011352.jpg";
 
 type GameScreen = 'editor' | 'setup' | 'loading' | 'game' | 'study';
 
@@ -48,7 +51,23 @@ export interface GameData {
 export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange: (view: ViewState, data?: any) => void, initialGame?: any }) {
   const { user } = useAuth();
   const [screen, setScreen] = useState<GameScreen>(initialGame && !initialGame.editMode ? 'setup' : 'editor');
-  const [selectedTheme, setSelectedTheme] = useState('theme-sky');
+  const [selectedTheme, setSelectedTheme] = useState<ArenaThemeId>('theme-sky');
+  const [numPlayers, setNumPlayers] = useState<number>(2);
+  const [playerNames, setPlayerNames] = useState<string[]>([
+    'Team 1',
+    'Team 2',
+    'Team 3',
+    'Team 4',
+    'Team 5',
+    'Team 6',
+    'Team 7',
+    'Team 8',
+  ]);
+  const [difficulty, setDifficulty] = useState<BoxDifficultyMode>('medium');
+  const [answerBonusPoints, setAnswerBonusPoints] = useState<boolean>(true);
+  const [wrongAnswerPenalty, setWrongAnswerPenalty] = useState<boolean>(true);
+  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [showModeModal, setShowModeModal] = useState<boolean>(false);
   const [studyIndex, setStudyIndex] = useState(0);
   const [folders, setFolders] = useState<{ id: string; name: string }[]>([]);
   const [activeGame, setActiveGame] = useState<GameData>(() => {
@@ -87,6 +106,29 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
+  const buildIframeLoadPayload = () => {
+    const payloadItems = activeGame.mode === 'multiple-choice'
+      ? (activeGame.questions && activeGame.questions.length > 0 ? activeGame.questions : activeGame.sentences)
+      : activeGame.sentences;
+    const teams = Array.from({ length: numPlayers }).map((_, idx) => ({
+      id: idx + 1,
+      name: (playerNames[idx] || (numPlayers === 1 ? 'Player 1' : `Team ${idx + 1}`)).trim(),
+    }));
+    return {
+      ...activeGame,
+      sentences: payloadItems,
+      customSentences: payloadItems,
+      customQuestions: activeGame.questions || [],
+      theme: selectedTheme,
+      teams,
+      difficulty,
+      answerBonusPoints,
+      wrongAnswerPenalty,
+      isMuted,
+      autoStart: true,
+    };
+  };
+
   useEffect(() => {
     const handleMessage = (e: MessageEvent) => {
       if (!e.data) return;
@@ -94,25 +136,16 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
         setScreen('setup');
       } else if (e.data.type === 'IFRAME_READY') {
         if (iframeRef.current?.contentWindow) {
-            const payloadItems = activeGame.mode === 'multiple-choice'
-              ? (activeGame.questions && activeGame.questions.length > 0 ? activeGame.questions : activeGame.sentences)
-              : activeGame.sentences;
-            iframeRef.current.contentWindow.postMessage({
-                type: 'LOAD_GAME',
-                data: { 
-                  ...activeGame, 
-                  sentences: payloadItems,
-                  customSentences: payloadItems,
-                  customQuestions: activeGame.questions || [],
-                  theme: selectedTheme 
-                }
-            }, '*');
+          iframeRef.current.contentWindow.postMessage({
+            type: 'LOAD_GAME',
+            data: buildIframeLoadPayload(),
+          }, '*');
         }
       }
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [activeGame, selectedTheme]);
+  }, [activeGame, selectedTheme, numPlayers, playerNames, difficulty, answerBonusPoints, wrongAnswerPenalty, isMuted]);
 
   useEffect(() => {
     setFolders(mergeAllFolders());
@@ -165,17 +198,22 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
     setScreen('game');
   };
 
+  const totalQuestionCount =
+    activeGame.mode === 'multiple-choice'
+      ? (activeGame.questions?.length || 0)
+      : (activeGame.sentences?.length || 0);
+
   return (
     <div id="game-container" className="w-full h-full flex flex-col relative bg-slate-50 dark:bg-slate-900 overflow-hidden -mx-4 md:-mx-8 -my-4 md:-my-8">
       
-      {screen !== 'game' && (
+      {screen !== 'game' && screen !== 'setup' && (
         <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
             <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-500/20 rounded-full blur-[100px]"></div>
             <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-cyan-500/20 rounded-full blur-[100px]"></div>
         </div>
       )}
 
-      {screen !== 'game' && (
+      {screen === 'editor' && (
         <div className="p-6 flex items-center justify-between z-10 relative">
             <div className="flex items-center gap-2.5">
               <button 
@@ -186,10 +224,10 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
                   <span>Back</span>
               </button>
               <button 
-                  onClick={() => setScreen(screen === 'editor' ? 'setup' : 'editor')}
+                  onClick={() => setScreen('setup')}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white/40 dark:bg-slate-800/40 backdrop-blur-md border border-white/20 dark:border-white/10 shadow-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-white/60 dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
               >
-                  {screen === 'editor' ? 'Play Mode' : 'Edit Game'}
+                  Play Mode
               </button>
             </div>
             <button 
@@ -212,98 +250,61 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
       )}
 
       {screen === 'setup' && (
-        <div className={`absolute inset-0 z-40 flex flex-col items-center justify-center p-8 overflow-hidden transition-colors duration-1000 ${selectedTheme === "theme-ocean" ? "bg-gradient-to-b from-sky-600 to-cyan-600 dark:from-sky-800 dark:to-cyan-900" : selectedTheme === "theme-space" ? "bg-gradient-to-b from-slate-900 to-indigo-950" : selectedTheme === "theme-jungle" ? "bg-gradient-to-b from-green-600 to-emerald-400 dark:from-green-900 dark:to-emerald-800" : selectedTheme === "theme-sunset" ? "bg-gradient-to-b from-orange-400 to-yellow-300 dark:from-orange-800 dark:to-yellow-700" : "bg-gradient-to-b from-sky-400 to-blue-200 dark:from-sky-900 dark:to-blue-950"}`}>
-            {/* Immersive Background Elements */}
-            <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
-                <div className="absolute top-10 left-10 w-32 h-32 bg-white/20 rounded-full blur-3xl"></div>
-                <div className="absolute bottom-20 right-20 w-48 h-48 bg-blue-300/30 rounded-full blur-3xl"></div>
-                {/* Clouds */}
-                <div className="absolute top-20 left-[10%] opacity-80 animate-float" style={{ animationDelay: '0s' }}>
-                    <div className="w-24 h-8 bg-white rounded-full absolute top-4 left-4"></div>
-                    <div className="w-16 h-16 bg-white rounded-full absolute top-0 left-8"></div>
-                    <div className="w-12 h-12 bg-white rounded-full absolute top-2 left-2"></div>
-                </div>
-                <div className="absolute top-40 right-[15%] opacity-60 animate-float" style={{ animationDelay: '2s' }}>
-                    <div className="w-32 h-10 bg-white rounded-full absolute top-6 left-6"></div>
-                    <div className="w-20 h-20 bg-white rounded-full absolute top-0 left-10"></div>
-                </div>
-                {/* Floating Bubbles */}
-                {Array.from({ length: 15 }).map((_, i) => (
-                    <div 
-                        key={i} 
-                        className="absolute rounded-full border border-white/40 bg-gradient-to-tr from-white/10 to-white/30 backdrop-blur-[2px] shadow-[inset_0_0_10px_rgba(255,255,255,0.5)] animate-float-up"
-                        style={{
-                            width: `${Math.random() * 40 + 20}px`,
-                            height: `${Math.random() * 40 + 20}px`,
-                            left: `${Math.random() * 100}%`,
-                            bottom: `-${Math.random() * 20 + 10}%`,
-                            animationDuration: `${Math.random() * 10 + 10}s`,
-                            animationDelay: `${Math.random() * 5}s`
-                        }}
-                    >
-                        <div className="absolute top-[15%] left-[20%] w-1/4 h-1/4 bg-white/60 rounded-full blur-[1px]"></div>
-                    </div>
-                ))}
-            </div>
+        <div className="absolute inset-0 z-40 overflow-y-auto">
+          <MysteryBox3DLobby
+            questionCount={totalQuestionCount}
+            numPlayers={numPlayers}
+            onSelectNumPlayers={(count) => setNumPlayers(count)}
+            playerNames={playerNames}
+            onChangePlayerName={(idx, value) => {
+              setPlayerNames((prev) => {
+                const next = [...prev];
+                next[idx] = value;
+                return next;
+              });
+            }}
+            difficulty={difficulty}
+            onSelectDifficulty={(mode) => setDifficulty(mode)}
+            answerBonusPoints={answerBonusPoints}
+            onToggleBonus={() => setAnswerBonusPoints((v) => !v)}
+            wrongAnswerPenalty={wrongAnswerPenalty}
+            onTogglePenalty={() => setWrongAnswerPenalty((v) => !v)}
+            isMuted={isMuted}
+            onToggleMute={() => setIsMuted((v) => !v)}
+            selectedTheme={selectedTheme}
+            onSelectTheme={(themeId) => setSelectedTheme(themeId)}
+            onStartGame={startGame}
+            onOpenStudy={() => {
+              setStudyIndex(0);
+              setScreen('study');
+            }}
+            onBack={() => onViewChange('home', { __stepBack: true })}
+            onOpenGameSwitcher={() => setShowModeModal(true)}
+            onOpenQuizEditor={() => setScreen('editor')}
+            headerBannerSrc={bubbleIslandHamsterHeader}
+            headerBannerAlt="Bubble Island - Cute Goggles Hamster Blowing Bubbles"
+            modeHeaderTitle="BUBBLE MODE"
+            startButtonText="START BUBBLE ISLAND"
+          />
 
-            <div className="relative z-10 flex flex-col items-center">
-                <h2 className="text-6xl sm:text-7xl font-black mb-12 text-transparent bg-clip-text bg-gradient-to-b from-white to-blue-100 drop-shadow-[0_4px_4px_rgba(0,0,0,0.1)] text-center tracking-tight" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.5)' }}>
-                    Bubble Island
-                </h2>
-                
-                <div className="flex flex-wrap gap-8 max-w-6xl w-full justify-center items-center flex-col sm:flex-row perspective-[1000px]">
-                    <button onClick={startGame} className="group relative w-full sm:w-80 h-[380px] rounded-[3rem] bg-white/20 dark:bg-slate-900/40 backdrop-blur-md border border-white/40 shadow-2xl overflow-hidden transition-all duration-500 hover:scale-105 hover:bg-white/30 hover:-translate-y-2 cursor-pointer flex flex-col items-center justify-center p-8">
-                        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/5 dark:to-black/20 pointer-events-none"></div>
-                        <div className="absolute -top-20 -right-20 w-40 h-40 bg-blue-400/30 rounded-full blur-2xl group-hover:bg-blue-400/50 transition-colors"></div>
-                        
-                        <div className="relative z-10 text-8xl mb-6 transform group-hover:scale-110 transition-transform duration-500 drop-shadow-xl" style={{ animation: 'bounce-idle 3s infinite ease-in-out' }}>
-                            🫧
-                        </div>
-                        <h3 className="relative z-10 text-3xl font-black text-white mb-2 drop-shadow-md">Play Game</h3>
-                        <p className="relative z-10 text-blue-50 font-medium text-center">Start popping bubbles!</p>
-                    </button>
-
-                    <div className="w-full sm:w-80 h-[380px] rounded-[3rem] bg-white/20 dark:bg-slate-900/40 backdrop-blur-md border border-white/40 shadow-2xl p-6 flex flex-col justify-center">
-                        <h3 className="text-2xl font-black text-white mb-4 text-center drop-shadow-md">Choose Theme</h3>
-                        <div className="grid grid-cols-2 gap-3">
-                            {[
-                                { id: 'theme-sky', name: 'Sky', icon: '☁️' },
-                                { id: 'theme-ocean', name: 'Ocean', icon: '🌊' },
-                                { id: 'theme-space', name: 'Space', icon: '🚀' },
-                                { id: 'theme-jungle', name: 'Jungle', icon: '🌴' },
-                                { id: 'theme-sunset', name: 'Sunset', icon: '🌅' }
-                            ].map(t => (
-                                <button
-                                    key={t.id}
-                                    onClick={() => setSelectedTheme(t.id)}
-                                    className={`py-2 px-1 rounded-xl flex flex-col items-center justify-center gap-1 transition-all shadow-sm font-bold text-sm ${selectedTheme === t.id ? 'bg-white text-blue-600 border-2 border-blue-400 scale-105' : 'bg-white/20 text-white border-2 border-transparent hover:bg-white/30'}`}
-                                >
-                                    <span className="text-2xl">{t.icon}</span>
-                                    {t.name}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                    
-                    <button onClick={() => setScreen('study')} className="group relative w-full sm:w-80 h-[380px] rounded-[3rem] bg-white/20 dark:bg-slate-900/40 backdrop-blur-md border border-white/40 shadow-2xl overflow-hidden transition-all duration-500 hover:scale-105 hover:bg-white/30 hover:-translate-y-2 cursor-pointer flex flex-col items-center justify-center p-8">
-                        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/5 dark:to-black/20 pointer-events-none"></div>
-                        <div className="absolute -top-20 -right-20 w-40 h-40 bg-purple-400/30 rounded-full blur-2xl group-hover:bg-purple-400/50 transition-colors"></div>
-                        
-                        <div className="relative z-10 text-8xl mb-6 transform group-hover:scale-110 transition-transform duration-500 drop-shadow-xl" style={{ animation: 'bounce-idle 3.5s infinite ease-in-out' }}>
-                            📖
-                        </div>
-                        <h3 className="relative z-10 text-3xl font-black text-white mb-2 drop-shadow-md">Study Mode</h3>
-                        <p className="relative z-10 text-purple-50 font-medium text-center">Review cards & answers!</p>
-                    </button>
-
-                </div>
-                </div>
-                
-                <div className="flex flex-wrap justify-center gap-4 mt-12 relative z-10">
-                  <button onClick={() => onViewChange('home', { __stepBack: true })} className="px-8 py-4 rounded-full bg-white/20 backdrop-blur-md shadow-lg hover:bg-white/30 text-xl font-bold text-white border border-white/40 cursor-pointer transition-all hover:scale-105 active:scale-95 flex items-center gap-2">
-                    <ArrowLeft size={24} /> Back
-                  </button>
-                </div>
+          <GameModeModal
+            isOpen={showModeModal}
+            onClose={() => setShowModeModal(false)}
+            gameData={{
+              ...initialGame,
+              id: activeGame.id,
+              name: activeGame.title || activeGame.topic || 'Bubble Island',
+              topic: activeGame.topic || activeGame.title || 'Bubble Island',
+              gameType: 'bubble-sentence-pro',
+              mode: activeGame.mode,
+              customQuestions: activeGame.questions || [],
+              customSentences: activeGame.sentences || [],
+            }}
+            onSelectMode={(targetView, gamePayload) => {
+              setShowModeModal(false);
+              onViewChange(targetView, gamePayload);
+            }}
+          />
         </div>
       )}
 
@@ -448,19 +449,10 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
                 title="Bubble Island"
                 onLoad={() => {
                   if (iframeRef.current?.contentWindow) {
-                      const payloadItems = activeGame.mode === 'multiple-choice'
-                        ? (activeGame.questions && activeGame.questions.length > 0 ? activeGame.questions : activeGame.sentences)
-                        : activeGame.sentences;
-                      iframeRef.current.contentWindow.postMessage({
-                          type: 'LOAD_GAME',
-                          data: { 
-                            ...activeGame, 
-                            sentences: payloadItems,
-                            customSentences: payloadItems,
-                            customQuestions: activeGame.questions || [],
-                            theme: selectedTheme 
-                          }
-                      }, '*');
+                    iframeRef.current.contentWindow.postMessage({
+                      type: 'LOAD_GAME',
+                      data: buildIframeLoadPayload(),
+                    }, '*');
                   }
                 }}
             />

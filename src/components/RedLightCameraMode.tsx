@@ -5,6 +5,11 @@ import {
     Sparkles, Skull, Check, ChevronRight, Settings, Sliders
 } from 'lucide-react';
 import { getPlayerNumber, playSquidGameYouTubeAudio, pauseSquidGameYouTubeAudio, stopSquidGameYouTubeAudio } from '../views/SquidGamePicker';
+import {
+    acquireMacSafeCameraStream,
+    waitForVideoReady,
+    formatMacFriendlyCameraError,
+} from '../utils/mediapipeHandsManager';
 
 interface RedLightCameraModeProps {
     students: string[];
@@ -163,6 +168,7 @@ export const RedLightCameraMode: React.FC<RedLightCameraModeProps> = ({
         try {
             if (streamRef.current) {
                 streamRef.current.getTracks().forEach(t => t.stop());
+                streamRef.current = null;
             }
             setCameraError(null);
 
@@ -174,35 +180,16 @@ export const RedLightCameraMode: React.FC<RedLightCameraModeProps> = ({
 
             let stream: MediaStream | null = null;
             try {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        facingMode: facing,
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    },
-                    audio: false
+                stream = await acquireMacSafeCameraStream({
+                    preferredWidth: 1280,
+                    preferredHeight: 720,
+                    facingMode: facing,
                 });
-            } catch (err1) {
-                try {
-                    stream = await navigator.mediaDevices.getUserMedia({
-                        video: { facingMode: facing },
-                        audio: false
-                    });
-                } catch (err2) {
-                    try {
-                        stream = await navigator.mediaDevices.getUserMedia({
-                            video: true,
-                            audio: false
-                        });
-                    } catch (fallbackErr: any) {
-                        console.warn("Camera init unavailable:", fallbackErr?.name || fallbackErr?.message);
-                        setHasCamera(false);
-                        setCameraError(fallbackErr?.name === 'NotAllowedError' 
-                            ? 'Camera access denied. Please click the camera icon in your browser URL bar to allow camera access.'
-                            : 'Could not access camera. You can still play with manual doll picking or simulated motion!');
-                        return;
-                    }
-                }
+            } catch (fallbackErr: any) {
+                console.warn("Camera init unavailable:", fallbackErr?.name || fallbackErr?.message);
+                setHasCamera(false);
+                setCameraError(formatMacFriendlyCameraError(fallbackErr, 'You can still play with manual doll picking or simulated motion!'));
+                return;
             }
 
             if (!stream) {
@@ -213,15 +200,13 @@ export const RedLightCameraMode: React.FC<RedLightCameraModeProps> = ({
             streamRef.current = stream;
             if (videoRef.current) {
                 videoRef.current.srcObject = stream;
-                await videoRef.current.play().catch(e => console.warn("Video play err", e));
+                await waitForVideoReady(videoRef.current, 3000);
             }
             setHasCamera(true);
         } catch (err: any) {
             console.warn("Camera init notice:", err?.name || err?.message);
             setHasCamera(false);
-            setCameraError(err?.name === 'NotAllowedError' 
-                ? 'Camera access denied. Please click the camera icon in your browser URL bar to allow camera access.'
-                : 'Could not access camera. You can still play with manual doll picking or simulated motion!');
+            setCameraError(formatMacFriendlyCameraError(err, 'You can still play with manual doll picking or simulated motion!'));
         }
     }, []);
 

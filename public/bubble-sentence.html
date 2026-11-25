@@ -24,6 +24,7 @@
         body.theme-jungle { --bg-top: #166534; --bg-bottom: #4ade80; }
         body.theme-space { --bg-top: #1e1b4b; --bg-bottom: #312e81; }
         body.theme-sunset { --bg-top: #f97316; --bg-bottom: #fde047; }
+        body.theme-royal { --bg-top: #4c1d95; --bg-bottom: #a855f7; }
 
         * {
             box-sizing: border-box;
@@ -2879,9 +2880,37 @@ var Editor = {
                     if (d.theme) {
                         Storage.setTheme(d.theme);
                     }
+                    if (Array.isArray(d.teams) && d.teams.length > 0) {
+                        const colors = ['blue', 'red', 'green', 'yellow', 'purple', 'pink'];
+                        window.teamsData = d.teams.map((t, idx) => ({
+                            id: t.id || (idx + 1),
+                            name: t.name || ('Team ' + (idx + 1)),
+                            score: 0,
+                            color: colors[idx % colors.length]
+                        }));
+                        if (typeof window.renderTeams === 'function') window.renderTeams();
+                        if (typeof window.renderLobbyTeams === 'function') window.renderLobbyTeams();
+                    }
+                    if (typeof d.isMuted === 'boolean') {
+                        window.isSoundMuted = d.isMuted;
+                        if (typeof Audio !== 'undefined' && Audio.toggleSfx) {
+                            Audio.toggleSfx(!d.isMuted);
+                            Audio.sfxEnabled = !d.isMuted;
+                        }
+                    }
+                    if (d.difficulty) {
+                        if (!Storage.data.profile.settings) Storage.data.profile.settings = {};
+                        Storage.data.profile.settings.bubbleSpeed =
+                            d.difficulty === 'difficult' ? 1.45 : d.difficulty === 'medium' ? 1.2 : 1;
+                    }
                     Storage.save();
                     Game.buildWorldMap();
-                    Game.openLobby('cat_1');
+                    if (d.autoStart) {
+                        Game.selectedCatId = 'cat_1';
+                        Game.startGameFromLobby();
+                    } else {
+                        Game.openLobby('cat_1');
+                    }
                 } catch(err) {
                     console.error("Error processing LOAD_GAME:", err, e.data);
                 }

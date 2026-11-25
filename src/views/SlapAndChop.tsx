@@ -14,7 +14,14 @@ import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput, convertQue
 import { OptionContentMode, parseOptionContent, formatOptionContent, getInstantCartoonPng } from "../utils/mediaAndPresets";
 import { UnifiedGameSetup } from "../components/UnifiedGameSetup";
 import { persistUserGameToCloudAndCache } from "../utils/platformCache";
-import { acquireSharedHands, releaseSharedHands, sendHandsFrameSafe } from "../utils/mediapipeHandsManager";
+import {
+  acquireSharedHands,
+  releaseSharedHands,
+  sendHandsFrameSafe,
+  waitForVideoReady,
+  acquireMacSafeCameraStream,
+  formatMacFriendlyCameraError,
+} from "../utils/mediapipeHandsManager";
 
 const slapChopImgCache: Record<string, HTMLImageElement> = {};
 function getCachedSlapChopImage(url: string): HTMLImageElement | null {
@@ -2590,55 +2597,26 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       return;
     }
     try {
-      const win = window as any;
       cameraLoopActiveRef.current = false;
       const targetPlayers = overridePlayersCount ?? engineRef.current.numPlayers ?? numPlayers;
 
-      // Dynamically ensure MediaPipe Hands script is loaded if CDN took extra time
-      if (!win.Hands && typeof document !== 'undefined') {
-        await new Promise<void>((resolve) => {
-          const existingScript = document.querySelector('script[src*="@mediapipe/hands"]');
-          if (existingScript && (win as any).Hands) {
-            resolve();
-            return;
-          }
-          const script = document.createElement('script');
-          script.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js';
-          script.crossOrigin = 'anonymous';
-          script.onload = () => resolve();
-          script.onerror = () => resolve();
-          document.head.appendChild(script);
-          setTimeout(resolve, 2200);
-        });
-      }
-
-      // 1. Acquire or reuse the live webcam stream
+      // 1. Acquire or reuse the live webcam stream via macOS-safe helper (avoids frameRate: 60 rejections & Continuity Camera stalls)
       let stream = videoRef.current?.srcObject as MediaStream | null;
       const hasLiveTrack = stream && stream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled);
 
       if (!hasLiveTrack) {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 }, facingMode: "user" },
-            audio: false
-          });
-        } catch (constraintErr) {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: false
-          });
-        }
+        stream = await acquireMacSafeCameraStream({
+          preferredWidth: 640,
+          preferredHeight: 480,
+          facingMode: 'user',
+        });
       }
 
       if (videoRef.current && stream) {
         if (videoRef.current.srcObject !== stream) {
           videoRef.current.srcObject = stream;
         }
-        videoRef.current.muted = true;
-        videoRef.current.playsInline = true;
-        try {
-          await videoRef.current.play();
-        } catch (playErr) {}
+        await waitForVideoReady(videoRef.current, 3000);
         setCameraActive(true);
         setCameraError(null);
       }
@@ -2647,8 +2625,8 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       const slapHandsOptions = {
         maxNumHands: targetPlayers === 2 ? 4 : 2,
         modelComplexity: 1 as const,
-        minDetectionConfidence: 0.52,
-        minTrackingConfidence: 0.44
+        minDetectionConfidence: 0.48,
+        minTrackingConfidence: 0.42
       };
       const acquired = await acquireSharedHands(slapHandsOptions, (res: any) => {
         if (onHandsResultsRef.current) {
@@ -2661,36 +2639,37 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
       const handsSessionToken = acquired?.sessionToken || 0;
       handsRef.current = acquired?.hands || null;
 
-      // 3. Resilient 60fps Hand Tracking Loop with 900ms Watchdog so WASM can never stall hand detection
+      // 3. Resilient Hand Tracking Loop with 900ms Watchdog (uses timestamp interval instead of curVideoTime equality which stalls on macOS Safari)
       cameraLoopActiveRef.current = true;
       cameraProcessingRef.current = false;
       cameraLastSendMsRef.current = 0;
-      let lastVideoTime = -1;
+      let lastFrameSentAt = 0;
+      const TARGET_INTERVAL_MS = 20;
 
       const sendCameraFrames = async () => {
         if (!cameraLoopActiveRef.current || !videoRef.current) return;
-        if (videoRef.current.paused && videoRef.current.srcObject) {
-          videoRef.current.play().catch(() => {});
+        const vid = videoRef.current;
+        if (vid.paused && vid.srcObject) {
+          vid.play().catch(() => {});
         }
         const nowMs = performance.now();
         if (cameraProcessingRef.current && cameraLastSendMsRef.current > 0 && nowMs - cameraLastSendMsRef.current > 900) {
           cameraProcessingRef.current = false;
         }
-        const curVideoTime = videoRef.current.currentTime;
         if (
-          videoRef.current.readyState >= 2 &&
-          videoRef.current.videoWidth > 0 &&
-          videoRef.current.videoHeight > 0 &&
+          vid.readyState >= 2 &&
+          vid.videoWidth > 0 &&
+          vid.videoHeight > 0 &&
+          !vid.paused &&
           !cameraProcessingRef.current &&
-          !(window as any).__mpWebGLContextUnavailable &&
-          curVideoTime !== lastVideoTime
+          nowMs - lastFrameSentAt >= TARGET_INTERVAL_MS
         ) {
           cameraProcessingRef.current = true;
           cameraLastSendMsRef.current = nowMs;
-          lastVideoTime = curVideoTime;
+          lastFrameSentAt = nowMs;
           try {
             if (handsSessionToken) {
-              await sendHandsFrameSafe(videoRef.current, handsSessionToken, slapHandsOptions);
+              await sendHandsFrameSafe(vid, handsSessionToken, slapHandsOptions);
             }
           } catch (e) {
             // Ignore dropped frame
@@ -2707,7 +2686,7 @@ export function SlapAndChop({ onViewChange, initialGame }: { onViewChange: (view
     } catch (err: any) {
       console.warn("Camera could not start:", err?.name || err?.message);
       setCameraActive(false);
-      setCameraError(err?.name === 'NotAllowedError' ? "Camera permission denied. Using 3D Virtual AR + Mouse/Touch!" : "Camera not detected. Using 3D Virtual AR + Mouse/Touch!");
+      setCameraError(formatMacFriendlyCameraError(err, "Using 3D Virtual AR + Mouse/Touch!"));
     }
   };
 

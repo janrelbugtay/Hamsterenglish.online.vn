@@ -21,6 +21,9 @@ import {
   sendHandsFrameSafe,
   waitForVideoReady,
   prewarmSharedHands,
+  acquireMacSafeCameraStream,
+  formatMacFriendlyCameraError,
+  ensureMediaPipeFaceMeshLoaded,
 } from "../utils/mediapipeHandsManager";
 
 type GameScreen = 'intro' | 'lobby' | 'editor' | 'setup' | 'loading' | 'game' | 'results' | 'study';
@@ -1684,8 +1687,9 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
   const onFaceResultsRef = useRef(onFaceResults);
   onFaceResultsRef.current = onFaceResults;
 
-  const ensureFaceMeshInitialized = () => {
+  const ensureFaceMeshInitialized = async () => {
     if (faceMeshRef.current) return faceMeshRef.current;
+    await ensureMediaPipeFaceMeshLoaded();
     const win = window as any;
     if (!win.FaceMesh) return null;
     try {
@@ -1694,9 +1698,9 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
       });
       faceMesh.setOptions({
         maxNumFaces: 2,
-        refineLandmarks: true,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5,
+        refineLandmarks: false,
+        minDetectionConfidence: 0.45,
+        minTrackingConfidence: 0.45,
       });
       faceMesh.onResults((res: any) => onFaceResultsRef.current(res));
       faceMeshRef.current = faceMesh;
@@ -1750,31 +1754,16 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
 
         let stream: MediaStream | null = null;
         try {
-            stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { 
-                    facingMode: 'user',
-                    width: { ideal: 640 },
-                    height: { ideal: 480 },
-                    frameRate: { ideal: 30 }
-                } 
+            stream = await acquireMacSafeCameraStream({
+                preferredWidth: 640,
+                preferredHeight: 480,
+                facingMode: 'user',
             });
-        } catch (prefErr: any) {
-            try {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'user' }
-                });
-            } catch (fallback1Err: any) {
-                try {
-                    stream = await navigator.mediaDevices.getUserMedia({
-                        video: true
-                    });
-                } catch (finalErr: any) {
-                    console.warn("Webcam not detected or access denied:", finalErr?.name || finalErr?.message);
-                    setCameraError("Webcam not detected on this device. Mouse and touch pointer mode are enabled automatically!");
-                    setIsCameraActive(false);
-                    return;
-                }
-            }
+        } catch (finalErr: any) {
+            console.warn("Webcam not detected or access denied:", finalErr?.name || finalErr?.message);
+            setCameraError(formatMacFriendlyCameraError(finalErr, "Mouse and touch pointer mode are enabled automatically!"));
+            setIsCameraActive(false);
+            return;
         }
 
         // If another setupCamera/stopCamera ran while awaiting permissions, release this stale stream immediately
@@ -1790,12 +1779,7 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
 
         const videoEl = videoRef.current;
         videoEl.srcObject = stream;
-        try {
-            await videoEl.play();
-        } catch {
-            // Autoplay will proceed on user gesture
-        }
-        await waitForVideoReady(videoEl, 2500);
+        await waitForVideoReady(videoEl, 3000);
 
         if (setupSeq !== cameraSetupSeqRef.current || !videoRef.current) {
             stream.getTracks().forEach(t => t.stop());
@@ -1818,7 +1802,7 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
 
         // Only initialize FaceMesh lazily if currently in nose mode (prevents simultaneous WASM heap collisions)
         if (trackerModeRef.current === 'nose') {
-            ensureFaceMeshInitialized();
+            await ensureFaceMeshInitialized();
         }
 
         let active = true;
@@ -1831,6 +1815,9 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
             if (!active || !videoRef.current || setupSeq !== cameraSetupSeqRef.current) return;
 
             const vid = videoRef.current;
+            if (vid.paused && vid.srcObject) {
+                vid.play().catch(() => {});
+            }
             const curScreen = screenRef.current;
             const shouldProcessOnScreen = curScreen === 'game' || curScreen === 'setup';
             if (
@@ -1840,7 +1827,6 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                 vid.videoHeight > 0 &&
                 !vid.paused &&
                 !isProcessing &&
-                !(window as any).__mpWebGLContextUnavailable &&
                 (time - lastFrameTime >= TARGET_INTERVAL_MS)
             ) {
                 isProcessing = true;
@@ -1848,8 +1834,8 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
                 try {
                     const currentMode = trackerModeRef.current;
                     if (currentMode === 'nose') {
-                        const fm = ensureFaceMeshInitialized();
-                        if (fm && !(window as any).__mpWebGLContextUnavailable) {
+                        const fm = await ensureFaceMeshInitialized();
+                        if (fm) {
                             await fm.send({ image: vid });
                         }
                     } else if (handsSessionTokenRef.current) {
@@ -1880,7 +1866,7 @@ export function BubblePop({ onViewChange, initialGame }: { onViewChange: (view: 
     } catch (e: any) {
         if (setupSeq !== cameraSetupSeqRef.current) return;
         console.warn("Camera setup notice:", e?.message || e);
-        setCameraError("Camera unavailable. Mouse and touch controls are ready!");
+        setCameraError(formatMacFriendlyCameraError(e, "Mouse and touch controls are ready!"));
         setIsCameraActive(false);
     }
   };

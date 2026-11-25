@@ -411,12 +411,8 @@ export const SquidHamsterSprite: React.FC<SquidHamsterSpriteProps> = ({
   const handleError = () => {
     setFailCount((prev) => {
       const next = prev + 1;
-      if (next === 1) {
-        setImgSrc(char.classicUrl);
-      } else if (next === 2) {
-        setImgSrc(char.driveUrl);
-      } else if (next === 3) {
-        setImgSrc('/images/student_001.png');
+      if (next <= 3) {
+        setImgSrc(char.cuteUrl);
       }
       return next;
     });

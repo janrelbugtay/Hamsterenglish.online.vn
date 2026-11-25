@@ -90,7 +90,7 @@
         } catch (e) {}
 
         // Prevent MediaPipe from popping up blocking native window.alert("Failed to create WebGL canvas context when passing video frame.")
-        // and automatically recover/fallback WebGL contexts when browser context slots are full or WebGL2 is restricted.
+        // and automatically recover/fallback WebGL contexts when browser context slots are full or WebGL2 is restricted on macOS.
         try {
           if (typeof window !== "undefined") {
             var nativeAlert = window.alert ? window.alert.bind(window) : function () {};
@@ -101,9 +101,9 @@
                 text.indexOf("passing video frame") !== -1 ||
                 text.indexOf("WebGL") !== -1
               ) {
-                window.__mpWebGLContextUnavailable = true;
                 window.__mpWebGLAlertSuppressedAt = Date.now();
-                console.warn("[WebGL Guard] Suppressed blocking WebGL alert:", text);
+                window.__mpPreferCanvasFrameUpload = true;
+                console.warn("[WebGL Guard] Suppressed blocking WebGL alert (switching to 2D Canvas frame upload):", text);
                 return;
               }
               return nativeAlert(msg);
@@ -121,7 +121,7 @@
                   }
                 }
                 // Evict oldest detached canvas first
-                for (var j = 0; j < trackedContexts.length - 2; j++) {
+                for (var j = 0; j < trackedContexts.length - 1; j++) {
                   var rec = trackedContexts[j];
                   if (rec && rec.canvas !== excludeCanvas && (!document.body || !document.body.contains(rec.canvas))) {
                     try {
@@ -132,8 +132,8 @@
                     return true;
                   }
                 }
-                // If all are attached and we still exceeded 12 contexts, evict the very oldest one
-                if (trackedContexts.length >= 12) {
+                // If all are attached and we still exceeded 10 contexts, evict the very oldest one
+                if (trackedContexts.length >= 10) {
                   var oldest = trackedContexts.shift();
                   if (oldest && oldest.canvas !== excludeCanvas && oldest.gl) {
                     try {
@@ -156,20 +156,25 @@
                   return nativeGetContext.call(this, type, attrs);
                 }
 
-                if (trackedContexts.length >= 10) {
+                if (trackedContexts.length >= 8) {
                   pruneAndFreeOldestContext(this);
                 }
 
+                // Always ensure failIfMajorPerformanceCaveat is false on macOS (Battery Saver / dual-GPU switching)
+                var safeAttrs = Object.assign({}, attrs || {}, {
+                  failIfMajorPerformanceCaveat: false
+                });
+
                 var ctx = null;
                 try {
-                  ctx = nativeGetContext.call(this, type, attrs);
+                  ctx = nativeGetContext.call(this, type, safeAttrs);
                 } catch (e) {}
 
                 if (!ctx) {
                   pruneAndFreeOldestContext(this);
-                  var fallbackAttrs = Object.assign({}, attrs || {}, {
-                    failIfMajorPerformanceCaveat: false,
-                    powerPreference: "default"
+                  var fallbackAttrs = Object.assign({}, safeAttrs, {
+                    powerPreference: "default",
+                    antialias: false
                   });
                   try {
                     ctx = nativeGetContext.call(this, type, fallbackAttrs);
@@ -216,14 +221,11 @@
     <meta name="description" content="Premium AI-Powered ESL Games Platform for Teachers and Students." />
     <meta property="og:title" content="Hamsterenglish.online" />
     <meta property="og:description" content="Premium AI-Powered ESL Games Platform for Teachers and Students." />
-    <!-- Mediapipe for Bubble Pop & Yoga Studio camera tracking -->
+    <!-- Mediapipe Hands loaded cleanly without concurrent Pose/FaceMesh Emscripten globals colliding on macOS -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4/face_detection.js" crossorigin="anonymous"></script>
   </head>
   <body>
     <div id="root"></div>

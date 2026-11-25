@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { ArrowLeft, Edit3, Play, Timer, Camera, RefreshCw } from 'lucide-react';
 import { FullscreenButton } from './FullscreenButton';
 import { useLanguage } from '../contexts/LanguageContext';
+import { acquireMacSafeCameraStream, waitForVideoReady } from '../utils/mediapipeHandsManager';
 
 export interface PlayerModeOption {
   id: string | number;
@@ -108,6 +109,9 @@ export const UnifiedARCameraPreviewCard: React.FC<{ config: ARCameraSetupConfig 
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
     setCameraActive(false);
   }, []);
 
@@ -116,14 +120,15 @@ export const UnifiedARCameraPreviewCard: React.FC<{ config: ARCameraSetupConfig 
     setCameraLoading(true);
     try {
       stopStream();
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 360 }, facingMode: 'user' },
-        audio: false,
+      const stream = await acquireMacSafeCameraStream({
+        preferredWidth: 640,
+        preferredHeight: 360,
+        facingMode: 'user',
       });
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play().catch(() => {});
+        await waitForVideoReady(videoRef.current, 2500);
       }
       setCameraActive(true);
     } catch {

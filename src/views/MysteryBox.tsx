@@ -2,7 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ViewState } from "../types";
 import { FullscreenButton } from "../components/FullscreenButton";
-import { MysteryBox3DLobby } from "../components/MysteryBox3DLobby";
+import { MysteryBox3DLobby, BoxModeSelector, CuteHamsterAvatar } from "../components/MysteryBox3DLobby";
+import treasureCaveBg from "../assets/images/treasure_cave_bg_1795603145753.jpg";
+import treasureChestBlankShield from "../assets/images/treasure_chest_blank_shield_1795603185465.jpg";
 import { MediaPickerModal } from "../components/MediaPickerModal";
 import { BulkPasteVideoModal } from "../components/BulkPasteVideoModal";
 import { GameModeModal } from "../components/GameModeModal";
@@ -12,12 +14,157 @@ import {
   ArrowLeft, Edit3, Trash2, Plus, Sparkles, Save, X, Play, 
   Image as ImageIcon, ClipboardList, Info, Copy, 
   Volume2, VolumeX, Eye, Check, RefreshCw, Trophy, Gift, ArrowRightLeft, Star, AlertTriangle, Skull, Bomb, Shuffle,
-  Users, User, Minus, Flame, Zap, Crown, ShieldAlert, Coins
+  Users, User, Minus, Flame, Zap, Crown, ShieldAlert, Coins, Settings
 } from "lucide-react";
 import { collection, query, where, getDocs, doc, addDoc, updateDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { persistUserGameToCloudAndCache } from "../utils/platformCache";
+
+// Cached transparent cutout for the 3D Treasure Chest on stone pedestal
+let cachedTransparentChestUrl: string | null = null;
+let pendingChestPromise: Promise<string> | null = null;
+
+function getTransparentChestDataUrl(): Promise<string> {
+  if (cachedTransparentChestUrl) return Promise.resolve(cachedTransparentChestUrl);
+  if (pendingChestPromise) return pendingChestPromise;
+
+  pendingChestPromise = new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const w = img.naturalWidth || 512;
+        const h = img.naturalHeight || 512;
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(treasureChestBlankShield);
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
+        const imageData = ctx.getImageData(0, 0, w, h);
+        const data = imageData.data;
+        const visited = new Uint8Array(w * h);
+        const queue = new Int32Array(w * h);
+        let head = 0;
+        let tail = 0;
+
+        const isBgWhite = (idx: number) => {
+          const p = idx * 4;
+          const r = data[p];
+          const g = data[p + 1];
+          const b = data[p + 2];
+          return r >= 232 && g >= 232 && b >= 230 && Math.abs(r - g) <= 22 && Math.abs(g - b) <= 22;
+        };
+
+        const enqueue = (x: number, y: number) => {
+          if (x < 0 || x >= w || y < 0 || y >= h) return;
+          const idx = y * w + x;
+          if (visited[idx]) return;
+          if (!isBgWhite(idx)) return;
+          visited[idx] = 1;
+          queue[tail++] = idx;
+        };
+
+        for (let x = 0; x < w; x++) {
+          enqueue(x, 0);
+          enqueue(x, h - 1);
+        }
+        for (let y = 0; y < h; y++) {
+          enqueue(0, y);
+          enqueue(w - 1, y);
+        }
+
+        while (head < tail) {
+          const curr = queue[head++];
+          data[curr * 4 + 3] = 0;
+          const cx = curr % w;
+          const cy = (curr - cx) / w;
+          if (cx > 0) enqueue(cx - 1, cy);
+          if (cx < w - 1) enqueue(cx + 1, cy);
+          if (cy > 0) enqueue(cx, cy - 1);
+          if (cy < h - 1) enqueue(cx, cy + 1);
+        }
+
+        // Feather 1px border for smooth anti-aliased edge
+        for (let y = 1; y < h - 1; y++) {
+          for (let x = 1; x < w - 1; x++) {
+            const idx = y * w + x;
+            if (!visited[idx]) {
+              const neighborsTransparent =
+                visited[idx - 1] + visited[idx + 1] + visited[idx - w] + visited[idx + w];
+              if (neighborsTransparent > 0) {
+                const p = idx * 4;
+                if (data[p] > 215 && data[p + 1] > 215 && data[p + 2] > 215) {
+                  data[p + 3] = Math.round(data[p + 3] * 0.35);
+                }
+              }
+            }
+          }
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+        cachedTransparentChestUrl = canvas.toDataURL('image/png');
+        resolve(cachedTransparentChestUrl);
+      } catch {
+        resolve(treasureChestBlankShield);
+      }
+    };
+    img.onerror = () => resolve(treasureChestBlankShield);
+    img.src = treasureChestBlankShield;
+  });
+
+  return pendingChestPromise;
+}
+
+function useTransparentTreasureChest(): string {
+  const [src, setSrc] = useState<string>(cachedTransparentChestUrl || treasureChestBlankShield);
+  useEffect(() => {
+    let mounted = true;
+    getTransparentChestDataUrl().then((url) => {
+      if (mounted) setSrc(url);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+  return src;
+}
+
+function GoldenLaurelSprig({ flip = false }: { flip?: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 44 76"
+      className={`w-7 h-12 sm:w-9 sm:h-14 shrink-0 pointer-events-none select-none drop-shadow-[0_2px_6px_rgba(251,191,36,0.45)] ${
+        flip ? '-scale-x-100' : ''
+      }`}
+      fill="none"
+    >
+      <defs>
+        <linearGradient id="goldLaurelGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#fde047" />
+          <stop offset="50%" stopColor="#f59e0b" />
+          <stop offset="100%" stopColor="#b45309" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M32 68 C16 54, 14 30, 26 10"
+        stroke="url(#goldLaurelGrad)"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+      />
+      <path d="M22 57 C11 55, 8 47, 17 45 C22 48, 23 53, 22 57 Z" fill="url(#goldLaurelGrad)" />
+      <path d="M19 44 C8 41, 7 32, 16 31 C20 35, 20 40, 19 44 Z" fill="url(#goldLaurelGrad)" />
+      <path d="M19 30 C10 26, 11 17, 19 18 C22 22, 21 26, 19 30 Z" fill="url(#goldLaurelGrad)" />
+      <path d="M23 18 C17 13, 20 5, 27 8 C28 12, 26 16, 23 18 Z" fill="url(#goldLaurelGrad)" />
+      <path d="M25 53 C33 49, 36 41, 28 39 C24 43, 24 49, 25 53 Z" fill="url(#goldLaurelGrad)" opacity="0.85" />
+      <path d="M22 38 C30 34, 33 26, 25 25 C21 29, 21 34, 22 38 Z" fill="url(#goldLaurelGrad)" opacity="0.85" />
+    </svg>
+  );
+}
 
 type GameScreen = 'editor' | 'setup' | 'game' | 'study';
 
@@ -64,6 +211,7 @@ interface Team {
   name: string;
   score: number;
   streak?: number;
+  avatarId?: number;
   color?: string;
   icon?: string;
   bg?: string;
@@ -176,7 +324,7 @@ function AnimatedScore({
   );
 }
 
-// Sleek, High-Contrast Main Scoreboard with Team Numbers & Live Glow
+// 3D Treasure Adventure Scoreboard with Golden Laurel Wreaths & Active Golden Turn Highlight
 interface MainScoreboardProps {
   teams: Team[];
   currentTeamIdx: number;
@@ -202,117 +350,131 @@ function MainScoreboard({
 }: MainScoreboardProps) {
   return (
     <div className={`w-full max-w-7xl mx-auto px-2 sm:px-4 ${className}`}>
-      <div className="flex items-stretch justify-center gap-3 sm:gap-4 md:gap-5 flex-wrap">
-        {teams.map((t, idx) => {
-          const isCurrent = currentTeamIdx === idx;
-          const isLeader = teams.length > 1 && t.score > 0 && t.score === highestScore;
-          const cfg = DEFAULT_TEAM_CONFIGS[idx % DEFAULT_TEAM_CONFIGS.length];
-          const teamPopups = scoreDeltas.filter(d => d.teamId === t.id);
-          const isAffectedReveal = activeRevealTeamId === t.id && activeRevealDelta !== undefined && activeRevealDelta !== null;
-          const isPositiveReveal = isAffectedReveal && (activeRevealDelta ?? 0) >= 0;
+      <div className="flex items-center justify-center gap-1.5 sm:gap-2.5">
+        <GoldenLaurelSprig />
 
-          return (
-            <div
-              key={t.id}
-              onClick={() => onSelectTeam && onSelectTeam(idx)}
-              title={onSelectTeam ? "Click to set active turn" : undefined}
-              className={`group relative rounded-3xl border-3 transition-all duration-300 flex flex-col justify-between shadow-2xl overflow-visible select-none ${
-                onSelectTeam ? 'cursor-pointer hover:scale-[1.02]' : 'cursor-default'
-              } ${
-                isCompact
-                  ? 'p-3 sm:p-4 min-w-[150px] sm:min-w-[190px]'
-                  : 'p-4 sm:p-5 md:p-6 min-w-[180px] sm:min-w-[220px] md:min-w-[250px]'
-              } ${
-                isAffectedReveal
-                  ? isPositiveReveal
-                    ? 'border-emerald-400 bg-gradient-to-b from-emerald-950/90 via-slate-900 to-slate-950 text-white ring-4 ring-emerald-400/60 shadow-[0_0_45px_rgba(16,185,129,0.5)] scale-105 z-20'
-                    : 'border-rose-400 bg-gradient-to-b from-rose-950/90 via-slate-900 to-slate-950 text-white ring-4 ring-rose-400/60 shadow-[0_0_45px_rgba(244,63,94,0.5)] scale-105 z-20 animate-shake'
-                  : isCurrent
-                  ? 'border-amber-400 bg-gradient-to-b from-slate-900 via-slate-900/95 to-slate-950 text-white scale-105 shadow-[0_12px_45px_rgba(251,191,36,0.4)] ring-4 ring-amber-400/50 z-10'
-                  : 'border-white/15 bg-slate-900/80 hover:bg-slate-800/90 text-white backdrop-blur-xl'
-              }`}
-            >
-              {/* Floating Live Point Delta Popups */}
-              {teamPopups.map((popup) => (
-                <div
-                  key={popup.id}
-                  className={`absolute -top-10 left-1/2 -translate-x-1/2 z-50 px-4 py-1.5 rounded-2xl font-black text-xs sm:text-sm whitespace-nowrap shadow-2xl pointer-events-none animate-live-pop border-2 ${
-                    popup.isPositive
-                      ? 'bg-emerald-500 text-slate-950 border-emerald-200 shadow-[0_0_20px_rgba(16,185,129,0.7)]'
-                      : 'bg-rose-600 text-white border-rose-200 shadow-[0_0_20px_rgba(244,63,94,0.7)]'
-                  }`}
-                >
-                  {popup.text.startsWith('+') ? `▲ ${popup.text}` : popup.text.startsWith('-') ? `▼ ${popup.text}` : popup.text}
-                </div>
-              ))}
+        <div className="flex items-stretch justify-center gap-2 sm:gap-3.5 flex-wrap">
+          {teams.map((t, idx) => {
+            const isCurrent = currentTeamIdx === idx;
+            const isLeader = teams.length > 1 && t.score > 0 && t.score === highestScore;
+            const teamPopups = scoreDeltas.filter(d => d.teamId === t.id);
+            const isAffectedReveal = activeRevealTeamId === t.id && activeRevealDelta !== undefined && activeRevealDelta !== null;
+            const isPositiveReveal = isAffectedReveal && (activeRevealDelta ?? 0) >= 0;
 
-              {/* Active Turn Indicator or Affected Badge */}
-              {isAffectedReveal ? (
-                <div className={`absolute -top-3.5 left-1/2 -translate-x-1/2 text-slate-950 font-black text-[10px] sm:text-xs uppercase px-3.5 py-1 rounded-full shadow-lg tracking-wider flex items-center gap-1.5 whitespace-nowrap border ${
-                  isPositiveReveal
-                    ? 'bg-gradient-to-r from-emerald-400 to-teal-300 border-emerald-200'
-                    : 'bg-gradient-to-r from-rose-400 to-red-300 border-rose-200'
-                }`}>
-                  <span className="w-2 h-2 rounded-full bg-slate-950 animate-ping" />
-                  {isPositiveReveal ? '▲ POINTS WON!' : '▼ PENALTY!'}
-                </div>
-              ) : isCurrent ? (
-                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 text-[10px] sm:text-xs font-black uppercase px-3.5 py-1 rounded-full shadow-[0_4px_16px_rgba(251,191,36,0.6)] tracking-wider flex items-center gap-1.5 whitespace-nowrap border border-amber-200">
-                  <span className="w-2 h-2 rounded-full bg-slate-950 animate-ping" />
-                  ⚡ ACTIVE TURN
-                </div>
-              ) : null}
-
-              {/* Team Header Info with Number Badge (No Animal Icons) */}
-              <div className="flex items-center justify-between gap-2.5 mb-2">
-                <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-                  <div className={`w-11 h-11 sm:w-13 sm:h-13 rounded-2xl bg-gradient-to-br ${cfg.gradient} text-white font-black text-lg sm:text-xl flex items-center justify-center shadow-lg ring-2 ring-white/20 shrink-0`}>
-                    #{idx + 1}
+            return (
+              <div
+                key={t.id}
+                onClick={() => onSelectTeam && onSelectTeam(idx)}
+                title={onSelectTeam ? "Click to set active turn" : undefined}
+                className={`group relative rounded-[20px] sm:rounded-[24px] transition-all duration-300 flex flex-col justify-between overflow-visible select-none ${
+                  onSelectTeam ? 'cursor-pointer hover:scale-[1.02]' : 'cursor-default'
+                } ${
+                  isCompact
+                    ? 'px-3.5 py-2 sm:px-4 sm:py-2.5 w-[155px] sm:w-[190px] md:w-[215px]'
+                    : 'p-4 sm:p-5 w-[190px] sm:w-[230px] md:w-[255px]'
+                } ${
+                  isAffectedReveal
+                    ? isPositiveReveal
+                      ? 'border-[3px] border-emerald-400 bg-[#122620]/90 backdrop-blur-xl text-white ring-4 ring-emerald-400/50 shadow-[0_0_40px_rgba(16,185,129,0.55)] scale-105 z-20'
+                      : 'border-[3px] border-rose-400 bg-[#2b1219]/90 backdrop-blur-xl text-white ring-4 ring-rose-400/50 shadow-[0_0_40px_rgba(244,63,94,0.55)] scale-105 z-20 animate-shake'
+                    : isCurrent
+                    ? 'border-[3px] border-[#fbbf24] bg-gradient-to-b from-[#231f39]/95 via-[#1c1830]/95 to-[#171329]/95 text-white shadow-[0_0_26px_rgba(251,191,36,0.55),inset_0_1px_12px_rgba(251,191,36,0.22)] z-10'
+                    : 'border-[2.5px] border-[#8b5cf6]/70 bg-gradient-to-b from-[#35235c]/90 via-[#2a1b4e]/90 to-[#211440]/90 hover:border-[#a78bfa] text-white shadow-[0_8px_24px_rgba(15,8,35,0.65),inset_0_1px_10px_rgba(167,139,250,0.2)]'
+                }`}
+              >
+                {/* Floating Live Point Delta Popups */}
+                {teamPopups.map((popup) => (
+                  <div
+                    key={popup.id}
+                    className={`absolute -top-9 left-1/2 -translate-x-1/2 z-50 px-3.5 py-1 rounded-2xl font-black text-xs sm:text-sm whitespace-nowrap shadow-2xl pointer-events-none animate-live-pop border-2 ${
+                      popup.isPositive
+                        ? 'bg-emerald-500 text-slate-950 border-emerald-200 shadow-[0_0_20px_rgba(16,185,129,0.7)]'
+                        : 'bg-rose-600 text-white border-rose-200 shadow-[0_0_20px_rgba(244,63,94,0.7)]'
+                    }`}
+                  >
+                    {popup.text.startsWith('+') ? `▲ ${popup.text}` : popup.text.startsWith('-') ? `▼ ${popup.text}` : popup.text}
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-sm sm:text-base md:text-lg font-black uppercase tracking-wide truncate max-w-[110px] sm:max-w-[140px] text-white">
-                      {t.name}
-                    </p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[11px] font-bold text-slate-400">Team {idx + 1}</span>
+                ))}
+
+                {/* Active Turn Indicator or Affected Badge */}
+                {isAffectedReveal ? (
+                  <div className={`absolute -top-3.5 left-1/2 -translate-x-1/2 text-slate-950 font-black text-[10px] uppercase px-3 py-0.5 rounded-full shadow-lg tracking-wider flex items-center gap-1 whitespace-nowrap border ${
+                    isPositiveReveal
+                      ? 'bg-gradient-to-r from-emerald-400 to-teal-300 border-emerald-200'
+                      : 'bg-gradient-to-r from-rose-400 to-red-300 border-rose-200'
+                  }`}>
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping" />
+                    {isPositiveReveal ? '▲ POINTS WON!' : '▼ PENALTY!'}
+                  </div>
+                ) : isCurrent ? (
+                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-b from-[#fde047] via-[#fbbf24] to-[#f59e0b] text-[#1e1303] text-[10px] font-black uppercase px-3.5 py-0.5 rounded-full shadow-[0_4px_14px_rgba(251,191,36,0.65)] tracking-wider flex items-center gap-1 whitespace-nowrap border border-[#fef08a]">
+                    <span>⚡</span>
+                    <span>ACTIVE TURN</span>
+                  </div>
+                ) : null}
+
+                {/* Top Row: Circular Hamster Avatar + TEAM N + Subtitle */}
+                <div className="flex items-center gap-2.5 min-w-0 pt-0.5">
+                  <CuteHamsterAvatar
+                    avatarId={t.avatarId || ((idx % 20) + 1)}
+                    className={`${isCompact ? 'w-10 h-10 sm:w-11 sm:h-11' : 'w-12 h-12 sm:w-14 sm:h-14'} shrink-0`}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <p className={`${
+                        isCompact ? 'text-xs sm:text-sm md:text-[15px]' : 'text-sm sm:text-base md:text-lg'
+                      } font-black uppercase tracking-wide truncate text-white leading-tight`}>
+                        TEAM {idx + 1}
+                      </p>
                       {isLeader && (
-                        <span title="1st Place Leader" className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-amber-400/25 text-amber-300 border border-amber-400/40 flex items-center gap-0.5">
-                          👑 1ST
+                        <span title="1st Place Leader" className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-400/25 text-amber-200 border border-amber-300/40 shrink-0">
+                          👑
                         </span>
                       )}
                       {(t.streak || 0) >= 2 && (
-                        <span className="text-[10px] font-black bg-orange-500 text-white px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-sm">
-                          🔥 {t.streak}x
+                        <span className="text-[9px] font-black bg-orange-500 text-white px-1.5 py-0.5 rounded shrink-0">
+                          🔥{t.streak}
                         </span>
                       )}
                     </div>
+                    <p className="text-[11px] font-semibold text-white/75 truncate leading-tight mt-0.5">
+                      {t.name}
+                    </p>
                   </div>
                 </div>
-              </div>
 
-              {/* Giant Redesigned Score Display (NO +/- SIGNS) */}
-              <div className={`mt-2 pt-2.5 border-t border-white/10 flex items-baseline justify-between ${
-                isCurrent ? 'border-amber-400/30' : 'border-white/10'
-              }`}>
-                <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-slate-400">
-                  SCORE
-                </span>
-                <div className="flex items-baseline gap-1.5">
-                  <div className={`text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black tracking-tight tabular-nums ${
-                    isCurrent
-                      ? 'text-amber-300 drop-shadow-[0_0_25px_rgba(251,191,36,0.55)]'
-                      : 'text-white'
-                  }`}>
-                    <AnimatedScore value={t.score} />
-                  </div>
-                  <span className="text-xs sm:text-sm font-black text-slate-400">
-                    PTS
+                {/* Horizontal Divider + Bottom Score Row */}
+                <div className={`${isCompact ? 'mt-1.5 pt-1.5' : 'mt-2.5 pt-2'} border-t flex items-baseline justify-between ${
+                  isCurrent ? 'border-amber-300/30' : 'border-white/15'
+                }`}>
+                  <span className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider text-white/85">
+                    SCORE
                   </span>
+                  <div className="flex items-baseline gap-1">
+                    <div className={`${
+                      isCompact
+                        ? 'text-2xl sm:text-3xl'
+                        : 'text-3xl sm:text-4xl md:text-5xl'
+                    } font-black tracking-tight tabular-nums leading-none ${
+                      isCurrent
+                        ? 'text-[#fbbf24] drop-shadow-[0_2px_10px_rgba(251,191,36,0.45)]'
+                        : 'text-white'
+                    }`}>
+                      <AnimatedScore value={t.score} />
+                    </div>
+                    <span className={`text-[10px] sm:text-xs font-black uppercase ${
+                      isCurrent ? 'text-[#fde68a]' : 'text-white/85'
+                    }`}>
+                      PTS
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+
+        <GoldenLaurelSprig flip />
       </div>
     </div>
   );
@@ -338,7 +500,9 @@ export function MysteryBox({
     initialGame && !initialGame.editMode && hasLoadedQuestions ? 'setup' : 'editor'
   );
   const [showModeModal, setShowModeModal] = useState(false);
+  const [showInGameSettings, setShowInGameSettings] = useState(false);
   const [folders, setFolders] = useState<{ id: string; name: string }[]>([]);
+  const transparentChestSrc = useTransparentTreasureChest();
 
   useEffect(() => {
     if (user) {
@@ -473,15 +637,33 @@ export function MysteryBox({
   const [playerNames, setPlayerNames] = useState<string[]>([
     "Team 1", "Team 2", "Team 3", "Team 4", "Team 5", "Team 6", "Team 7", "Team 8"
   ]);
+  const [teamAvatars, setTeamAvatars] = useState<number[]>([1, 2, 3, 4, 5, 6, 7, 8]);
+  const [selectedQuestionLimit, setSelectedQuestionLimit] = useState<number>(() =>
+    Math.max(1, initialGame?.customQuestions?.length || initialGame?.questions?.length || 10)
+  );
+  const [gameTimeMinutes, setGameTimeMinutes] = useState<number>(0);
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [difficulty, setDifficulty] = useState<'normal' | 'medium' | 'difficult'>('medium');
-  const [selectedTheme, setSelectedTheme] = useState('theme-royal');
+  const [selectedTheme, setSelectedTheme] = useState<string>(() => initialGame?.theme || 'theme-sky');
   const [isMuted, setIsMuted] = useState(false);
   const [wrongAnswerPenalty, setWrongAnswerPenalty] = useState(true);
   const [answerBonusPoints, setAnswerBonusPoints] = useState(true);
 
+  useEffect(() => {
+    setSelectedQuestionLimit(Math.max(1, activeQuiz.questions.length));
+  }, [activeQuiz.questions.length]);
+
+  useEffect(() => {
+    if (screen !== 'game' || remainingSeconds === null || remainingSeconds <= 0) return;
+    const timer = setInterval(() => {
+      setRemainingSeconds((prev) => (prev !== null && prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [screen, remainingSeconds]);
+
   // In-Game state
   const [teams, setTeams] = useState<Team[]>([
-    { id: 0, name: "Team 1", score: 0, streak: 0 }
+    { id: 0, name: "Team 1", score: 0, streak: 0, avatarId: 19 }
   ]);
   const [currentTeamIdx, setCurrentTeamIdx] = useState(0);
   const [openedBoxes, setOpenedBoxes] = useState<number[]>([]);
@@ -790,6 +972,7 @@ export function MysteryBox({
         name: rawName || fallbackName,
         score: 0,
         streak: 0,
+        avatarId: teamAvatars[i] || ((i % 20) + 1),
         color: cfg.color,
         icon: cfg.icon,
         bg: cfg.bg,
@@ -805,6 +988,7 @@ export function MysteryBox({
     setCelebration(null);
     setSelectedBoxAnimation(null);
     setScoreDeltas([]);
+    setRemainingSeconds(gameTimeMinutes > 0 ? gameTimeMinutes * 60 : null);
     setScreen('game');
   };
 
@@ -1457,97 +1641,137 @@ export function MysteryBox({
     }
   };
 
-  const isGameOver = openedBoxes.length >= activeQuiz.questions.length && activeBoxNum === null && screen === 'game';
+      const effectiveTotalBoxes = Math.min(
+        activeQuiz.questions.length,
+        Math.max(1, selectedQuestionLimit)
+      );
+      const isGameOver =
+        ((openedBoxes.length >= effectiveTotalBoxes && activeBoxNum === null) ||
+          (remainingSeconds !== null && remainingSeconds <= 0 && activeBoxNum === null)) &&
+        screen === 'game';
 
-  // Find current 1st place team ID for crown indicator
-  const highestScore = teams.length > 0 ? Math.max(...teams.map(t => t.score)) : 0;
+      // Find current 1st place team ID for crown indicator
+      const highestScore = teams.length > 0 ? Math.max(...teams.map(t => t.score)) : 0;
 
-  // --- THEME ATTRIBUTES ---
-  const getThemeSetupBg = () => {
-    if (selectedTheme === 'theme-ocean') return 'from-sky-700 via-cyan-800 to-slate-950';
-    if (selectedTheme === 'theme-space') return 'from-slate-900 via-indigo-950 to-black';
-    if (selectedTheme === 'theme-jungle') return 'from-emerald-800 via-green-900 to-slate-950';
-    if (selectedTheme === 'theme-sunset') return 'from-orange-600 via-rose-800 to-slate-950';
-    if (selectedTheme === 'theme-royal') return 'from-purple-900 via-indigo-950 to-slate-950';
-    return 'from-blue-600 via-indigo-800 to-slate-950';
-  };
+      // --- THEME ATTRIBUTES ---
+      const getThemeSetupBg = () => {
+        if (selectedTheme === 'theme-ocean') return 'from-sky-700 via-cyan-800 to-slate-950';
+        if (selectedTheme === 'theme-space') return 'from-slate-900 via-indigo-950 to-black';
+        if (selectedTheme === 'theme-jungle') return 'from-emerald-800 via-green-900 to-slate-950';
+        if (selectedTheme === 'theme-sunset') return 'from-orange-600 via-rose-800 to-slate-950';
+        if (selectedTheme === 'theme-royal') return 'from-purple-900 via-indigo-950 to-slate-950';
+        return 'from-blue-600 via-indigo-800 to-slate-950';
+      };
 
-  const getThemeGameBg = () => {
-    if (selectedTheme === 'theme-ocean') return 'bg-gradient-to-b from-sky-900 via-cyan-950 to-slate-950';
-    if (selectedTheme === 'theme-space') return 'bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-900 via-slate-950 to-black';
-    if (selectedTheme === 'theme-jungle') return 'bg-gradient-to-br from-green-950 via-emerald-900 to-slate-950';
-    if (selectedTheme === 'theme-sunset') return 'bg-gradient-to-b from-amber-950 via-rose-950 to-slate-950';
-    if (selectedTheme === 'theme-royal') return 'bg-gradient-to-br from-indigo-950 via-purple-900 to-slate-950';
-    return 'bg-gradient-to-b from-sky-900 via-blue-950 to-slate-950';
-  };
+      const getThemeGameBg = () => {
+        if (selectedTheme === 'theme-ocean') return 'bg-gradient-to-b from-sky-900 via-cyan-950 to-slate-950';
+        if (selectedTheme === 'theme-space') return 'bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-900 via-slate-950 to-black';
+        if (selectedTheme === 'theme-jungle') return 'bg-gradient-to-br from-green-950 via-emerald-900 to-slate-950';
+        if (selectedTheme === 'theme-sunset') return 'bg-gradient-to-b from-amber-950 via-rose-950 to-slate-950';
+        if (selectedTheme === 'theme-royal') return 'bg-gradient-to-br from-indigo-950 via-purple-900 to-slate-950';
+        return 'bg-gradient-to-b from-sky-900 via-blue-950 to-slate-950';
+      };
 
-  const getThemeBoxClass = () => {
-    if (selectedTheme === 'theme-ocean') return 'bg-gradient-to-br from-cyan-400 via-sky-500 to-blue-700 border-cyan-200/80';
-    if (selectedTheme === 'theme-space') return 'bg-gradient-to-br from-indigo-500 via-purple-600 to-slate-900 border-indigo-300/80';
-    if (selectedTheme === 'theme-jungle') return 'bg-gradient-to-br from-emerald-400 via-green-500 to-teal-700 border-emerald-200/80';
-    if (selectedTheme === 'theme-sunset') return 'bg-gradient-to-br from-amber-400 via-orange-500 to-rose-600 border-yellow-200/80';
-    if (selectedTheme === 'theme-royal') return 'bg-gradient-to-br from-amber-400 via-orange-500 to-purple-700 border-amber-200/90';
-    return 'bg-gradient-to-br from-amber-400 via-orange-500 to-yellow-600 border-amber-200/80';
-  };
+      const getThemeBoxClass = () => {
+        if (selectedTheme === 'theme-ocean') return 'bg-gradient-to-br from-cyan-400 via-sky-500 to-blue-700 border-cyan-200/80';
+        if (selectedTheme === 'theme-space') return 'bg-gradient-to-br from-indigo-500 via-purple-600 to-slate-900 border-indigo-300/80';
+        if (selectedTheme === 'theme-jungle') return 'bg-gradient-to-br from-emerald-400 via-green-500 to-teal-700 border-emerald-200/80';
+        if (selectedTheme === 'theme-sunset') return 'bg-gradient-to-br from-amber-400 via-orange-500 to-rose-600 border-yellow-200/80';
+        if (selectedTheme === 'theme-royal') return 'bg-gradient-to-br from-amber-400 via-orange-500 to-purple-700 border-amber-200/90';
+        return 'bg-gradient-to-br from-amber-400 via-orange-500 to-yellow-600 border-amber-200/80';
+      };
 
-  return (
-    <div id="game-container" className="w-full min-h-full flex-1 relative overflow-y-auto select-none">
-      {/* 1. QUIZ EDITOR SCREEN (GAME SETUP, CAPPED AT 30 QUESTIONS) */}
-      {screen === 'editor' && (
-        <QuizEditor
-          quiz={activeQuiz}
-          onSave={saveQuiz}
-          onCancel={() => onViewChange('home', { __stepBack: true })}
-          folders={folders}
-        />
-      )}
+      return (
+        <div id="game-container" className="w-full min-h-full flex-1 relative overflow-y-auto select-none">
+          {/* 1. QUIZ EDITOR SCREEN (GAME SETUP, CAPPED AT 30 QUESTIONS) */}
+          {screen === 'editor' && (
+            <QuizEditor
+              quiz={activeQuiz}
+              onSave={saveQuiz}
+              onCancel={() => onViewChange('home', { __stepBack: true })}
+              folders={folders}
+            />
+          )}
 
-      {/* 2. TROPICAL TREASURE ADVENTURE 3D LOBBY SCREEN */}
-      {screen === 'setup' && (
-        <MysteryBox3DLobby
-          questionCount={activeQuiz.questions.length}
-          numPlayers={numPlayers}
-          onSelectNumPlayers={(count) => {
-            playSound('click');
-            setNumPlayers(count);
-          }}
-          playerNames={playerNames}
-          onChangePlayerName={(idx, val) => {
-            setPlayerNames((prev) => {
-              const updated = [...prev];
-              updated[idx] = val;
-              return updated;
-            });
-          }}
-          difficulty={difficulty}
-          onSelectDifficulty={(mode) => {
-            playSound('click');
-            setDifficulty(mode);
-          }}
-          answerBonusPoints={answerBonusPoints}
-          onToggleBonus={() => {
-            playSound('click');
-            setAnswerBonusPoints((prev) => !prev);
-          }}
-          wrongAnswerPenalty={wrongAnswerPenalty}
-          onTogglePenalty={() => {
-            playSound('click');
-            setWrongAnswerPenalty((prev) => !prev);
-          }}
-          isMuted={isMuted}
-          onToggleMute={() => setIsMuted((prev) => !prev)}
-          selectedTheme={selectedTheme}
-          onSelectTheme={(themeId) => {
-            playSound('click');
-            setSelectedTheme(themeId);
-          }}
-          onStartGame={handleStartGame}
-          onOpenStudy={handleOpenStudy}
-          onBack={() => onViewChange('home', { __stepBack: true })}
-          onOpenGameSwitcher={() => setShowModeModal(true)}
-          onOpenQuizEditor={() => setScreen('editor')}
-        />
-      )}
+          {/* 2. TROPICAL TREASURE ADVENTURE 3D LOBBY SCREEN (BAAMBOOZLE FLOW) */}
+          {screen === 'setup' && (
+            <MysteryBox3DLobby
+              questionCount={activeQuiz.questions.length}
+              selectedQuestionLimit={effectiveTotalBoxes}
+              onSelectQuestionLimit={(limit) => {
+                playSound('click');
+                setSelectedQuestionLimit(limit);
+              }}
+              gameTimeMinutes={gameTimeMinutes}
+              onSelectGameTime={(mins) => {
+                playSound('click');
+                setGameTimeMinutes(mins);
+              }}
+              numPlayers={numPlayers}
+              onSelectNumPlayers={(count) => {
+                playSound('click');
+                setNumPlayers(count);
+              }}
+              playerNames={playerNames}
+              onChangePlayerName={(idx, val) => {
+                setPlayerNames((prev) => {
+                  const updated = [...prev];
+                  updated[idx] = val;
+                  return updated;
+                });
+              }}
+              teamAvatars={teamAvatars}
+              onChangeTeamAvatar={(teamIdx, avatarId) => {
+                playSound('click');
+                setTeamAvatars((prev) => {
+                  const next = [...prev];
+                  const existingOwner = next.findIndex((id, i) => i < numPlayers && id === avatarId);
+                  if (existingOwner !== -1 && existingOwner !== teamIdx) {
+                    next[existingOwner] = next[teamIdx];
+                  }
+                  next[teamIdx] = avatarId;
+                  return next;
+                });
+              }}
+              onRandomizeTeamAvatars={() => {
+                playSound('click');
+                const pool = Array.from({ length: 20 }, (_, i) => i + 1);
+                for (let i = pool.length - 1; i > 0; i--) {
+                  const j = Math.floor(Math.random() * (i + 1));
+                  [pool[i], pool[j]] = [pool[j], pool[i]];
+                }
+                setTeamAvatars(pool.slice(0, 8));
+              }}
+              difficulty={difficulty}
+              onSelectDifficulty={(mode) => {
+                playSound('click');
+                setDifficulty(mode);
+              }}
+              answerBonusPoints={answerBonusPoints}
+              onToggleBonus={() => {
+                playSound('click');
+                setAnswerBonusPoints((prev) => !prev);
+              }}
+              wrongAnswerPenalty={wrongAnswerPenalty}
+              onTogglePenalty={() => {
+                playSound('click');
+                setWrongAnswerPenalty((prev) => !prev);
+              }}
+              isMuted={isMuted}
+              onToggleMute={() => setIsMuted((prev) => !prev)}
+              selectedTheme={selectedTheme}
+              onSelectTheme={(themeId) => {
+                playSound('click');
+                setSelectedTheme(themeId);
+              }}
+              onStartGame={handleStartGame}
+              onOpenStudy={handleOpenStudy}
+              onBack={() => onViewChange('home', { __stepBack: true })}
+              onOpenGameSwitcher={() => setShowModeModal(true)}
+              onOpenQuizEditor={() => setScreen('editor')}
+              showModeAndTheme={false}
+            />
+          )}
 
       {/* 3. FULL SCREEN INTERACTIVE STUDY MODE */}
       {screen === 'study' && (
@@ -1759,200 +1983,425 @@ export function MysteryBox({
         </div>
       )}
 
-      {/* 4. MAIN GAMEPLAY SCREEN (NUMBERED MYSTERY BOXES FROM 1 TO 30) */}
-      {screen === 'game' && (
-        <div className={`min-h-screen ${getThemeGameBg()} pb-16 relative overflow-x-hidden ${celebration === 'lose' ? 'animate-shake' : ''}`}>
-          {/* Confetti Explosion Visual Effect */}
-          {(celebration === 'win' || celebration === 'jackpot') && (
-            <div className="fixed inset-0 pointer-events-none z-[110] overflow-hidden">
-              {Array.from({ length: celebration === 'jackpot' ? 75 : 45 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="absolute w-3.5 h-3.5 rounded-sm animate-confetti-fall"
-                  style={{
-                    left: `${(i * 1.9) % 100}%`,
-                    top: `-20px`,
-                    backgroundColor: ['#fbbf24', '#10b981', '#38bdf8', '#f472b6', '#a855f7', '#fb7185'][i % 6],
-                    animationDuration: `${1.8 + (i % 4) * 0.55}s`,
-                    animationDelay: `${(i % 8) * 0.08}s`,
-                    transform: `rotate(${i * 35}deg)`,
-                  }}
-                />
-              ))}
-            </div>
-          )}
+      {/* 4. MAIN GAMEPLAY SCREEN (MYSTERY BOX 3D – PREMIUM TREASURE ADVENTURE GAME UI) */}
+      {screen === 'game' && (() => {
+        const activeQuestions = activeQuiz.questions.slice(0, effectiveTotalBoxes);
+        const totalBoxes = activeQuestions.length;
+        const numCols =
+          totalBoxes <= 4
+            ? Math.max(2, totalBoxes)
+            : totalBoxes <= 8
+            ? 4
+            : totalBoxes <= 12
+            ? 4
+            : totalBoxes <= 20
+            ? 5
+            : totalBoxes <= 24
+            ? 6
+            : 6;
+        const numRows = Math.max(1, Math.ceil(totalBoxes / numCols));
+        const shieldNumSizeClass =
+          numRows >= 5
+            ? 'text-base sm:text-xl md:text-2xl lg:text-3xl'
+            : numRows === 4
+            ? 'text-lg sm:text-2xl md:text-3xl lg:text-4xl'
+            : 'text-xl sm:text-3xl md:text-4xl lg:text-[42px]';
 
-          {/* Bomb / Negative Impact Visual Effect */}
-          {celebration === 'lose' && (
-            <div className="fixed inset-0 pointer-events-none z-[110] bg-rose-600/20 animate-pulse border-8 border-rose-500/60"></div>
-          )}
-
-          {/* Live Score Feed Toast Banner */}
-          {liveScoreFeed && (
-            <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[115] pointer-events-none animate-pop-in">
-              <div className={`px-6 py-2.5 rounded-2xl font-black text-lg sm:text-xl shadow-2xl border-2 flex items-center gap-2 ${
-                liveScoreFeed.isPositive
-                  ? 'bg-emerald-500 text-white border-emerald-200 shadow-emerald-500/40'
-                  : 'bg-rose-600 text-white border-rose-300 shadow-rose-600/40'
-              }`}>
-                <span>{liveScoreFeed.isPositive ? '⚡' : '💥'}</span>
-                <span>{liveScoreFeed.text}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Game Header: Clean Utility Navigation Bar */}
-          <header className="px-4 py-3 sm:px-6 sm:py-3.5 bg-slate-950/70 backdrop-blur-xl shadow-2xl border-b border-white/10 flex flex-wrap justify-between items-center gap-4 z-30 relative">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setScreen('setup')}
-                className="p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl transition-colors cursor-pointer"
-                title="Return to Setup"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/30 text-xl shrink-0">
-                🎁
-              </div>
-              <div>
-                <h1 className="text-xl sm:text-2xl font-black text-white leading-none">Mystery Box</h1>
-                <p className="text-xs text-white/60 font-semibold mt-0.5">
-                  {activeQuiz.questions.length - openedBoxes.length} of {activeQuiz.questions.length} Boxes Left
-                </p>
-              </div>
-            </div>
-
-            {/* Right Controls */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  playSound('click');
-                  setTeams(teams.map(t => ({ ...t, score: 0, streak: 0 })));
-                  setOpenedBoxes([]);
-                  setBoxRecords({});
+        return (
+          <div className={`h-screen max-h-screen w-full relative overflow-hidden flex flex-col justify-between select-none ${celebration === 'lose' ? 'animate-shake' : ''}`}>
+            {/* Full-Screen 16:9 3D Magical Treasure Cave Environment Backdrop */}
+            <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-[#18112c]">
+              <img
+                src={treasureCaveBg}
+                alt="Magical Treasure Cave Adventure Backdrop"
+                className="w-full h-full object-cover object-center"
+              />
+              {/* Subtle ambient vignette so top UI and central board pop cleanly */}
+              <div
+                className="absolute inset-0"
+                style={{
+                  background:
+                    'radial-gradient(circle at 50% 54%, rgba(25,16,48,0.08) 0%, rgba(16,10,34,0.32) 100%)',
                 }}
-                className="p-2.5 bg-white/10 text-white hover:bg-rose-500 rounded-xl transition-colors cursor-pointer"
-                title="Reset Board & Scores"
-              >
-                <RefreshCw className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => setIsMuted(!isMuted)}
-                className="p-2.5 bg-white/10 text-white hover:bg-white/20 rounded-xl transition-colors cursor-pointer"
-                title="Toggle Sound"
-              >
-                {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-              </button>
-              <FullscreenButton targetId="game-container" />
-              <button
-                onClick={() => setShowModeModal(true)}
-                className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
-                title="Switch to Bubble Pop, Sumo, or Yoga Quiz"
-              >
-                <Shuffle size={14} className="text-amber-400" />
-                <span className="hidden sm:inline">Switch Mode</span>
-              </button>
-            </div>
-          </header>
-
-          {/* REDESIGNED BIGGER TEAM SCOREBOARD (NO ANIMAL ICONS, NO +/- SIGNS) */}
-          <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 pt-5 pb-2 z-20 relative">
-            <MainScoreboard
-              teams={teams}
-              currentTeamIdx={currentTeamIdx}
-              scoreDeltas={scoreDeltas}
-              highestScore={highestScore}
-              onSelectTeam={(idx) => {
-                playSound('click');
-                setCurrentTeamIdx(idx);
-              }}
-            />
-          </div>
-
-          {/* Main Mystery Box Grid */}
-          <main className="max-w-7xl mx-auto px-4 sm:px-6 mt-4 sm:mt-6">
-            {/* Turn Banner */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-6 bg-white/10 backdrop-blur-md border border-white/15 rounded-2xl px-5 py-3 max-w-4xl mx-auto">
-              <div className="flex items-center gap-3">
-                <span className={`px-4 py-1.5 rounded-xl text-white font-black text-sm sm:text-base shadow flex items-center gap-2 ${DEFAULT_TEAM_CONFIGS[currentTeamIdx % DEFAULT_TEAM_CONFIGS.length].bg}`}>
-                  <span className="w-6 h-6 rounded-lg bg-black/25 flex items-center justify-center text-xs font-black">#{currentTeamIdx + 1}</span>
-                  {teams[currentTeamIdx]?.name}
-                </span>
-                <span className="text-white font-bold text-base sm:text-lg">
-                  Choose a Mystery Box to Unlock!
-                </span>
-              </div>
-              <div className="text-xs font-bold text-amber-300/90 flex items-center gap-1.5">
-                <Zap size={14} /> Click any answer to auto-reveal & trigger live points!
-              </div>
+              />
             </div>
 
-            {/* MYSTERY BOXES GRID (1 TO 30) */}
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4 justify-center mx-auto max-w-6xl">
-              {activeQuiz.questions.map((q, idx) => {
-                const boxNum = idx + 1;
-                const isOpened = openedBoxes.includes(boxNum);
-                const record = boxRecords[boxNum];
-                const isAnimating = selectedBoxAnimation === boxNum;
-                const otherAnimating = selectedBoxAnimation !== null && selectedBoxAnimation !== boxNum;
+            {/* Confetti Explosion Visual Effect */}
+            {(celebration === 'win' || celebration === 'jackpot') && (
+              <div className="fixed inset-0 pointer-events-none z-[110] overflow-hidden">
+                {Array.from({ length: celebration === 'jackpot' ? 75 : 45 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="absolute w-3.5 h-3.5 rounded-sm animate-confetti-fall"
+                    style={{
+                      left: `${(i * 1.9) % 100}%`,
+                      top: `-20px`,
+                      backgroundColor: ['#fbbf24', '#10b981', '#38bdf8', '#f472b6', '#a855f7', '#fb7185'][i % 6],
+                      animationDuration: `${1.8 + (i % 4) * 0.55}s`,
+                      animationDelay: `${(i % 8) * 0.08}s`,
+                      transform: `rotate(${i * 35}deg)`,
+                    }}
+                  />
+                ))}
+              </div>
+            )}
 
-                let boxClass = "";
-                if (isOpened) {
-                  boxClass = record?.isPositive
-                    ? "bg-emerald-950/40 text-emerald-300/70 border-2 border-emerald-500/30 cursor-not-allowed scale-95"
-                    : "bg-slate-900/50 text-rose-300/60 border-2 border-rose-500/25 cursor-not-allowed scale-95";
-                } else if (isAnimating) {
-                  boxClass = `${getThemeBoxClass()} text-white border-4 scale-125 z-50 shadow-[0_0_70px_rgba(251,191,36,0.95)] rotate-6`;
-                } else if (otherAnimating) {
-                  boxClass = `${getThemeBoxClass()} text-white opacity-25 blur-[1px] scale-95 border-2`;
-                } else {
-                  boxClass = `${getThemeBoxClass()} animate-box-glow text-white hover:-translate-y-2 hover:scale-[1.03] hover:shadow-2xl border-2 sm:border-[3px] active:scale-95`;
-                }
+            {/* Bomb / Negative Impact Visual Effect */}
+            {celebration === 'lose' && (
+              <div className="fixed inset-0 pointer-events-none z-[110] bg-rose-600/20 animate-pulse border-8 border-rose-500/60"></div>
+            )}
 
-                return (
-                  <button
-                    key={q.id}
-                    onClick={() => handleBoxClick(boxNum)}
-                    disabled={isOpened || selectedBoxAnimation !== null}
-                    className={`relative overflow-hidden group aspect-square rounded-2xl sm:rounded-3xl flex flex-col items-center justify-center font-black transition-all duration-300 cursor-pointer ${boxClass}`}
+            {/* Live Score Feed Toast Banner */}
+            {liveScoreFeed && (
+              <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[115] pointer-events-none animate-pop-in">
+                <div className={`px-6 py-2 rounded-2xl font-black text-base sm:text-lg shadow-2xl border-2 flex items-center gap-2 ${
+                  liveScoreFeed.isPositive
+                    ? 'bg-emerald-500 text-white border-emerald-200 shadow-emerald-500/40'
+                    : 'bg-rose-600 text-white border-rose-300 shadow-rose-600/40'
+                }`}>
+                  <span>{liveScoreFeed.isPositive ? '⚡' : '💥'}</span>
+                  <span>{liveScoreFeed.text}</span>
+                </div>
+              </div>
+            )}
+
+            {/* 2. TOP NAVIGATION BAR (Slim Dark-Purple Translucent Bar) */}
+            <header className="shrink-0 px-3 py-1.5 sm:px-5 sm:py-2 bg-[#23173e]/85 backdrop-blur-xl shadow-[0_4px_20px_rgba(10,5,24,0.65)] border-b border-[#8b5cf6]/30 flex flex-wrap justify-between items-center gap-3 z-30 relative">
+              {/* LEFT: Rounded Back Button, Golden Gift Icon, Title & Boxes Left Subtitle */}
+              <div className="flex items-center gap-2.5">
+                <button
+                  onClick={() => setScreen('setup')}
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#43306b]/90 hover:bg-[#563e88] text-white flex items-center justify-center transition-all cursor-pointer border border-white/25 shadow-[0_2px_8px_rgba(0,0,0,0.4)] active:scale-95"
+                  title="Return to Setup"
+                >
+                  <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.6]" />
+                </button>
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-b from-[#fcd34d] via-[#f59e0b] to-[#d97706] border border-[#fef08a] flex items-center justify-center shadow-[0_3px_10px_rgba(245,158,11,0.45)] text-lg shrink-0">
+                  🎁
+                </div>
+                <div>
+                  <h1 className="text-base sm:text-xl font-black text-white leading-none tracking-tight drop-shadow-[0_2px_4px_rgba(0,0,0,0.6)]">
+                    Mystery Box
+                  </h1>
+                  <p className="text-[11px] sm:text-xs text-white/85 font-bold mt-0.5">
+                    {totalBoxes - openedBoxes.length} of {totalBoxes} Boxes Left
+                  </p>
+                </div>
+                {remainingSeconds !== null && (
+                  <div className="ml-2 px-3 py-1 rounded-full bg-[#150d2a]/80 border border-amber-300/50 text-amber-300 font-black text-xs sm:text-sm tabular-nums shadow-inner">
+                    ⏱ {Math.floor(remainingSeconds / 60)}:{String(remainingSeconds % 60).padStart(2, '0')}
+                  </div>
+                )}
+              </div>
+
+              {/* RIGHT: Yellow Settings Pill, Circular Restart, Circular Sound, Purple Switch Mode Pill */}
+              <div className="flex items-center gap-2 sm:gap-2.5">
+                <button
+                  onClick={() => {
+                    playSound('click');
+                    setShowInGameSettings(true);
+                  }}
+                  className="px-4 py-1.5 sm:py-2 rounded-full bg-gradient-to-b from-[#fde047] via-[#fbbf24] to-[#f59e0b] hover:brightness-105 text-[#1e1303] border-2 border-[#fef08a] shadow-[0_3px_0_#b45309,0_6px_14px_rgba(245,158,11,0.4)] font-black text-xs sm:text-sm flex items-center gap-1.5 transition-all cursor-pointer active:translate-y-0.5"
+                  title="In-Game Settings (Box Mode & Bonus Rules)"
+                >
+                  <Settings className="w-4 h-4 stroke-[2.6]" />
+                  <span>Settings</span>
+                </button>
+                <button
+                  onClick={() => {
+                    playSound('click');
+                    setTeams(teams.map(t => ({ ...t, score: 0, streak: 0 })));
+                    setOpenedBoxes([]);
+                    setBoxRecords({});
+                    setRemainingSeconds(gameTimeMinutes > 0 ? gameTimeMinutes * 60 : null);
+                  }}
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#43306b]/90 text-white hover:bg-rose-500 flex items-center justify-center transition-all cursor-pointer border border-white/25 shadow-[0_2px_8px_rgba(0,0,0,0.4)] active:scale-95"
+                  title="Reset Board & Scores"
+                >
+                  <RefreshCw className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2.4]" />
+                </button>
+                <button
+                  onClick={() => setIsMuted(!isMuted)}
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#43306b]/90 text-white hover:bg-[#563e88] flex items-center justify-center transition-all cursor-pointer border border-white/25 shadow-[0_2px_8px_rgba(0,0,0,0.4)] active:scale-95"
+                  title="Toggle Sound"
+                >
+                  {isMuted ? <VolumeX className="w-4 h-4 sm:w-4.5 sm:h-4.5" /> : <Volume2 className="w-4 h-4 sm:w-4.5 sm:h-4.5" />}
+                </button>
+                <button
+                  onClick={() => setShowModeModal(true)}
+                  className="px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-gradient-to-b from-[#6d48b5] to-[#4c2f87] hover:brightness-110 border border-[#a78bfa]/50 text-white font-extrabold text-xs sm:text-sm flex items-center gap-1.5 transition-all cursor-pointer shadow-[0_3px_10px_rgba(0,0,0,0.4)] active:scale-95"
+                  title="Switch to Bubble Pop, Sumo, or Yoga Quiz"
+                >
+                  <Shuffle size={14} className="text-[#fbbf24]" />
+                  <span>Switch Mode</span>
+                </button>
+              </div>
+            </header>
+
+            {/* 3. TEAM SCOREBOARD (Upper Center Directly Below Nav Bar with Golden Laurels) */}
+            <div className="shrink-0 w-full max-w-6xl mx-auto px-3 sm:px-6 pt-2.5 pb-1 z-20 relative">
+              <MainScoreboard
+                teams={teams}
+                currentTeamIdx={currentTeamIdx}
+                scoreDeltas={scoreDeltas}
+                highestScore={highestScore}
+                isCompact={true}
+                onSelectTeam={(idx) => {
+                  playSound('click');
+                  setCurrentTeamIdx(idx);
+                }}
+              />
+            </div>
+
+            {/* 4 & 5. GAME INSTRUCTION BAR + MAIN WOODEN TREASURE CHEST BOARD */}
+            <main className="flex-1 min-h-0 w-full flex flex-col items-center justify-between px-3 sm:px-6 pb-3 sm:pb-5 pt-1 z-20 relative">
+              {/* 4. Game Instruction Bar Capsule */}
+              <div className="shrink-0 w-[86%] sm:w-[76%] lg:w-[68%] max-w-[960px] mx-auto mb-2 sm:mb-2.5 rounded-full bg-gradient-to-r from-[#2c1d52]/90 via-[#382666]/90 to-[#2c1d52]/90 backdrop-blur-xl border-[2px] border-[#a78bfa]/60 shadow-[0_0_22px_rgba(139,92,246,0.4),inset_0_1px_8px_rgba(255,255,255,0.2)] px-3 sm:px-5 py-1.5 sm:py-2 flex flex-wrap items-center justify-between gap-2">
+                {/* LEFT: Blue Team Pill Indicator */}
+                <div className="flex items-center gap-2.5 sm:gap-3.5">
+                  <span className="pl-1.5 pr-3.5 py-1 rounded-full bg-gradient-to-b from-[#38bdf8] via-[#2563eb] to-[#1d4ed8] border border-[#93c5fd] text-white font-black text-xs sm:text-sm shadow-[0_2px_8px_rgba(37,99,235,0.6)] flex items-center gap-2">
+                    <CuteHamsterAvatar
+                      avatarId={teams[currentTeamIdx]?.avatarId || ((currentTeamIdx % 20) + 1)}
+                      className="w-6 h-6 !border-2"
+                    />
+                    <span>{teams[currentTeamIdx]?.name || `Team ${currentTeamIdx + 1}`}</span>
+                  </span>
+
+                  {/* CENTER: Main Instruction Text */}
+                  <span className="text-white font-black text-sm sm:text-base md:text-lg tracking-wide drop-shadow-[0_2px_4px_rgba(0,0,0,0.6)]">
+                    Choose a Mystery Box to Unlock!
+                  </span>
+                </div>
+
+                {/* RIGHT: Golden Lightning Icon & Helper Text */}
+                <div className="hidden md:flex items-center gap-1.5 text-xs sm:text-[13px] font-extrabold text-[#fde68a] drop-shadow-[0_1px_3px_rgba(0,0,0,0.75)]">
+                  <Zap size={15} className="text-[#fbbf24] fill-[#fbbf24]" />
+                  <span>Click any answer to auto-reveal &amp; trigger live points!</span>
+                </div>
+              </div>
+
+              {/* 5. MAIN MYSTERY BOX WOODEN TREASURE BOARD (Sized to keep left hamster & right open chest visible) */}
+              <div
+                className="flex-1 min-h-0 w-[88%] sm:w-[78%] lg:w-[71%] max-w-[1120px] mx-auto rounded-[28px] sm:rounded-[34px] p-2 sm:p-3 md:p-3.5 relative flex flex-col justify-center"
+                style={{
+                  background:
+                    'linear-gradient(180deg, #d99b4e 0%, #a86825 18%, #7c4714 52%, #a66724 85%, #e2a556 100%)',
+                  boxShadow:
+                    '0 18px 45px rgba(8,4,18,0.85), inset 0 3px 6px rgba(255,235,180,0.65), inset 0 -4px 8px rgba(48,24,5,0.85)',
+                  border: '3px solid #f3c26f',
+                }}
+              >
+                {/* Decorative Carved Inner Wooden Bevel & Dark Purple Treasure Cavern Recess */}
+                <div
+                  className="w-full h-full min-h-0 rounded-[20px] sm:rounded-[26px] px-2.5 py-2 sm:px-5 sm:py-3.5 relative flex flex-col justify-center overflow-hidden"
+                  style={{
+                    background:
+                      'radial-gradient(circle at 50% 45%, rgba(84,56,128,0.92) 0%, rgba(49,33,82,0.96) 58%, rgba(32,20,58,0.98) 100%)',
+                    boxShadow:
+                      'inset 0 8px 24px rgba(10,5,24,0.85), inset 0 0 28px rgba(245,158,11,0.18)',
+                    border: '2.5px solid #593210',
+                  }}
+                >
+                  {/* Dynamic Grid of 3D Treasure Chests on Stone Pedestals */}
+                  <div
+                    className="w-full h-full min-h-0 grid gap-1.5 sm:gap-2.5 md:gap-3 mx-auto my-auto place-items-center"
+                    style={{
+                      gridTemplateColumns: `repeat(${numCols}, minmax(0, 1fr))`,
+                      gridTemplateRows: `repeat(${numRows}, minmax(0, 1fr))`,
+                    }}
                   >
-                    {/* Shiny Crate Ribbon & Corner Accents for Unopened Boxes */}
-                    {!isOpened && (
-                      <>
-                        <div className="absolute inset-0 bg-gradient-to-tr from-black/15 via-transparent to-white/25 pointer-events-none" />
-                        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-3 sm:h-4 bg-black/15 pointer-events-none" />
-                        <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-3 sm:w-4 bg-black/15 pointer-events-none" />
-                        <span className="absolute top-2 right-2.5 text-xs sm:text-sm opacity-75 group-hover:scale-125 group-hover:rotate-12 transition-transform">
-                          🎁
-                        </span>
-                      </>
-                    )}
+                    {activeQuestions.map((q, idx) => {
+                      const boxNum = idx + 1;
+                      const isOpened = openedBoxes.includes(boxNum);
+                      const record = boxRecords[boxNum];
+                      const isAnimating = selectedBoxAnimation === boxNum;
+                      const otherAnimating = selectedBoxAnimation !== null && selectedBoxAnimation !== boxNum;
 
-                    {/* Box Number */}
-                    <span className={`z-10 font-black tabular-nums ${
-                      !isOpened
-                        ? 'text-3xl sm:text-5xl md:text-6xl drop-shadow-[0_3px_6px_rgba(0,0,0,0.65)]'
-                        : 'text-xl sm:text-2xl opacity-50 mb-1'
-                    }`}>
-                      {boxNum}
-                    </span>
+                      return (
+                        <button
+                          key={q.id}
+                          onClick={() => handleBoxClick(boxNum)}
+                          disabled={isOpened || selectedBoxAnimation !== null}
+                          className={`group relative w-full h-full min-h-0 flex items-center justify-center transition-all duration-300 select-none ${
+                            isOpened
+                              ? 'cursor-not-allowed opacity-85 scale-[0.96]'
+                              : isAnimating
+                              ? 'scale-110 z-50 drop-shadow-[0_0_35px_rgba(251,191,36,0.95)] rotate-2 cursor-pointer'
+                              : otherAnimating
+                              ? 'opacity-30 blur-[1px] scale-95'
+                              : 'cursor-pointer hover:-translate-y-1.5 hover:scale-[1.05] active:scale-95'
+                          }`}
+                        >
+                          {/* Subtle Golden Pedestal Glow Underneath Unopened Chests */}
+                          {!isOpened && (
+                            <div
+                              className="pointer-events-none absolute bottom-[6%] left-1/2 -translate-x-1/2 w-[76%] h-[26%] rounded-full opacity-75 group-hover:opacity-100 transition-opacity blur-md"
+                              style={{
+                                background:
+                                  'radial-gradient(ellipse at center, rgba(251,191,36,0.65) 0%, rgba(245,158,11,0.2) 60%, transparent 100%)',
+                              }}
+                            />
+                          )}
 
-                    {/* Opened Box Outcome History Badge */}
-                    {isOpened && record && (
-                      <div className="z-10 flex flex-col items-center px-2 text-center">
-                        <span className="text-lg sm:text-xl leading-none mb-0.5">{record.icon}</span>
-                        <span className={`text-[10px] sm:text-xs font-black uppercase tracking-tight ${
-                          record.isPositive ? 'text-emerald-400' : 'text-rose-400'
-                        }`}>
-                          {record.label}
-                        </span>
+                          {/* 3D Treasure Chest on Stone Pedestal */}
+                          <div className="relative h-full w-full max-h-full max-w-full aspect-square flex items-center justify-center">
+                            <img
+                              src={transparentChestSrc}
+                              alt={`Treasure Chest ${boxNum}`}
+                              className={`w-full h-full object-contain pointer-events-none select-none transition-all duration-300 ${
+                                isOpened
+                                  ? 'brightness-50 saturate-50 contrast-110'
+                                  : 'drop-shadow-[0_10px_16px_rgba(0,0,0,0.65)] group-hover:drop-shadow-[0_12px_22px_rgba(251,191,36,0.55)]'
+                              }`}
+                            />
+
+                            {/* Centered Number inside the Golden Shield Plate */}
+                            {!isOpened && (
+                              <div
+                                className="pointer-events-none absolute inset-0 flex items-center justify-center"
+                                style={{
+                                  paddingBottom: '13%',
+                                }}
+                              >
+                                <span
+                                  className={`font-black tabular-nums leading-none tracking-tight text-[#1e1638] group-hover:scale-105 transition-transform ${shieldNumSizeClass}`}
+                                  style={{
+                                    textShadow:
+                                      '0 1px 0 rgba(255,250,210,0.95), 0 2px 4px rgba(0,0,0,0.25)',
+                                  }}
+                                >
+                                  {boxNum}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Opened Chest Outcome Badge Overlay */}
+                            {isOpened && (
+                              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center p-1.5 text-center">
+                                <div
+                                  className={`px-2.5 py-1 rounded-2xl border-2 backdrop-blur-md shadow-lg flex flex-col items-center justify-center ${
+                                    record?.isPositive
+                                      ? 'bg-emerald-950/85 border-emerald-400/80 text-emerald-200'
+                                      : 'bg-rose-950/85 border-rose-400/80 text-rose-200'
+                                  }`}
+                                >
+                                  <span className="text-[10px] sm:text-xs font-black text-white/70 leading-none">
+                                    #{boxNum}
+                                  </span>
+                                  {record && (
+                                    <>
+                                      <span className="text-sm sm:text-base leading-tight my-0.5">
+                                        {record.icon}
+                                      </span>
+                                      <span
+                                        className={`text-[8px] sm:text-[10px] font-black uppercase tracking-tight leading-none ${
+                                          record.isPositive ? 'text-emerald-300' : 'text-rose-300'
+                                        }`}
+                                      >
+                                        {record.label}
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </main>
+
+            {/* IN-GAME SETTINGS MODAL (BOX MODE & BONUS RULES ONLY — ARENA THEME REMOVED) */}
+            {showInGameSettings && (
+              <div
+                className="fixed inset-0 z-[130] bg-slate-950/70 backdrop-blur-xl flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
+                onClick={() => setShowInGameSettings(false)}
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="relative w-full max-w-[650px] rounded-[34px] sm:rounded-[42px] p-4 sm:p-6 border-[5px] border-white ring-4 ring-[#6bc2ff]/85 shadow-[0_26px_65px_rgba(7,48,94,0.6),0_8px_0_#4ca6ee,inset_0_4px_14px_rgba(255,255,255,0.98)] flex flex-col gap-4 animate-pop-in my-auto"
+                  style={{
+                    background:
+                      'linear-gradient(180deg, #abdBFF 0%, #d8f0ff 22%, #eef9ff 54%, #a8d8ff 100%)',
+                  }}
+                >
+                  {/* Top Modal Header */}
+                  <div className="flex items-center justify-between gap-3 px-2">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-2xl bg-gradient-to-b from-amber-300 via-amber-400 to-orange-500 border-2 border-white shadow-[0_4px_0_#b45309] flex items-center justify-center text-slate-950">
+                        <Settings className="w-6 h-6 stroke-[2.6]" />
                       </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </main>
+                      <div>
+                        <h2
+                          className="text-xl sm:text-2xl font-black text-[#092247] uppercase tracking-wide leading-none"
+                          style={{ textShadow: '0 1px 0 rgba(255,255,255,0.9)' }}
+                        >
+                          In-Game Settings
+                        </h2>
+                        <p className="text-xs sm:text-sm font-bold text-[#092247]/75 mt-0.5">
+                          Customize Box Mode, Bonus/Penalty Rules &amp; Sound Live
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        playSound('click');
+                        setShowInGameSettings(false);
+                      }}
+                      className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-gradient-to-b from-white to-slate-100 hover:from-rose-50 hover:to-rose-100 text-[#092247] hover:text-rose-600 border-[2.5px] border-[#60a5fa] shadow-[0_3px_0_#1d4ed8] flex items-center justify-center transition-all cursor-pointer active:translate-y-0.5"
+                      title="Close Settings"
+                    >
+                      <X className="w-5 h-5 stroke-[3]" />
+                    </button>
+                  </div>
+
+                  {/* Single-Column Box Mode Selector (Arena Theme removed) */}
+                  <div className="w-full">
+                    <BoxModeSelector
+                      difficulty={difficulty}
+                      onSelectDifficulty={(mode) => {
+                        playSound('click');
+                        setDifficulty(mode);
+                      }}
+                      answerBonusPoints={answerBonusPoints}
+                      onToggleBonus={() => {
+                        playSound('click');
+                        setAnswerBonusPoints((prev) => !prev);
+                      }}
+                      wrongAnswerPenalty={wrongAnswerPenalty}
+                      onTogglePenalty={() => {
+                        playSound('click');
+                        setWrongAnswerPenalty((prev) => !prev);
+                      }}
+                      isMuted={isMuted}
+                      onToggleMute={() => setIsMuted((prev) => !prev)}
+                      headerTitle="BOX MODE"
+                    />
+                  </div>
+
+                  {/* Apply & Resume Button */}
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        playSound('click');
+                        setShowInGameSettings(false);
+                      }}
+                      className="w-full sm:w-auto px-8 py-3.5 rounded-full bg-gradient-to-b from-[#6ee7b7] via-[#16a34a] to-[#0d6e27] border-[3.5px] border-[#d1fae5] ring-3 ring-[#15803d]/80 shadow-[0_6px_0_#064e1c,0_12px_20px_rgba(6,78,28,0.35)] hover:brightness-105 active:translate-y-0.5 text-white font-black text-base sm:text-lg uppercase tracking-wide flex items-center justify-center gap-2 cursor-pointer transition-all"
+                      style={{ textShadow: '0 2px 0 #064e1c' }}
+                    >
+                      <Check className="w-5 h-5 stroke-[3.5]" />
+                      <span>Done &amp; Resume Game</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
           {/* ACTIVE BOX FULL-SCREEN QUESTION & MYSTERY UNBOXING / LIVE SCORE UPDATE STAGE */}
           {activeBoxNum !== null && (
@@ -2561,7 +3010,8 @@ export function MysteryBox({
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {/* Switch Game Mode Modal */}
       <GameModeModal

@@ -60,6 +60,8 @@ import {
   sendHandsFrameSafe,
   waitForVideoReady,
   prewarmSharedHands,
+  acquireMacSafeCameraStream,
+  formatMacFriendlyCameraError,
 } from "../utils/mediapipeHandsManager";
 
 export interface Question {
@@ -2910,11 +2912,17 @@ function YogaLobbyPoseTester({
 
       let stream: MediaStream | null = null;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } },
+        stream = await acquireMacSafeCameraStream({
+          preferredWidth: 640,
+          preferredHeight: 480,
+          facingMode: 'user',
         });
-      } catch {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      } catch (err: any) {
+        if (seq !== testerSeqRef.current) return;
+        setCamErr(formatMacFriendlyCameraError(err, 'Please allow camera access and click Retry.'));
+        setIsTesting(false);
+        setIsCamReady(false);
+        return;
       }
 
       if (seq !== testerSeqRef.current || !stream) {
@@ -2924,8 +2932,7 @@ function YogaLobbyPoseTester({
 
       if (testerVideoRef.current) {
         testerVideoRef.current.srcObject = stream;
-        await testerVideoRef.current.play().catch(() => {});
-        await waitForVideoReady(testerVideoRef.current, 2500);
+        await waitForVideoReady(testerVideoRef.current, 3000);
         if (seq !== testerSeqRef.current) {
           stream.getTracks().forEach(t => t.stop());
           return;
@@ -3152,6 +3159,7 @@ function YogaLobbyPoseTester({
             <>
               <video
                 ref={testerVideoRef}
+                autoPlay
                 playsInline
                 muted
                 className="absolute inset-0 w-full h-full object-cover transform -scale-x-100 opacity-90"
@@ -4597,37 +4605,17 @@ function YogaGame({
         return;
       }
 
-      // Start camera stream using reliable 640x480 webcam profile for maximum compatibility & speed
-      const streamPromise = (async (): Promise<MediaStream | null> => {
-        try {
-          return await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: 'user',
-              width: { ideal: 640 },
-              height: { ideal: 480 },
-              frameRate: { ideal: 30 },
-            },
-          });
-        } catch (e1) {
-          try {
-            return await navigator.mediaDevices.getUserMedia({
-              video: { facingMode: 'user' },
-            });
-          } catch (e2) {
-            return await navigator.mediaDevices.getUserMedia({
-              video: true,
-            });
-          }
-        }
-      })();
-
       let stream: MediaStream | null = null;
       try {
-        stream = await streamPromise;
+        stream = await acquireMacSafeCameraStream({
+          preferredWidth: 640,
+          preferredHeight: 480,
+          facingMode: 'user',
+        });
       } catch (camErr: any) {
         if (startSeq !== cameraStartSeqRef.current) return;
         console.warn("Yoga camera unavailable:", camErr?.name || camErr?.message);
-        setCameraError("Camera not found or permission denied. You can play directly using click/tap mode!");
+        setCameraError(formatMacFriendlyCameraError(camErr, "You can play directly using click/tap mode!"));
         setIsCameraReady(false);
         return;
       }
@@ -4641,8 +4629,7 @@ function YogaGame({
       // Attach video stream immediately and wait for non-zero video frame dimensions
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play().catch(() => {});
-        await waitForVideoReady(videoRef.current, 2500);
+        await waitForVideoReady(videoRef.current, 3000);
         if (startSeq !== cameraStartSeqRef.current) {
           stream.getTracks().forEach(t => t.stop());
           return;
@@ -5623,6 +5610,7 @@ function YogaGame({
               <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none z-0 bg-slate-950">
                 <video
                   ref={videoRef}
+                  autoPlay
                   playsInline
                   muted
                   className="absolute inset-0 w-full h-full object-cover transform -scale-x-100 opacity-90"

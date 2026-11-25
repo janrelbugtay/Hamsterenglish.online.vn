@@ -42,6 +42,11 @@ import {
 import { collection, query, where, getDocs, doc, addDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  acquireMacSafeCameraStream,
+  waitForVideoReady,
+  formatMacFriendlyCameraError,
+} from '../utils/mediapipeHandsManager';
 
 export interface ChaseQuestion {
   id: number | string;
@@ -643,9 +648,10 @@ export function BodyHeadToFeetSetupScanner({
     const startScanner = async () => {
       try {
         setCameraError(null);
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
-          audio: false,
+        stream = await acquireMacSafeCameraStream({
+          preferredWidth: 640,
+          preferredHeight: 480,
+          facingMode: 'user',
         });
         if (!active) {
           stream.getTracks().forEach((t) => t.stop());
@@ -653,7 +659,7 @@ export function BodyHeadToFeetSetupScanner({
         }
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          await videoRef.current.play().catch(() => {});
+          await waitForVideoReady(videoRef.current, 3000);
           setCameraReady(true);
         }
 
@@ -697,22 +703,37 @@ export function BodyHeadToFeetSetupScanner({
             }
           });
 
+          const poseUploadCanvas = document.createElement('canvas');
+          const poseUploadCtx = poseUploadCanvas.getContext('2d', { willReadFrequently: false });
           let busy = false;
           const processFrame = async () => {
             if (!active) return;
             const v = videoRef.current;
+            if (v && v.paused && v.srcObject) {
+              v.play().catch(() => {});
+            }
             if (
               v &&
               v.readyState >= 2 &&
               v.videoWidth > 0 &&
               v.videoHeight > 0 &&
               !busy &&
-              poseDetector &&
-              !(window as any).__mpWebGLContextUnavailable
+              poseDetector
             ) {
               busy = true;
               try {
-                await poseDetector.send({ image: v });
+                let frameSource: HTMLVideoElement | HTMLCanvasElement = v;
+                if (poseUploadCtx) {
+                  const tw = Math.min(640, v.videoWidth);
+                  const th = Math.max(1, Math.round((v.videoHeight / v.videoWidth) * tw));
+                  if (poseUploadCanvas.width !== tw || poseUploadCanvas.height !== th) {
+                    poseUploadCanvas.width = tw;
+                    poseUploadCanvas.height = th;
+                  }
+                  poseUploadCtx.drawImage(v, 0, 0, tw, th);
+                  frameSource = poseUploadCanvas;
+                }
+                await poseDetector.send({ image: frameSource });
               } catch {
                 // ignore frame drop
               }
@@ -724,7 +745,7 @@ export function BodyHeadToFeetSetupScanner({
         }
       } catch (err: any) {
         if (!active) return;
-        setCameraError('Camera access needed for Full-Body Head-to-Feet tracking (Keyboard/Touch controls also enabled).');
+        setCameraError(formatMacFriendlyCameraError(err, 'Keyboard/Touch controls are also enabled.'));
       }
     };
 
@@ -801,6 +822,7 @@ export function BodyHeadToFeetSetupScanner({
         <div className="md:col-span-6 lg:col-span-5 relative rounded-2xl overflow-hidden bg-slate-900 border-2 border-cyan-400/60 min-h-[210px] sm:min-h-[240px] flex items-center justify-center">
           <video
             ref={videoRef}
+            autoPlay
             playsInline
             muted
             className="absolute inset-0 w-full h-full object-cover transform -scale-x-100"
@@ -1189,9 +1211,10 @@ export function CityPoseChase3DGameplay({
 
     const startCam = async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
-          audio: false,
+        stream = await acquireMacSafeCameraStream({
+          preferredWidth: 640,
+          preferredHeight: 480,
+          facingMode: 'user',
         });
         if (!active) {
           stream.getTracks().forEach((t) => t.stop());
@@ -1199,7 +1222,7 @@ export function CityPoseChase3DGameplay({
         }
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          await videoRef.current.play().catch(() => {});
+          await waitForVideoReady(videoRef.current, 3000);
         }
 
         const PoseClass = await ensureMediaPipePoseLoaded();
@@ -1242,22 +1265,37 @@ export function CityPoseChase3DGameplay({
           }
         });
 
+        const poseUploadCanvas = document.createElement('canvas');
+        const poseUploadCtx = poseUploadCanvas.getContext('2d', { willReadFrequently: false });
         let busy = false;
         const loop = async () => {
           if (!active) return;
           const v = videoRef.current;
+          if (v && v.paused && v.srcObject) {
+            v.play().catch(() => {});
+          }
           if (
             v &&
             v.readyState >= 2 &&
             v.videoWidth > 0 &&
             v.videoHeight > 0 &&
             !busy &&
-            poseDetector &&
-            !(window as any).__mpWebGLContextUnavailable
+            poseDetector
           ) {
             busy = true;
             try {
-              await poseDetector.send({ image: v });
+              let frameSource: HTMLVideoElement | HTMLCanvasElement = v;
+              if (poseUploadCtx) {
+                const tw = Math.min(640, v.videoWidth);
+                const th = Math.max(1, Math.round((v.videoHeight / v.videoWidth) * tw));
+                if (poseUploadCanvas.width !== tw || poseUploadCanvas.height !== th) {
+                  poseUploadCanvas.width = tw;
+                  poseUploadCanvas.height = th;
+                }
+                poseUploadCtx.drawImage(v, 0, 0, tw, th);
+                frameSource = poseUploadCanvas;
+              }
+              await poseDetector.send({ image: frameSource });
             } catch {}
             busy = false;
           }
@@ -2433,6 +2471,7 @@ export function CityPoseChase3DGameplay({
         <div className="relative w-44 h-32 sm:w-52 sm:h-36 rounded-2xl overflow-hidden bg-slate-950 border-2 border-cyan-400 shadow-2xl shrink-0">
           <video
             ref={videoRef}
+            autoPlay
             playsInline
             muted
             className="absolute inset-0 w-full h-full object-cover transform -scale-x-100 opacity-90"

@@ -26,11 +26,208 @@ let activeResultsListener: ((results: any) => void) | null = null;
 
 // Serialized frame lock & self-healing recovery counters
 let isSendingFrame = false;
+let lastSendStartTimestamp = 0;
 let consecutiveSendErrors = 0;
-let useCanvasUploadFallback = false;
+
+// Detect macOS / Safari so we can avoid Continuity Camera hangs and WebKit HTMLVideoElement->WebGL texture stalls
+const isMacOrIOS =
+  typeof navigator !== 'undefined' &&
+  (/Mac|iPod|iPhone|iPad/i.test(navigator.platform || '') ||
+    /Macintosh|Mac OS X|iPhone|iPad/i.test(navigator.userAgent || ''));
+
+const isSafariBrowser =
+  typeof navigator !== 'undefined' &&
+  /Safari/i.test(navigator.userAgent || '') &&
+  !/Chrome|Chromium|CriOS|Edg|OPR|FxiOS/i.test(navigator.userAgent || '');
+
+// On Safari / macOS WebKit (or whenever WebGL prefers canvas upload), drawing the video frame onto an offscreen 2D canvas
+// before passing to MediaPipe completely avoids WebKit's YUV hardware video-texture upload failure.
+let useCanvasUploadFallback = isSafariBrowser;
 let forceLiteModel = false;
 let offscreenCanvas: HTMLCanvasElement | null = null;
 let offscreenCtx: CanvasRenderingContext2D | null = null;
+
+/**
+ * macOS-Safe Webcam Stream Acquisition Helper
+ * - Prioritizes the MacBook's built-in FaceTime HD Camera over wireless iPhone "Continuity Camera" / Desk View virtual cameras
+ *   (unless the user explicitly selected a custom deviceId or no built-in camera exists).
+ * - Uses progressively relaxed constraints (no rigid frameRate locks that fail on older Intel MacBooks)
+ * - Explicitly sets videoEl.muted, playsInline, and autoplay, and verifies frames are actually advancing.
+ */
+export async function acquireMacSafeCameraStream(options?: {
+  preferredWidth?: number;
+  preferredHeight?: number;
+  facingMode?: 'user' | 'environment';
+  preferredDeviceId?: string;
+}): Promise<MediaStream> {
+  if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+    throw new Error('Camera API is not supported in this browser.');
+  }
+
+  const width = options?.preferredWidth ?? 640;
+  const height = options?.preferredHeight ?? 480;
+  const facingMode = options?.facingMode ?? 'user';
+  let targetDeviceId = options?.preferredDeviceId;
+
+  // On macOS, inspect available videoinputs if permissions were already granted so we prefer the built-in FaceTime HD Camera
+  // over sleeping wireless iPhone Continuity Cameras or virtual OBS/Zoom cameras that output black frames.
+  if (!targetDeviceId && isMacOrIOS && typeof navigator.mediaDevices.enumerateDevices === 'function') {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputs = devices.filter((d) => d.kind === 'videoinput' && d.deviceId);
+      const builtInMacCam = videoInputs.find((d) =>
+        /FaceTime|Built-in|Internal|MacBook|iSight/i.test(d.label || '') &&
+        !/Desk View|Continuity|Virtual|OBS/i.test(d.label || '')
+      );
+      if (builtInMacCam?.deviceId) {
+        targetDeviceId = builtInMacCam.deviceId;
+      }
+    } catch {
+      // enumerateDevices may fail before first permission grant; continue with standard constraints
+    }
+  }
+
+  const constraintAttempts: MediaStreamConstraints[] = [];
+
+  if (targetDeviceId) {
+    constraintAttempts.push({
+      video: {
+        deviceId: { ideal: targetDeviceId },
+        width: { ideal: width },
+        height: { ideal: height },
+      },
+      audio: false,
+    });
+  }
+
+  // Attempt 1: Ideal resolution + facingMode WITHOUT rigid frameRate (older MacBooks reject 60fps or strict 30fps)
+  constraintAttempts.push({
+    video: {
+      facingMode: { ideal: facingMode },
+      width: { ideal: width },
+      height: { ideal: height },
+    },
+    audio: false,
+  });
+
+  // Attempt 2: Just facingMode
+  constraintAttempts.push({
+    video: {
+      facingMode,
+    },
+    audio: false,
+  });
+
+  // Attempt 3: Bare video: true fallback (never fails with OverconstrainedError on any macOS hardware)
+  constraintAttempts.push({
+    video: true,
+    audio: false,
+  });
+
+  let lastError: any = null;
+  for (const constraints of constraintAttempts) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      if (stream && stream.getVideoTracks().length > 0) {
+        // After permission is granted on macOS, check if macOS accidentally routed to "Desk View" or a virtual camera
+        // when a real FaceTime / built-in camera is available
+        const activeTrack = stream.getVideoTracks()[0];
+        const trackLabel = activeTrack?.label || '';
+        if (
+          isMacOrIOS &&
+          !options?.preferredDeviceId &&
+          /Desk View|OBS Virtual|Zoom/i.test(trackLabel) &&
+          typeof navigator.mediaDevices.enumerateDevices === 'function'
+        ) {
+          try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const builtIn = devices.find(
+              (d) =>
+                d.kind === 'videoinput' &&
+                d.deviceId &&
+                /FaceTime|Built-in|Internal|MacBook/i.test(d.label || '') &&
+                !/Desk View/i.test(d.label || '')
+            );
+            if (builtIn?.deviceId) {
+              const betterStream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                  deviceId: { exact: builtIn.deviceId },
+                  width: { ideal: width },
+                  height: { ideal: height },
+                },
+                audio: false,
+              });
+              stream.getTracks().forEach((t) => t.stop());
+              return betterStream;
+            }
+          } catch {
+            // Keep the already working stream
+          }
+        }
+        return stream;
+      }
+    } catch (err: any) {
+      lastError = err;
+      // If the user explicitly denied permission in the browser prompt or macOS System Settings, stop retrying
+      if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
+        break;
+      }
+    }
+  }
+
+  throw lastError || new Error('Unable to access camera.');
+}
+
+/**
+ * Format a clear, actionable camera error message tailored for macOS / MacBook users when applicable.
+ */
+export function formatMacFriendlyCameraError(err: any, fallbackModeText = 'Mouse and touch controls are active!'): string {
+  const name = String(err?.name || '');
+  const msg = String(err?.message || '');
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || /permission|denied/i.test(msg)) {
+    if (isMacOrIOS) {
+      return `Camera permission blocked. On MacBook: allow Camera in the browser address bar AND in macOS System Settings → Privacy & Security → Camera. (${fallbackModeText})`;
+    }
+    return `Camera permission denied. Please allow camera access in your browser address bar. (${fallbackModeText})`;
+  }
+  if (name === 'NotReadableError' || name === 'TrackStartError') {
+    return `Camera is currently in use by another app or tab. Close other camera tabs and click Retrieve Camera. (${fallbackModeText})`;
+  }
+  return `Camera unavailable. ${fallbackModeText}`;
+}
+
+/**
+ * Lazy loader for @mediapipe/face_mesh so it is only loaded when a game specifically needs FaceMesh (e.g., RollerCoaster or BubblePop Nose mode),
+ * preventing Emscripten global Module collisions with @mediapipe/hands on page startup.
+ */
+let faceMeshScriptPromise: Promise<any> | null = null;
+export function ensureMediaPipeFaceMeshLoaded(): Promise<any> {
+  const win = typeof window !== 'undefined' ? (window as any) : null;
+  if (!win) return Promise.resolve(null);
+  if (typeof win.FaceMesh === 'function') return Promise.resolve(win.FaceMesh);
+  if (faceMeshScriptPromise) return faceMeshScriptPromise;
+
+  faceMeshScriptPromise = (async () => {
+    const cdns = [
+      'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js',
+      'https://unpkg.com/@mediapipe/face_mesh/face_mesh.js',
+    ];
+    for (const url of cdns) {
+      try {
+        await loadScriptTag(url);
+        if (typeof win.FaceMesh === 'function') {
+          return win.FaceMesh;
+        }
+      } catch {
+        // try next CDN
+      }
+    }
+    faceMeshScriptPromise = null;
+    return win.FaceMesh || null;
+  })();
+
+  return faceMeshScriptPromise;
+}
 
 function loadScriptTag(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -119,9 +316,12 @@ async function createOrGetHandsInstance(initialOptions?: SharedHandsOptions): Pr
       locateFile: (file: string) => `${activeCdnBase}/${file}`,
     });
 
+    // On macOS Safari, default to modelComplexity 0 (lite model) for smoother 60fps Metal/WebGL execution
+    const defaultComplexity = (forceLiteModel || isSafariBrowser) ? 0 : (initialOptions?.modelComplexity ?? 1);
+
     const opts: Required<SharedHandsOptions> = {
       maxNumHands: initialOptions?.maxNumHands ?? 4,
-      modelComplexity: forceLiteModel ? 0 : (initialOptions?.modelComplexity ?? 1),
+      modelComplexity: defaultComplexity,
       minDetectionConfidence: initialOptions?.minDetectionConfidence ?? 0.45,
       minTrackingConfidence: initialOptions?.minTrackingConfidence ?? 0.45,
     };
@@ -180,6 +380,7 @@ export async function acquireSharedHands(
   activeResultsListener = onResults;
   webglCircuitBrokenUntil = 0;
   rebuildAttemptsThisSession = 0;
+  isSendingFrame = false;
   if (typeof window !== 'undefined') {
     (window as any).__mpWebGLContextUnavailable = false;
   }
@@ -191,9 +392,10 @@ export async function acquireSharedHands(
     return { sessionToken, hands };
   }
 
+  const defaultComplexity = (forceLiteModel || isSafariBrowser) ? 0 : (options.modelComplexity ?? 1);
   const normalized: Required<SharedHandsOptions> = {
     maxNumHands: options.maxNumHands ?? 4,
-    modelComplexity: forceLiteModel ? 0 : (options.modelComplexity ?? 1),
+    modelComplexity: defaultComplexity,
     minDetectionConfidence: options.minDetectionConfidence ?? 0.45,
     minTrackingConfidence: options.minTrackingConfidence ?? 0.45,
   };
@@ -219,14 +421,30 @@ export function releaseSharedHands(sessionToken: number): void {
   if (sessionToken === activeSessionToken) {
     activeResultsListener = null;
     activeSessionToken++;
+    isSendingFrame = false;
   }
 }
 
 /**
- * Safely wait for an HTMLVideoElement to have valid non-zero dimensions without deadlocking
- * if metadata has already loaded.
+ * Safely attach a MediaStream to an HTMLVideoElement and wait for valid non-zero dimensions
+ * and active playback on macOS Safari & Chrome.
  */
-export async function waitForVideoReady(videoEl: HTMLVideoElement, timeoutMs = 2500): Promise<void> {
+export async function waitForVideoReady(videoEl: HTMLVideoElement, timeoutMs = 3000): Promise<void> {
+  videoEl.muted = true;
+  videoEl.playsInline = true;
+  videoEl.autoplay = true;
+  videoEl.setAttribute('muted', '');
+  videoEl.setAttribute('playsinline', '');
+  videoEl.setAttribute('webkit-playsinline', '');
+
+  if (videoEl.paused && videoEl.srcObject) {
+    try {
+      await videoEl.play();
+    } catch {
+      // Autoplay will resume on next frame or interaction
+    }
+  }
+
   if (videoEl.readyState >= 2 && videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
     return;
   }
@@ -239,10 +457,14 @@ export async function waitForVideoReady(videoEl: HTMLVideoElement, timeoutMs = 2
       videoEl.removeEventListener('loadedmetadata', onCheck);
       videoEl.removeEventListener('loadeddata', onCheck);
       videoEl.removeEventListener('canplay', onCheck);
+      videoEl.removeEventListener('playing', onCheck);
       resolve();
     };
     const onCheck = () => {
       if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+        if (videoEl.paused) {
+          videoEl.play().catch(() => {});
+        }
         done();
       }
     };
@@ -250,6 +472,7 @@ export async function waitForVideoReady(videoEl: HTMLVideoElement, timeoutMs = 2
     videoEl.addEventListener('loadedmetadata', onCheck);
     videoEl.addEventListener('loadeddata', onCheck);
     videoEl.addEventListener('canplay', onCheck);
+    videoEl.addEventListener('playing', onCheck);
     onCheck();
   });
 }
@@ -275,8 +498,8 @@ function getCanvasImageFromVideo(videoEl: HTMLVideoElement): HTMLCanvasElement |
 
 /**
  * Send one video frame to the shared MediaPipe Hands singleton safely.
- * Serializes frames, skips 0x0/unready video frames, falls back to 2D canvas upload on WebGL errors,
- * and circuit-breaks cleanly if the device cannot allocate a WebGL context.
+ * Serializes frames, auto-clears any >1200ms hung WASM send promise, skips 0x0/unready video frames,
+ * uses 2D canvas upload on Safari/macOS WebGL quirks, and auto-recovers on WASM errors.
  */
 export async function sendHandsFrameSafe(
   videoEl: HTMLVideoElement | null,
@@ -284,10 +507,26 @@ export async function sendHandsFrameSafe(
   optionsForRecovery?: SharedHandsOptions
 ): Promise<boolean> {
   if (sessionToken !== activeSessionToken) return false;
-  if (!sharedHandsInstance || isSendingFrame) return false;
-  if (Date.now() < webglCircuitBrokenUntil) return false;
+  if (!sharedHandsInstance) return false;
+
+  // Watchdog: if a previous WASM frame send hung for >1200ms (e.g., during macOS resolution/tab switch), unlock
+  const now = Date.now();
+  if (isSendingFrame) {
+    if (lastSendStartTimestamp > 0 && now - lastSendStartTimestamp > 1200) {
+      isSendingFrame = false;
+    } else {
+      return false;
+    }
+  }
+
+  if (now < webglCircuitBrokenUntil) return false;
+  if (!videoEl) return false;
+
+  if (videoEl.paused && videoEl.srcObject) {
+    videoEl.play().catch(() => {});
+  }
+
   if (
-    !videoEl ||
     videoEl.readyState < 2 ||
     videoEl.videoWidth === 0 ||
     videoEl.videoHeight === 0 ||
@@ -298,49 +537,39 @@ export async function sendHandsFrameSafe(
   }
 
   const win = typeof window !== 'undefined' ? (window as any) : null;
-  if (win?.__mpWebGLContextUnavailable) {
-    webglCircuitBrokenUntil = Date.now() + 10000;
-    return false;
+  if (win?.__mpPreferCanvasFrameUpload) {
+    useCanvasUploadFallback = true;
   }
 
   isSendingFrame = true;
+  lastSendStartTimestamp = now;
   try {
     let imageSource: HTMLVideoElement | HTMLCanvasElement = videoEl;
-    if (useCanvasUploadFallback) {
+    if (useCanvasUploadFallback || isMacOrIOS) {
       const canvasImg = getCanvasImageFromVideo(videoEl);
       if (canvasImg) imageSource = canvasImg;
     }
 
-    await sharedHandsInstance.send({ image: imageSource });
-
-    if (win?.__mpWebGLContextUnavailable) {
-      webglCircuitBrokenUntil = Date.now() + 10000;
-      return false;
-    }
+    await Promise.race([
+      sharedHandsInstance.send({ image: imageSource }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Hands frame send timeout')), 1100)),
+    ]);
 
     consecutiveSendErrors = 0;
     return true;
   } catch (err: any) {
     consecutiveSendErrors++;
-    const errText = String(err?.message || err || '');
-    const isWebGLContextError =
-      Boolean(win?.__mpWebGLContextUnavailable) ||
-      errText.includes('WebGL') ||
-      errText.includes('canvas context') ||
-      errText.includes('passing video frame');
+    useCanvasUploadFallback = true;
 
-    if (isWebGLContextError) {
-      webglCircuitBrokenUntil = Date.now() + 10000;
-      return false;
-    }
-
-    // First non-WebGL failure: switch to 2D offscreen canvas upload to bypass browser HTMLVideoElement texture quirks
-    if (!useCanvasUploadFallback && consecutiveSendErrors === 1) {
-      useCanvasUploadFallback = true;
+    // First failure: retry via 2D offscreen canvas upload to bypass browser HTMLVideoElement texture quirks
+    if (consecutiveSendErrors === 1) {
       try {
         const canvasImg = getCanvasImageFromVideo(videoEl);
-        if (canvasImg && sharedHandsInstance && sessionToken === activeSessionToken && !win?.__mpWebGLContextUnavailable) {
-          await sharedHandsInstance.send({ image: canvasImg });
+        if (canvasImg && sharedHandsInstance && sessionToken === activeSessionToken) {
+          await Promise.race([
+            sharedHandsInstance.send({ image: canvasImg }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Hands canvas retry timeout')), 1100)),
+          ]);
           consecutiveSendErrors = 0;
           return true;
         }
@@ -349,8 +578,8 @@ export async function sendHandsFrameSafe(
       }
     }
 
-    // At most 1 rebuild per session with lite model (modelComplexity: 0)
-    if (consecutiveSendErrors >= 4 && rebuildAttemptsThisSession < 1 && !win?.__mpWebGLContextUnavailable) {
+    // Rebuild with lite model (modelComplexity: 0) if repeated frame errors occur
+    if (consecutiveSendErrors >= 4 && rebuildAttemptsThisSession < 2) {
       rebuildAttemptsThisSession++;
       console.warn('Recovering MediaPipe Hands after frame errors:', err);
       const broken = sharedHandsInstance;
@@ -372,10 +601,11 @@ export async function sendHandsFrameSafe(
           });
         }
       } catch {
-        webglCircuitBrokenUntil = Date.now() + 10000;
+        webglCircuitBrokenUntil = Date.now() + 4000;
       }
-    } else if (consecutiveSendErrors >= 4) {
-      webglCircuitBrokenUntil = Date.now() + 10000;
+    } else if (consecutiveSendErrors >= 6) {
+      webglCircuitBrokenUntil = Date.now() + 3000;
+      consecutiveSendErrors = 0;
     }
     return false;
   } finally {

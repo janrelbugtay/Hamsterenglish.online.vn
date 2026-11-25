@@ -1,9 +1,23 @@
-import hamsterSunnyCream from '../assets/images/fullbody_hamster_sunny_1794846641651.jpg';
-import hamsterCinnamonPeach from '../assets/images/fullbody_hamster_pip_1794846644859.jpg';
-import hamsterSnowyPearl from '../assets/images/fullbody_hamster_pearl_1794846646372.jpg';
-import hamsterMochaLatte from '../assets/images/fullbody_hamster_mocha_1794846648757.jpg';
-import hamsterCaramelButter from '../assets/images/fullbody_hamster_caramel_1794846649517.jpg';
-import hamsterSilverPudding from '../assets/images/fullbody_hamster_pudding_1794846650145.jpg';
+import hamster01Sunny from '../assets/images/fullbody_hamster_sunny_1794846641651.jpg';
+import hamster02Pip from '../assets/images/fullbody_hamster_pip_1794846644859.jpg';
+import hamster03Pearl from '../assets/images/fullbody_hamster_pearl_1794846646372.jpg';
+import hamster04Mocha from '../assets/images/fullbody_hamster_mocha_1794846648757.jpg';
+import hamster05Caramel from '../assets/images/fullbody_hamster_caramel_1794846649517.jpg';
+import hamster06Pudding from '../assets/images/fullbody_hamster_pudding_1794846650145.jpg';
+import hamster07StarWand from '../assets/images/hamster_mascot_fullbody_1795367067754.jpg';
+import hamster08VarsityRed from '../assets/images/fullbody_hamster_08_1795601801838.jpg';
+import hamster09RoyalHoodie from '../assets/images/fullbody_hamster_09_1795601800887.jpg';
+import hamster10TealTrack from '../assets/images/fullbody_hamster_10_1795601802716.jpg';
+import hamster11RoseKnit from '../assets/images/fullbody_hamster_11_1795601804825.jpg';
+import hamster12SunnyRaincoat from '../assets/images/fullbody_hamster_12_1795601806320.jpg';
+import hamster13SailorBow from '../assets/images/fullbody_hamster_13_1795601807755.jpg';
+import hamster14PlaidFlannel from '../assets/images/fullbody_hamster_14_1795601808705.jpg';
+import hamster15ChefCoat from '../assets/images/fullbody_hamster_15_1795601839026.jpg';
+import hamster16SkyPuffer from '../assets/images/fullbody_hamster_16_1795601839554.jpg';
+import hamster17EmeraldStar from '../assets/images/fullbody_hamster_17_1795601839939.jpg';
+import hamster18LavenderKnit from '../assets/images/fullbody_hamster_18_1795601843457.jpg';
+import hamster19SafariRanger from '../assets/images/fullbody_hamster_19_1795601846624.jpg';
+import hamster20RoyalKing from '../assets/images/fullbody_hamster_20_1795601847031.jpg';
 
 export interface HamsterHeadAnchor {
   topPct: number;
@@ -18,57 +32,194 @@ export interface CuteHamsterBreed {
   personality: string;
   imageUrl: string;
   accentColor: string;
+  ringColors: [string, string];
   headAnchor: HamsterHeadAnchor;
 }
 
+/**
+ * 20 Unique Full-Body 3D Studio Hamster Characters (No 2 Hamsters are the Same)
+ * Shared between Class Rewards and Mystery Box 3D Team Picker
+ */
 export const CUTE_HAMSTER_BREEDS: CuteHamsterBreed[] = [
   {
     breedId: 'sunny_cream',
     name: 'Sunny Clover',
-    personality: 'Tropical Cardigan Scholar',
-    imageUrl: hamsterSunnyCream,
+    personality: 'Olive Cardigan Scholar',
+    imageUrl: hamster01Sunny,
     accentColor: '#10b981',
+    ringColors: ['#34d399', '#059669'],
     headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: -2, scale: 1.08 },
   },
   {
     breedId: 'cinnamon_peach',
-    name: 'Cinnamon Pip',
-    personality: 'Island Varsity Captain',
-    imageUrl: hamsterCinnamonPeach,
+    name: 'Captain Pip',
+    personality: 'Varsity Blue H Captain',
+    imageUrl: hamster02Pip,
     accentColor: '#0ea5e9',
+    ringColors: ['#38bdf8', '#0284c7'],
     headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: 0, scale: 1.08 },
   },
   {
     breedId: 'snowy_pearl',
     name: 'Snowy Pearl',
-    personality: 'Beach Hoodie Marshmallow',
-    imageUrl: hamsterSnowyPearl,
+    personality: 'Navy Hoodie Marshmallow',
+    imageUrl: hamster03Pearl,
     accentColor: '#6366f1',
+    ringColors: ['#818cf8', '#4338ca'],
     headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: 0, scale: 1.08 },
   },
   {
     breedId: 'mocha_latte',
     name: 'Mocha Cheer',
-    personality: 'Sunny Hoodie Hype Buddy',
-    imageUrl: hamsterMochaLatte,
+    personality: 'Orange Hoodie Hype Buddy',
+    imageUrl: hamster04Mocha,
     accentColor: '#f97316',
+    ringColors: ['#fb923c', '#ea580c'],
     headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: -2, scale: 1.08 },
   },
   {
     breedId: 'caramel_butter',
     name: 'Caramel Sprout',
-    personality: 'Tropical Denim Explorer',
-    imageUrl: hamsterCaramelButter,
+    personality: 'Denim Overalls Explorer',
+    imageUrl: hamster05Caramel,
     accentColor: '#eab308',
+    ringColors: ['#facc15', '#ca8a04'],
     headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: 0, scale: 1.08 },
   },
   {
     breedId: 'silver_pudding',
     name: 'Pudding Hop',
-    personality: 'Joyful Island Argyle',
-    imageUrl: hamsterSilverPudding,
+    personality: 'Emerald Argyle Peace Buddy',
+    imageUrl: hamster06Pudding,
     accentColor: '#14b8a6',
+    ringColors: ['#2dd4bf', '#0d9488'],
     headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: -2, scale: 1.08 },
+  },
+  {
+    breedId: 'star_wizard',
+    name: 'Professor Star',
+    personality: 'Golden Wand & Glasses',
+    imageUrl: hamster07StarWand,
+    accentColor: '#f59e0b',
+    ringColors: ['#fbbf24', '#d97706'],
+    headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: 0, scale: 1.08 },
+  },
+  {
+    breedId: 'crimson_bomber',
+    name: 'Ruby Striker',
+    personality: 'Crimson Letterman Jacket',
+    imageUrl: hamster08VarsityRed,
+    accentColor: '#ef4444',
+    ringColors: ['#f87171', '#dc2626'],
+    headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: 0, scale: 1.08 },
+  },
+  {
+    breedId: 'violet_hoodie',
+    name: 'Cosmic Berry',
+    personality: 'Royal Purple Zip Hoodie',
+    imageUrl: hamster09RoyalHoodie,
+    accentColor: '#8b5cf6',
+    ringColors: ['#a78bfa', '#6d28d9'],
+    headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: 0, scale: 1.08 },
+  },
+  {
+    breedId: 'aqua_sprinter',
+    name: 'Turbo Teal',
+    personality: 'Turquoise Track Jacket',
+    imageUrl: hamster10TealTrack,
+    accentColor: '#06b6d4',
+    ringColors: ['#22d3ee', '#0891b2'],
+    headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: 0, scale: 1.08 },
+  },
+  {
+    breedId: 'rose_blossom',
+    name: 'Rosie Muffin',
+    personality: 'Pink Chunky Knit Cardigan',
+    imageUrl: hamster11RoseKnit,
+    accentColor: '#ec4899',
+    ringColors: ['#f472b6', '#db2777'],
+    headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: 0, scale: 1.08 },
+  },
+  {
+    breedId: 'sunny_raincoat',
+    name: 'Cloudy Splash',
+    personality: 'Sunny Yellow Raincoat',
+    imageUrl: hamster12SunnyRaincoat,
+    accentColor: '#eab308',
+    ringColors: ['#fde047', '#ca8a04'],
+    headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: 0, scale: 1.08 },
+  },
+  {
+    breedId: 'nautical_sailor',
+    name: 'Skipper Wave',
+    personality: 'Navy Sailor Collar & Bow',
+    imageUrl: hamster13SailorBow,
+    accentColor: '#2563eb',
+    ringColors: ['#60a5fa', '#1d4ed8'],
+    headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: 0, scale: 1.08 },
+  },
+  {
+    breedId: 'plaid_timber',
+    name: 'Acorn Ranger',
+    personality: 'Cozy Plaid Flannel Shirt',
+    imageUrl: hamster14PlaidFlannel,
+    accentColor: '#dc2626',
+    ringColors: ['#fb7185', '#be123c'],
+    headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: 0, scale: 1.08 },
+  },
+  {
+    breedId: 'master_bistro',
+    name: 'Chef Biscuit',
+    personality: 'White Chef Coat & Ascot',
+    imageUrl: hamster15ChefCoat,
+    accentColor: '#f43f5e',
+    ringColors: ['#fda4af', '#e11d48'],
+    headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: 0, scale: 1.08 },
+  },
+  {
+    breedId: 'glacier_puffer',
+    name: 'Misty Frost',
+    personality: 'Sky Quilted Puffer Vest',
+    imageUrl: hamster16SkyPuffer,
+    accentColor: '#38bdf8',
+    ringColors: ['#7dd3fc', '#0284c7'],
+    headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: 0, scale: 1.08 },
+  },
+  {
+    breedId: 'emerald_ace',
+    name: 'Clover Star',
+    personality: 'Emerald Gold-Star Polo',
+    imageUrl: hamster17EmeraldStar,
+    accentColor: '#16a34a',
+    ringColors: ['#4ade80', '#15803d'],
+    headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: 0, scale: 1.08 },
+  },
+  {
+    breedId: 'lavender_cable',
+    name: 'Lilac Mochi',
+    personality: 'Lavender Cable-Knit Sweater',
+    imageUrl: hamster18LavenderKnit,
+    accentColor: '#a855f7',
+    ringColors: ['#c084fc', '#7e22ce'],
+    headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: 0, scale: 1.08 },
+  },
+  {
+    breedId: 'safari_scout',
+    name: 'Scout Hazel',
+    personality: 'Safari Pocket Vest & Scarf',
+    imageUrl: hamster19SafariRanger,
+    accentColor: '#65a30d',
+    ringColors: ['#a3e635', '#4d7c0f'],
+    headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: 0, scale: 1.08 },
+  },
+  {
+    breedId: 'royal_sovereign',
+    name: 'King Nibbles',
+    personality: 'Royal Crimson & Gold Tunic',
+    imageUrl: hamster20RoyalKing,
+    accentColor: '#d97706',
+    ringColors: ['#facc15', '#b45309'],
+    headAnchor: { topPct: 14.5, leftPct: 50, tiltDeg: 0, scale: 1.08 },
   },
 ];
 
@@ -246,74 +397,21 @@ export interface StudentCharacterDef {
   breedIndex: number;
 }
 
-const RAW_DRIVE_IDS: Array<{ id: number; driveId: string; tag: string }> = [
-  { id: 1, driveId: '1u9s1Xu8uza3W8ZpwWX5NqKVPA4F9gBz7', tag: '001' },
-  { id: 2, driveId: '1Yww-WssC4zOP56Syalqa6mw-rmImoymq', tag: '002' },
-  { id: 3, driveId: '1--gLzDjWZb5o8xyUruCm0CAlgT5yWH9d', tag: '003' },
-  { id: 4, driveId: '1rHWCqfAcDeTg4zNZDoCzqQlVG3q-UvJ8', tag: '004' },
-  { id: 5, driveId: '1-vu3sEk0FKaC4NlGANnHiw1YnBRz3F9o', tag: '005' },
-  { id: 6, driveId: '1UgKip6JWFFoubn64WLXrvoUVXtjXPocX', tag: '006' },
-  { id: 7, driveId: '1lW6qzVWDBoVgp8w9AmrtKBTbhB6PrbjA', tag: '007' },
-  { id: 8, driveId: '1171GyfDvSgQL98DraWZ-cADZCqfkeVrc', tag: '008' },
-  { id: 10, driveId: '1qav0p4elcuPV6TUIDHTvQitEOPZMeEsa', tag: '010' },
-  { id: 11, driveId: '1I_SaYxnyONbabGB9ejXCM7KBSR53E7yj', tag: '011' },
-  { id: 12, driveId: '1fo6TScqbfu2SCzp-QrKiGhf80xDHzadC', tag: '012' },
-  { id: 13, driveId: '12MMb4sFoNOt00wb3Nk-5jb9EGAAF9LwU', tag: '013' },
-  { id: 14, driveId: '1lWoBpy-sUmIXntaKaDICyxTmMPgJ6Agw', tag: '014' },
-  { id: 15, driveId: '18Hdg_pM5Fa4io4mG8_Hg9QQxtFjXIElr', tag: '015' },
-  { id: 16, driveId: '1FwjKBgbyCoR7IRkZylV4w-hWW3rRKLPl', tag: '016' },
-  { id: 17, driveId: '1V6eQ0YIR2hwX6raQ3R0SIWrcVCiNmWr3', tag: '017' },
-  { id: 18, driveId: '10gg_NEq7ONS2PUA6L4pFSxp1gR5T5J7t', tag: '018' },
-  { id: 19, driveId: '1ERvXVhbZGsSbEF_UNwOokzpwR7UQfcfe', tag: '019' },
-  { id: 20, driveId: '1a6an-aimnGmpt-wGDI4unHQ8N2Mp-b0F', tag: '020' },
-  { id: 21, driveId: '161y2_mK2y0KhzXL1hPNNTZq70JwVZqi1', tag: '021' },
-  { id: 22, driveId: '1HnOQ7YWkZud8aSP_8HH3qp3D5yhmQChI', tag: '022' },
-  { id: 23, driveId: '1zjux6UA6uVRx8aNCxsZl03asRgvHQ_DQ', tag: '023' },
-  { id: 24, driveId: '1xMCSDYL9YcWLbxuQoVgOui2GuDSe5htU', tag: '024' },
-  { id: 25, driveId: '1AgWXbJz4xDtTYqixedKjke4SNf9xBL3m', tag: '025' },
-  { id: 26, driveId: '1NfkVET4BBzSan_xCBv-2PSqar81HVWM2', tag: '026' },
-  { id: 27, driveId: '1d78anitTb6rqyMMNBpG1RlwcFgFg13bU', tag: '027' },
-  { id: 28, driveId: '107lPDseyCr8xrctT5Vvxa0AkVkaph_NOE', tag: '028' },
-  { id: 29, driveId: '1eqS7ftNN91QpbMNYeS2Do1vCpF7cRP23', tag: '029' },
-  { id: 30, driveId: '1pqTJC9_owR5H5GLtamSxtZzh-vwn8CWl', tag: '030' },
-  { id: 31, driveId: '1clpP1axyiONpHb1Fes81iASnALPajPHH', tag: '031' },
-  { id: 32, driveId: '1DRgkKgK5bcfHHPU30JZvprpUS0qRg9eY', tag: '032' },
-  { id: 33, driveId: '1BRSfxo2Ssv5l3bPyvmKfMncksfbyO_5m', tag: '033' },
-  { id: 34, driveId: '1m-WXLMBYKOtB-Qcsx8KwJlCD5XYc_ONb', tag: '034' },
-  { id: 35, driveId: '180PjF8dXPAE6ExtfkLY_uL4sdKHDSWNZ', tag: '035' },
-  { id: 36, driveId: '1Orld290vuz8QpO2mqUrPNJ9w0LVDolpE', tag: '036' },
-  { id: 37, driveId: '1pbgtlPINic0Al87nImN9IEzxz29puUpa', tag: '037' },
-  { id: 38, driveId: '1xA7AUGgB-yk7YaxbI8nZKQuUXryhGFyv', tag: '038' },
-  { id: 39, driveId: '1v1PAXLnqIuZ9dFTX-eLi3NNkq0uGeE4F', tag: '039' },
-  { id: 40, driveId: '1Sgp-htwMyn2AfNkxrwoPcmQxW9C9yPHo', tag: '040' },
-];
-
-const HAMSTER_NICKNAMES = [
-  'Sunny Clover',
-  'Cinnamon Pip',
-  'Snowy Pearl',
-  'Mocha Cheer',
-  'Caramel Sprout',
-  'Pudding Hop',
-  'Honey Biscuit',
-  'Ginger Acorn',
-  'Cloudy Mochi',
-  'Cocoa Bean',
-  'Buttercup Muffin',
-  'Misty Pebble',
-];
-
-export const GOOGLE_DRIVE_STUDENTS: StudentCharacterDef[] = RAW_DRIVE_IDS.map((item, idx) => ({
-  ...item,
-  breedIndex: idx % CUTE_HAMSTER_BREEDS.length,
-  title: HAMSTER_NICKNAMES[idx % HAMSTER_NICKNAMES.length],
-}));
+export const GOOGLE_DRIVE_STUDENTS: StudentCharacterDef[] = CUTE_HAMSTER_BREEDS.map(
+  (breed, idx) => ({
+    id: idx + 1,
+    driveId: breed.breedId,
+    tag: String(idx + 1).padStart(3, '0'),
+    title: breed.name,
+    breedIndex: idx,
+  })
+);
 
 export const OFFICIAL_CHARACTER_NUMBERS = GOOGLE_DRIVE_STUDENTS.map((s) => s.id);
 
 export function getStudentCharacter(
   num: number,
-  avatarStyle: 'cute' | 'classic' = 'cute'
+  _avatarStyle: 'cute' | 'classic' = 'cute'
 ): {
   id: number;
   tag: string;
@@ -325,27 +423,20 @@ export function getStudentCharacter(
   title: string;
   breed: CuteHamsterBreed;
 } {
-  let def = GOOGLE_DRIVE_STUDENTS.find((s) => s.id === num);
-
-  if (!def) {
-    const safeNum = Math.max(1, num || 1);
-    const index = (safeNum - 1) % GOOGLE_DRIVE_STUDENTS.length;
-    def = GOOGLE_DRIVE_STUDENTS[index] || GOOGLE_DRIVE_STUDENTS[0];
-  }
-
-  const breed = CUTE_HAMSTER_BREEDS[def.breedIndex] || CUTE_HAMSTER_BREEDS[0];
-  const padded = String(def.id).padStart(3, '0');
-  const classicUrl = `/images/student_${padded}.png`;
+  const safeNum = Math.max(1, num || 1);
+  const index = (safeNum - 1) % CUTE_HAMSTER_BREEDS.length;
+  const breed = CUTE_HAMSTER_BREEDS[index] || CUTE_HAMSTER_BREEDS[0];
+  const def = GOOGLE_DRIVE_STUDENTS[index] || GOOGLE_DRIVE_STUDENTS[0];
 
   return {
     id: def.id,
     tag: def.tag,
     cuteUrl: breed.imageUrl,
-    classicUrl,
-    localUrl: avatarStyle === 'classic' ? classicUrl : breed.imageUrl,
-    driveUrl: `https://lh3.googleusercontent.com/d/${def.driveId}`,
-    thumbnailUrl: `https://drive.google.com/thumbnail?id=${def.driveId}&sz=w1000`,
-    title: def.title,
+    classicUrl: breed.imageUrl,
+    localUrl: breed.imageUrl,
+    driveUrl: breed.imageUrl,
+    thumbnailUrl: breed.imageUrl,
+    title: breed.name,
     breed,
   };
 }

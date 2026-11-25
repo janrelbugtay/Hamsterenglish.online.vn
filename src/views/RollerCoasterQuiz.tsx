@@ -12,6 +12,11 @@ import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput, convertQue
 import { parseOptionContent, formatOptionContent, AnswerContentMode, getInstantCartoonPng } from '../utils/mediaAndPresets';
 import { BodyHeadToFeetSetupScanner, CityPoseChase3DGameplay } from './CityPoseChase';
 import {
+  acquireMacSafeCameraStream,
+  waitForVideoReady,
+  ensureMediaPipeFaceMeshLoaded,
+} from '../utils/mediapipeHandsManager';
+import {
   ArrowLeft,
   Trash2,
   Plus,
@@ -1236,20 +1241,21 @@ function Coaster3DGameplay({
       try {
         if (!navigator?.mediaDevices?.getUserMedia) return;
         try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } },
+          stream = await acquireMacSafeCameraStream({
+            preferredWidth: 320,
+            preferredHeight: 240,
+            facingMode: 'user',
           });
         } catch {
-          try {
-            stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          } catch {
-            return;
-          }
+          return;
         }
         if (!active || !stream || !webcamVideoRef.current) return;
         webcamVideoRef.current.srcObject = stream;
-        await webcamVideoRef.current.play().catch(() => {});
+        await waitForVideoReady(webcamVideoRef.current, 2500);
         setCameraActive(true);
+
+        await ensureMediaPipeFaceMeshLoaded();
+        if (!active) return;
 
         const win = window as any;
         if (win.FaceMesh) {
