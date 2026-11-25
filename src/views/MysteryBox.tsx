@@ -705,6 +705,8 @@ export function MysteryBox({
   const [difficulty, setDifficulty] = useState<'normal' | 'medium' | 'difficult'>('medium');
   const [selectedTheme, setSelectedTheme] = useState<string>(() => initialGame?.theme || 'theme-sky');
   const [isMuted, setIsMuted] = useState(false);
+  const [soundVolume, setSoundVolume] = useState<number>(75);
+  const [showQuickVolume, setShowQuickVolume] = useState<boolean>(false);
   const [wrongAnswerPenalty, setWrongAnswerPenalty] = useState(true);
   const [answerBonusPoints, setAnswerBonusPoints] = useState(true);
 
@@ -780,10 +782,365 @@ export function MysteryBox({
   const [studySingleRevealed, setStudySingleRevealed] = useState(false);
   const [studyHistory, setStudyHistory] = useState<Record<number, { selected: number; isCorrect: boolean }>>({});
 
-  // Rich Multi-Layered Web Audio Synthesizer + In-Game Adventure Background Music
+  // Rich Multi-Layered Web Audio SFX + YouTube Soundtrack Engine
+  // In-game BGM: https://www.youtube.com/watch?v=ldjZKkcu5_k
+  // End-game sound: https://www.youtube.com/watch?v=BVQ_JHmvhCM
+  const MYSTERY_BGM_VIDEO_ID = 'ldjZKkcu5_k';
+  const MYSTERY_END_VIDEO_ID = 'BVQ_JHmvhCM';
+
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const bgmStepRef = useRef<number>(0);
   const hasAnnouncedGameOverRef = useRef<boolean>(false);
+  const ytPlayerRef = useRef<any>(null);
+  const ytReadyRef = useRef<boolean>(false);
+  const ytInitializingRef = useRef<boolean>(false);
+  const ytTrackRef = useRef<'bgm' | 'end' | null>(null);
+  const ytLoadedVideoIdRef = useRef<string | null>(null);
+  const ytFailedRef = useRef<boolean>(false);
+  const soundPopoverRef = useRef<HTMLDivElement | null>(null);
+
+  const isMutedRef = useRef<boolean>(isMuted);
+  const soundVolumeRef = useRef<number>(soundVolume);
+  const screenRef = useRef(screen);
+  const activeBoxNumRef = useRef(activeBoxNum);
+  const manualGameEndedRef = useRef(manualGameEnded);
+
+  isMutedRef.current = isMuted;
+  soundVolumeRef.current = soundVolume;
+  screenRef.current = screen;
+  activeBoxNumRef.current = activeBoxNum;
+  manualGameEndedRef.current = manualGameEnded;
+
+  const getEffectiveYouTubeVolume = (track: 'bgm' | 'end' | null, rawVol: number): number => {
+    const clamped = Math.max(0, Math.min(100, Math.round(rawVol)));
+    if (track === 'bgm' && activeBoxNumRef.current !== null) {
+      return Math.round(clamped * 0.45);
+    }
+    return clamped;
+  };
+
+  const pauseMysteryYouTube = () => {
+    try {
+      if (ytReadyRef.current && ytPlayerRef.current && typeof ytPlayerRef.current.pauseVideo === 'function') {
+        ytPlayerRef.current.pauseVideo();
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const syncMysteryYouTubeVolume = (nextVol: number, forceResume = false) => {
+    try {
+      const player = ytPlayerRef.current;
+      if (!ytReadyRef.current || !player) return;
+      if (isMutedRef.current || nextVol <= 0) {
+        if (typeof player.pauseVideo === 'function') player.pauseVideo();
+        return;
+      }
+      const targetVol = getEffectiveYouTubeVolume(ytTrackRef.current, nextVol);
+      if (typeof player.unMute === 'function') player.unMute();
+      if (typeof player.setVolume === 'function') player.setVolume(targetVol);
+      if (forceResume && screenRef.current === 'game' && ytTrackRef.current && typeof player.playVideo === 'function') {
+        player.playVideo();
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const ensureMysteryYouTubePlayer = () => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (ytPlayerRef.current || ytInitializingRef.current) return;
+    ytInitializingRef.current = true;
+
+    const mountPlayer = () => {
+      const win = window as any;
+      if (!win.YT || !win.YT.Player) {
+        ytInitializingRef.current = false;
+        return;
+      }
+
+      let hostEl = document.getElementById('mb-yt-audio-host');
+      if (!hostEl) {
+        hostEl = document.createElement('div');
+        hostEl.id = 'mb-yt-audio-host';
+        hostEl.style.position = 'fixed';
+        hostEl.style.width = '1px';
+        hostEl.style.height = '1px';
+        hostEl.style.bottom = '0px';
+        hostEl.style.left = '0px';
+        hostEl.style.opacity = '0.001';
+        hostEl.style.pointerEvents = 'none';
+        hostEl.style.zIndex = '-1';
+        const innerEl = document.createElement('div');
+        innerEl.id = 'mb-yt-audio-iframe';
+        hostEl.appendChild(innerEl);
+        document.body.appendChild(hostEl);
+      }
+
+      const initialVideoId =
+        ytTrackRef.current === 'end' ? MYSTERY_END_VIDEO_ID : MYSTERY_BGM_VIDEO_ID;
+      ytLoadedVideoIdRef.current = initialVideoId;
+
+      try {
+        ytPlayerRef.current = new win.YT.Player('mb-yt-audio-iframe', {
+          width: '64',
+          height: '64',
+          videoId: initialVideoId,
+          playerVars: {
+            autoplay: 0,
+            controls: 0,
+            disablekb: 1,
+            fs: 0,
+            modestbranding: 1,
+            playsinline: 1,
+            rel: 0,
+            origin: window.location.origin,
+          },
+          events: {
+            onReady: (ev: any) => {
+              ytReadyRef.current = true;
+              ytInitializingRef.current = false;
+              ytFailedRef.current = false;
+              try {
+                const desiredTrack = ytTrackRef.current;
+                const shouldPlay =
+                  screenRef.current === 'game' &&
+                  desiredTrack !== null &&
+                  !isMutedRef.current &&
+                  soundVolumeRef.current > 0;
+                const targetVideoId =
+                  desiredTrack === 'end' ? MYSTERY_END_VIDEO_ID : MYSTERY_BGM_VIDEO_ID;
+                ev.target.setVolume(getEffectiveYouTubeVolume(desiredTrack, soundVolumeRef.current));
+                if (shouldPlay) {
+                  ev.target.unMute();
+                  if (ytLoadedVideoIdRef.current !== targetVideoId) {
+                    ytLoadedVideoIdRef.current = targetVideoId;
+                    ev.target.loadVideoById({ videoId: targetVideoId, startSeconds: 0 });
+                  } else {
+                    ev.target.playVideo();
+                  }
+                } else {
+                  ev.target.pauseVideo();
+                }
+              } catch {
+                // ignore
+              }
+            },
+            onStateChange: (ev: any) => {
+              // YT.PlayerState.ENDED === 0
+              if (ev.data === 0) {
+                if (
+                  ytTrackRef.current === 'bgm' &&
+                  screenRef.current === 'game' &&
+                  !manualGameEndedRef.current &&
+                  !isMutedRef.current &&
+                  soundVolumeRef.current > 0
+                ) {
+                  try {
+                    ev.target.seekTo(0);
+                    ev.target.playVideo();
+                  } catch {
+                    // ignore
+                  }
+                }
+              }
+            },
+            onError: () => {
+              ytFailedRef.current = true;
+              ytInitializingRef.current = false;
+              if (ytTrackRef.current === 'end') {
+                playSound('jackpot');
+                setTimeout(() => playSound('win'), 360);
+              }
+            },
+          },
+        });
+      } catch {
+        ytInitializingRef.current = false;
+        ytFailedRef.current = true;
+      }
+    };
+
+    const win = window as any;
+    if (win.YT && win.YT.Player) {
+      mountPlayer();
+    } else {
+      const existingScript = document.querySelector(
+        'script[src*="youtube.com/iframe_api"]'
+      );
+      const prevCallback = win.onYouTubeIframeAPIReady;
+      win.onYouTubeIframeAPIReady = () => {
+        if (typeof prevCallback === 'function') {
+          try {
+            prevCallback();
+          } catch {
+            // ignore
+          }
+        }
+        mountPlayer();
+      };
+      if (!existingScript) {
+        const tag = document.createElement('script');
+        tag.src = 'https://www.youtube.com/iframe_api';
+        tag.async = true;
+        document.head.appendChild(tag);
+      } else {
+        // Script already injected elsewhere — poll briefly for YT.Player
+        let attempts = 0;
+        const poll = setInterval(() => {
+          attempts += 1;
+          if (win.YT && win.YT.Player) {
+            clearInterval(poll);
+            mountPlayer();
+          } else if (attempts > 40) {
+            clearInterval(poll);
+            ytInitializingRef.current = false;
+          }
+        }, 150);
+      }
+    }
+  };
+
+  const playMysteryYouTubeTrack = (track: 'bgm' | 'end', forceRestart = false) => {
+    ytTrackRef.current = track;
+    ytFailedRef.current = false;
+    const videoId = track === 'end' ? MYSTERY_END_VIDEO_ID : MYSTERY_BGM_VIDEO_ID;
+
+    if (!ytPlayerRef.current) {
+      ensureMysteryYouTubePlayer();
+      return;
+    }
+    if (!ytReadyRef.current) return;
+
+    try {
+      const player = ytPlayerRef.current;
+      if (isMutedRef.current || soundVolumeRef.current <= 0) {
+        if (typeof player.pauseVideo === 'function') player.pauseVideo();
+        return;
+      }
+      const targetVol = getEffectiveYouTubeVolume(track, soundVolumeRef.current);
+      if (typeof player.unMute === 'function') player.unMute();
+      if (typeof player.setVolume === 'function') player.setVolume(targetVol);
+
+      if (forceRestart || ytLoadedVideoIdRef.current !== videoId) {
+        ytLoadedVideoIdRef.current = videoId;
+        if (typeof player.loadVideoById === 'function') {
+          player.loadVideoById({ videoId, startSeconds: 0 });
+        }
+      } else if (typeof player.playVideo === 'function') {
+        player.playVideo();
+      }
+    } catch {
+      ytFailedRef.current = true;
+    }
+  };
+
+  // Pre-warm YouTube audio player on mount & cleanly destroy on unmount
+  useEffect(() => {
+    ensureMysteryYouTubePlayer();
+    return () => {
+      try {
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
+          ytPlayerRef.current.destroy();
+        }
+      } catch {
+        // ignore
+      }
+      ytPlayerRef.current = null;
+      ytReadyRef.current = false;
+      ytInitializingRef.current = false;
+      ytTrackRef.current = null;
+      ytLoadedVideoIdRef.current = null;
+      const hostEl = document.getElementById('mb-yt-audio-host');
+      if (hostEl && hostEl.parentNode) {
+        hostEl.parentNode.removeChild(hostEl);
+      }
+    };
+  }, []);
+
+  // Close top-bar quick volume popover on outside click
+  useEffect(() => {
+    if (!showQuickVolume) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (soundPopoverRef.current && !soundPopoverRef.current.contains(e.target as Node)) {
+        setShowQuickVolume(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [showQuickVolume]);
+
+  // Sync YouTube music playback & live ducking across screen, mute, volume, and modal transitions
+  useEffect(() => {
+    if (screen !== 'game') {
+      ytTrackRef.current = null;
+      pauseMysteryYouTube();
+      return;
+    }
+
+    if (isMuted || soundVolume <= 0) {
+      pauseMysteryYouTube();
+      return;
+    }
+
+    if (manualGameEnded) {
+      if (ytTrackRef.current === 'end') {
+        syncMysteryYouTubeVolume(soundVolume, false);
+      }
+      return;
+    }
+
+    if (ytTrackRef.current !== 'bgm') {
+      playMysteryYouTubeTrack('bgm', false);
+    } else {
+      syncMysteryYouTubeVolume(soundVolume, true);
+    }
+  }, [screen, isMuted, soundVolume, manualGameEnded, activeBoxNum]);
+
+  const handleChangeSoundVolume = (nextVol: number) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(nextVol)));
+    setSoundVolume(clamped);
+    soundVolumeRef.current = clamped;
+    if (clamped === 0) {
+      setIsMuted(true);
+      isMutedRef.current = true;
+      pauseMysteryYouTube();
+    } else {
+      if (isMutedRef.current) {
+        setIsMuted(false);
+        isMutedRef.current = false;
+      }
+      ensureAudioContext();
+      if (screenRef.current === 'game') {
+        const desiredTrack = ytTrackRef.current || (manualGameEndedRef.current ? 'end' : 'bgm');
+        if (!ytReadyRef.current || ytTrackRef.current !== desiredTrack) {
+          playMysteryYouTubeTrack(desiredTrack, false);
+        } else {
+          syncMysteryYouTubeVolume(clamped, true);
+        }
+      }
+    }
+  };
+
+  const handleToggleSoundMute = () => {
+    const nextMuted = !isMutedRef.current;
+    setIsMuted(nextMuted);
+    isMutedRef.current = nextMuted;
+    if (nextMuted) {
+      pauseMysteryYouTube();
+    } else {
+      const restoredVol = soundVolumeRef.current > 0 ? soundVolumeRef.current : 75;
+      if (soundVolumeRef.current <= 0) {
+        setSoundVolume(restoredVol);
+        soundVolumeRef.current = restoredVol;
+      }
+      ensureAudioContext();
+      if (screenRef.current === 'game') {
+        const desiredTrack = ytTrackRef.current || (manualGameEndedRef.current ? 'end' : 'bgm');
+        playMysteryYouTubeTrack(desiredTrack, false);
+      }
+    }
+  };
 
   const ensureAudioContext = (): AudioContext | null => {
     try {
@@ -802,7 +1159,8 @@ export function MysteryBox({
   };
 
   const playSound = (type: string) => {
-    if (isMuted) return;
+    const volScale = Math.max(0, Math.min(1, soundVolumeRef.current / 100));
+    if (isMutedRef.current || volScale <= 0) return;
     try {
       const ctx = ensureAudioContext();
       if (!ctx) return;
@@ -816,6 +1174,7 @@ export function MysteryBox({
         peakGain: number,
         endFreq?: number
       ) => {
+        const scaledPeak = Math.max(0.001, peakGain * volScale);
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = oscType;
@@ -825,7 +1184,7 @@ export function MysteryBox({
           osc.frequency.exponentialRampToValueAtTime(Math.max(20, endFreq), t0 + duration);
         }
         gain.gain.setValueAtTime(0.001, t0);
-        gain.gain.linearRampToValueAtTime(peakGain, t0 + Math.min(0.014, duration * 0.25));
+        gain.gain.linearRampToValueAtTime(scaledPeak, t0 + Math.min(0.014, duration * 0.25));
         gain.gain.exponentialRampToValueAtTime(0.0008, t0 + duration);
         osc.connect(gain);
         gain.connect(ctx.destination);
@@ -929,7 +1288,7 @@ export function MysteryBox({
           filter.frequency.setValueAtTime(1150, now);
           filter.frequency.exponentialRampToValueAtTime(80, now + 0.55);
           const noiseGain = ctx.createGain();
-          noiseGain.gain.setValueAtTime(0.32, now);
+          noiseGain.gain.setValueAtTime(Math.max(0.001, 0.32 * volScale), now);
           noiseGain.gain.linearRampToValueAtTime(0.001, now + 0.55);
           noise.connect(filter);
           filter.connect(noiseGain);
@@ -949,84 +1308,6 @@ export function MysteryBox({
       // Audio fallback
     }
   };
-
-  // Ambient In-Game Treasure Adventure Background Soundtrack (Plays during active gameplay)
-  useEffect(() => {
-    if (screen !== 'game' || isMuted || manualGameEnded) return;
-
-    // Playful treasure-hunt marimba/pluck melody & warm bass groove in D Dorian / F Major
-    const melodyNotes = [
-      293.66, 349.23, 440.0, 523.25,
-      587.33, 523.25, 440.0, 349.23,
-      392.0, 440.0, 523.25, 659.25,
-      587.33, 523.25, 440.0, 329.63,
-    ];
-    const bassNotes = [146.83, 146.83, 174.61, 196.0];
-
-    const interval = setInterval(() => {
-      try {
-        const ctx = audioCtxRef.current;
-        if (!ctx || ctx.state !== 'running') return;
-        const step = bgmStepRef.current % 16;
-        bgmStepRef.current += 1;
-
-        const now = ctx.currentTime;
-        // Duck background music softly when a question modal is open so SFX & speech stay crystal clear
-        const duckFactor = activeBoxNum !== null ? 0.45 : 1.0;
-
-        // Warm marimba melody note
-        const melFreq = melodyNotes[step];
-        if (melFreq) {
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(melFreq, now);
-          gain.gain.setValueAtTime(0.0005, now);
-          gain.gain.linearRampToValueAtTime(0.042 * duckFactor, now + 0.015);
-          gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.22);
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.start(now);
-          osc.stop(now + 0.23);
-        }
-
-        // Soft adventure bass pulse on every 4th beat
-        if (step % 4 === 0) {
-          const bassFreq = bassNotes[Math.floor(step / 4) % bassNotes.length];
-          const bOsc = ctx.createOscillator();
-          const bGain = ctx.createGain();
-          bOsc.type = 'triangle';
-          bOsc.frequency.setValueAtTime(bassFreq, now);
-          bGain.gain.setValueAtTime(0.0005, now);
-          bGain.gain.linearRampToValueAtTime(0.05 * duckFactor, now + 0.02);
-          bGain.gain.exponentialRampToValueAtTime(0.0005, now + 0.42);
-          bOsc.connect(bGain);
-          bGain.connect(ctx.destination);
-          bOsc.start(now);
-          bOsc.stop(now + 0.44);
-        }
-
-        // Gentle crystalline cave sparkle on beat 8 and 15
-        if (step === 7 || step === 15) {
-          const sOsc = ctx.createOscillator();
-          const sGain = ctx.createGain();
-          sOsc.type = 'sine';
-          sOsc.frequency.setValueAtTime(step === 7 ? 1174.66 : 1318.51, now);
-          sGain.gain.setValueAtTime(0.0005, now);
-          sGain.gain.linearRampToValueAtTime(0.022 * duckFactor, now + 0.01);
-          sGain.gain.exponentialRampToValueAtTime(0.0005, now + 0.28);
-          sOsc.connect(sGain);
-          sGain.connect(ctx.destination);
-          sOsc.start(now);
-          sOsc.stop(now + 0.3);
-        }
-      } catch {
-        // ignore audio errors
-      }
-    }, 290);
-
-    return () => clearInterval(interval);
-  }, [screen, isMuted, manualGameEnded, activeBoxNum]);
 
   // Trigger floating score delta badge on scoreboard + live banner
   const triggerScoreDeltaPopup = (teamId: number, text: string, isPositive: boolean) => {
@@ -1055,7 +1336,6 @@ export function MysteryBox({
   // Start Playing
   const handleStartGame = () => {
     playSound('select');
-    setTimeout(() => playSound('win'), 90);
     const configuredTeams: Team[] = [];
     for (let i = 0; i < numPlayers; i++) {
       const cfg = DEFAULT_TEAM_CONFIGS[i % DEFAULT_TEAM_CONFIGS.length];
@@ -1083,21 +1363,29 @@ export function MysteryBox({
     setSelectedBoxAnimation(null);
     setScoreDeltas([]);
     setManualGameEnded(false);
+    manualGameEndedRef.current = false;
     hasAnnouncedGameOverRef.current = false;
     setRemainingSeconds(gameTimeMinutes > 0 ? gameTimeMinutes * 60 : null);
+    screenRef.current = 'game';
     setScreen('game');
+    // Immediately start the lively Game Show Theme (ldjZKkcu5_k) inside the user click gesture
+    playMysteryYouTubeTrack('bgm', true);
   };
 
-  // Announce Winner with Fanfare, Confetti & Voice Synthesis
+  // Announce Winner with End-Game YouTube Sound (BVQ_JHmvhCM), Confetti & Voice Synthesis
   const announceWinnerEffect = (currentTeams: Team[]) => {
     hasAnnouncedGameOverRef.current = true;
-    playSound('jackpot');
-    setTimeout(() => playSound('win'), 360);
-    setTimeout(() => playSound('coin_add'), 720);
+    // Immediately stop in-game music and trigger the End Game sound (https://www.youtube.com/watch?v=BVQ_JHmvhCM)
+    playMysteryYouTubeTrack('end', true);
+    if (ytFailedRef.current) {
+      playSound('jackpot');
+      setTimeout(() => playSound('win'), 360);
+    }
     setCelebration('jackpot');
     setTimeout(() => setCelebration(null), 4500);
 
-    if (!isMuted && typeof window !== 'undefined' && 'speechSynthesis' in window && currentTeams.length > 0) {
+    const volScale = Math.max(0, Math.min(1, soundVolumeRef.current / 100));
+    if (!isMutedRef.current && volScale > 0 && typeof window !== 'undefined' && 'speechSynthesis' in window && currentTeams.length > 0) {
       try {
         window.speechSynthesis.cancel();
         const sorted = [...currentTeams].sort((a, b) => b.score - a.score);
@@ -1115,6 +1403,7 @@ export function MysteryBox({
         const utterance = new SpeechSynthesisUtterance(speechText);
         utterance.rate = 1.0;
         utterance.pitch = 1.08;
+        utterance.volume = volScale;
         window.speechSynthesis.speak(utterance);
       } catch {
         // ignore speech synthesis errors
@@ -1123,7 +1412,6 @@ export function MysteryBox({
   };
 
   const handleEndGameAndAnnounceWinner = () => {
-    playSound('select');
     if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
     if (revealCountTimerRef.current) clearTimeout(revealCountTimerRef.current);
     let latestTeams = teams;
@@ -1134,6 +1422,7 @@ export function MysteryBox({
     }
     setActiveBoxNum(null);
     setAnswerResult(null);
+    manualGameEndedRef.current = true;
     setManualGameEnded(true);
     announceWinnerEffect(latestTeams);
   };
@@ -2029,7 +2318,9 @@ export function MysteryBox({
                 setWrongAnswerPenalty((prev) => !prev);
               }}
               isMuted={isMuted}
-              onToggleMute={() => setIsMuted((prev) => !prev)}
+              onToggleMute={handleToggleSoundMute}
+              soundVolume={soundVolume}
+              onChangeSoundVolume={handleChangeSoundVolume}
               selectedTheme={selectedTheme}
               onSelectTheme={(themeId) => {
                 playSound('click');
@@ -2468,19 +2759,66 @@ export function MysteryBox({
                   <Trophy className="w-4 h-4 text-[#fde047] stroke-[2.6]" />
                   <span>End Game</span>
                 </button>
-                <button
-                  onClick={() => {
-                    const nextMuted = !isMuted;
-                    setIsMuted(nextMuted);
-                    if (!nextMuted) {
-                      setTimeout(() => ensureAudioContext(), 10);
-                    }
-                  }}
-                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#43306b]/90 text-white hover:bg-[#563e88] flex items-center justify-center transition-all cursor-pointer border border-white/25 shadow-[0_2px_8px_rgba(0,0,0,0.4)] active:scale-95"
-                  title="Toggle Sound"
-                >
-                  {isMuted ? <VolumeX className="w-4 h-4 sm:w-4.5 sm:h-4.5" /> : <Volume2 className="w-4 h-4 sm:w-4.5 sm:h-4.5" />}
-                </button>
+                <div ref={soundPopoverRef} className="relative">
+                  <button
+                    onClick={() => setShowQuickVolume((prev) => !prev)}
+                    className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#43306b]/90 text-white hover:bg-[#563e88] flex items-center justify-center transition-all cursor-pointer border border-white/25 shadow-[0_2px_8px_rgba(0,0,0,0.4)] active:scale-95"
+                    title={`Sound Volume (${isMuted || soundVolume === 0 ? 'Muted' : `${soundVolume}%`})`}
+                  >
+                    {isMuted || soundVolume === 0 ? (
+                      <VolumeX className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+                    ) : (
+                      <Volume2 className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+                    )}
+                  </button>
+
+                  {showQuickVolume && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute right-0 top-12 z-[120] w-60 rounded-2xl p-3.5 bg-[#1e1238]/95 backdrop-blur-xl border-2 border-[#a78bfa]/60 shadow-[0_14px_35px_rgba(0,0,0,0.6)] flex flex-col gap-2.5 animate-pop-in"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-black uppercase tracking-wider text-purple-100">
+                          Sound Volume
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full bg-[#fbbf24] text-[#1e1303] text-[11px] font-black tabular-nums">
+                          {isMuted || soundVolume === 0 ? 'MUTED' : `${soundVolume}%`}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2.5">
+                        <button
+                          type="button"
+                          onClick={handleToggleSoundMute}
+                          className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 cursor-pointer border transition-all ${
+                            !isMuted && soundVolume > 0
+                              ? 'bg-[#6d48b5] border-[#c4b5fd]/60 text-white'
+                              : 'bg-slate-700 border-slate-500 text-slate-300'
+                          }`}
+                          title={isMuted ? 'Unmute' : 'Mute'}
+                        >
+                          {isMuted || soundVolume === 0 ? (
+                            <VolumeX className="w-4 h-4" />
+                          ) : (
+                            <Volume2 className="w-4 h-4" />
+                          )}
+                        </button>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={isMuted ? 0 : soundVolume}
+                          onChange={(e) => handleChangeSoundVolume(Number(e.target.value))}
+                          aria-label="In-game Sound Volume"
+                          className="flex-1 h-2.5 rounded-full appearance-none cursor-pointer accent-[#fbbf24]"
+                          style={{
+                            background: `linear-gradient(to right, #fbbf24 0%, #f59e0b ${isMuted ? 0 : soundVolume}%, #43306b ${isMuted ? 0 : soundVolume}%, #43306b 100%)`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <button
                   onClick={() => {
                     playSound('select');
@@ -2741,7 +3079,9 @@ export function MysteryBox({
                         setWrongAnswerPenalty((prev) => !prev);
                       }}
                       isMuted={isMuted}
-                      onToggleMute={() => setIsMuted((prev) => !prev)}
+                      onToggleMute={handleToggleSoundMute}
+                      soundVolume={soundVolume}
+                      onChangeSoundVolume={handleChangeSoundVolume}
                       headerTitle="BOX MODE"
                     />
                   </div>
@@ -3474,8 +3814,11 @@ export function MysteryBox({
                         setTeams(teams.map((t) => ({ ...t, score: 0, streak: 0 })));
                         setOpenedBoxes([]);
                         setBoxRecords({});
+                        manualGameEndedRef.current = false;
                         setManualGameEnded(false);
+                        hasAnnouncedGameOverRef.current = false;
                         setRemainingSeconds(gameTimeMinutes > 0 ? gameTimeMinutes * 60 : null);
+                        playMysteryYouTubeTrack('bgm', true);
                       }}
                       className="flex-1 py-4 bg-gradient-to-b from-[#fde047] via-[#fbbf24] to-[#f59e0b] hover:brightness-105 text-[#1e1303] border-2 border-[#fef08a] font-black text-xl rounded-2xl shadow-lg transition-all cursor-pointer"
                     >
@@ -3483,7 +3826,10 @@ export function MysteryBox({
                     </button>
                     <button
                       onClick={() => {
+                        manualGameEndedRef.current = false;
                         setManualGameEnded(false);
+                        hasAnnouncedGameOverRef.current = false;
+                        pauseMysteryYouTube();
                         setScreen('setup');
                       }}
                       className="flex-1 py-4 bg-[#43306b] hover:bg-[#563e88] border-2 border-[#a78bfa]/60 text-white font-black text-xl rounded-2xl shadow-lg transition-all cursor-pointer"

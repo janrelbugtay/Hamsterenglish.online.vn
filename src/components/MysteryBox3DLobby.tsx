@@ -50,6 +50,8 @@ export interface MysteryBox3DLobbyProps {
   onTogglePenalty: () => void;
   isMuted: boolean;
   onToggleMute: () => void;
+  soundVolume?: number;
+  onChangeSoundVolume?: (vol: number) => void;
   selectedTheme: string;
   onSelectTheme: (themeId: ArenaThemeId) => void;
   onStartGame: () => void;
@@ -572,6 +574,8 @@ export function GameModifierControls({
   onTogglePenalty,
   isMuted,
   onToggleMute,
+  soundVolume = 75,
+  onChangeSoundVolume,
 }: {
   answerBonusPoints: boolean;
   onToggleBonus: () => void;
@@ -579,72 +583,126 @@ export function GameModifierControls({
   onTogglePenalty: () => void;
   isMuted: boolean;
   onToggleMute: () => void;
+  soundVolume?: number;
+  onChangeSoundVolume?: (vol: number) => void;
 }) {
+  const effectiveVolume = isMuted ? 0 : Math.max(0, Math.min(100, soundVolume));
+
   return (
-    <div className="grid grid-cols-3 gap-2 sm:gap-2.5 pt-1">
-      <button
-        type="button"
-        onClick={onToggleBonus}
-        className={`relative h-11 sm:h-12 rounded-2xl px-3 border-2 flex items-center justify-between gap-1.5 font-extrabold text-xs sm:text-[13px] tracking-tight transition-all cursor-pointer active:translate-y-0.5 ${
-          answerBonusPoints
-            ? 'bg-gradient-to-b from-[#34d399] via-[#10b981] to-[#059669] border-[#a7f3d0] text-white shadow-[0_4px_0_#065f46,inset_0_2px_3px_rgba(255,255,255,0.55)]'
-            : 'bg-gradient-to-b from-slate-100 to-slate-200 border-slate-300 text-slate-600 shadow-[0_4px_0_#94a3b8]'
-        }`}
-      >
-        <span className="whitespace-nowrap drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]">
-          +50 Bonus
-        </span>
-        <span
-          className={`px-1.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider shrink-0 shadow-2xs ${
-            answerBonusPoints ? 'bg-white text-[#047857]' : 'bg-slate-300 text-slate-600'
+    <div className="flex flex-col gap-2.5 pt-1">
+      <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
+        <button
+          type="button"
+          onClick={onToggleBonus}
+          className={`relative h-11 sm:h-12 rounded-2xl px-3 border-2 flex items-center justify-between gap-1.5 font-extrabold text-xs sm:text-[13px] tracking-tight transition-all cursor-pointer active:translate-y-0.5 ${
+            answerBonusPoints
+              ? 'bg-gradient-to-b from-[#34d399] via-[#10b981] to-[#059669] border-[#a7f3d0] text-white shadow-[0_4px_0_#065f46,inset_0_2px_3px_rgba(255,255,255,0.55)]'
+              : 'bg-gradient-to-b from-slate-100 to-slate-200 border-slate-300 text-slate-600 shadow-[0_4px_0_#94a3b8]'
           }`}
         >
-          {answerBonusPoints ? 'ON' : 'OFF'}
-        </span>
-      </button>
+          <span className="whitespace-nowrap drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]">
+            +50 Bonus
+          </span>
+          <span
+            className={`px-1.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider shrink-0 shadow-2xs ${
+              answerBonusPoints ? 'bg-white text-[#047857]' : 'bg-slate-300 text-slate-600'
+            }`}
+          >
+            {answerBonusPoints ? 'ON' : 'OFF'}
+          </span>
+        </button>
 
-      <button
-        type="button"
-        onClick={onTogglePenalty}
-        className={`relative h-11 sm:h-12 rounded-2xl px-3 border-2 flex items-center justify-between gap-1.5 font-extrabold text-xs sm:text-[13px] tracking-tight transition-all cursor-pointer active:translate-y-0.5 ${
-          wrongAnswerPenalty
-            ? 'bg-gradient-to-b from-[#fb7185] via-[#f43f5e] to-[#e11d48] border-[#fecdd3] text-white shadow-[0_4px_0_#9f1239,inset_0_2px_3px_rgba(255,255,255,0.55)]'
-            : 'bg-gradient-to-b from-slate-100 to-slate-200 border-slate-300 text-slate-600 shadow-[0_4px_0_#94a3b8]'
-        }`}
-      >
-        <span className="whitespace-nowrap drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]">
-          -50 Penalty
-        </span>
-        <span
-          className={`px-1.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider shrink-0 shadow-2xs ${
-            wrongAnswerPenalty ? 'bg-white text-[#be123c]' : 'bg-slate-300 text-slate-600'
+        <button
+          type="button"
+          onClick={onTogglePenalty}
+          className={`relative h-11 sm:h-12 rounded-2xl px-3 border-2 flex items-center justify-between gap-1.5 font-extrabold text-xs sm:text-[13px] tracking-tight transition-all cursor-pointer active:translate-y-0.5 ${
+            wrongAnswerPenalty
+              ? 'bg-gradient-to-b from-[#fb7185] via-[#f43f5e] to-[#e11d48] border-[#fecdd3] text-white shadow-[0_4px_0_#9f1239,inset_0_2px_3px_rgba(255,255,255,0.55)]'
+              : 'bg-gradient-to-b from-slate-100 to-slate-200 border-slate-300 text-slate-600 shadow-[0_4px_0_#94a3b8]'
           }`}
         >
-          {wrongAnswerPenalty ? 'ON' : 'OFF'}
-        </span>
-      </button>
+          <span className="whitespace-nowrap drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]">
+            -50 Penalty
+          </span>
+          <span
+            className={`px-1.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider shrink-0 shadow-2xs ${
+              wrongAnswerPenalty ? 'bg-white text-[#be123c]' : 'bg-slate-300 text-slate-600'
+            }`}
+          >
+            {wrongAnswerPenalty ? 'ON' : 'OFF'}
+          </span>
+        </button>
 
-      <button
-        type="button"
-        onClick={onToggleMute}
-        className={`relative h-11 sm:h-12 rounded-2xl px-3 border-2 flex items-center justify-between gap-1.5 font-extrabold text-xs sm:text-[13px] tracking-tight transition-all cursor-pointer active:translate-y-0.5 ${
-          !isMuted
-            ? 'bg-gradient-to-b from-[#38bdf8] via-[#0284c7] to-[#0369a1] border-[#bae6fd] text-white shadow-[0_4px_0_#075985,inset_0_2px_3px_rgba(255,255,255,0.55)]'
-            : 'bg-gradient-to-b from-slate-100 to-slate-200 border-slate-300 text-slate-600 shadow-[0_4px_0_#94a3b8]'
-        }`}
-      >
-        <span className="flex items-center gap-1 whitespace-nowrap drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]">
-          {!isMuted ? <Volume2 className="w-4 h-4 shrink-0" /> : <VolumeX className="w-4 h-4 shrink-0" />}
-          <span>Sound FX</span>
-        </span>
-        <span
-          className={`px-1.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider shrink-0 shadow-2xs ${
-            !isMuted ? 'bg-white text-[#0369a1]' : 'bg-slate-300 text-slate-600'
+        <button
+          type="button"
+          onClick={onToggleMute}
+          className={`relative h-11 sm:h-12 rounded-2xl px-3 border-2 flex items-center justify-between gap-1.5 font-extrabold text-xs sm:text-[13px] tracking-tight transition-all cursor-pointer active:translate-y-0.5 ${
+            !isMuted
+              ? 'bg-gradient-to-b from-[#38bdf8] via-[#0284c7] to-[#0369a1] border-[#bae6fd] text-white shadow-[0_4px_0_#075985,inset_0_2px_3px_rgba(255,255,255,0.55)]'
+              : 'bg-gradient-to-b from-slate-100 to-slate-200 border-slate-300 text-slate-600 shadow-[0_4px_0_#94a3b8]'
           }`}
         >
-          {!isMuted ? 'ON' : 'OFF'}
-        </span>
-      </button>
+          <span className="flex items-center gap-1 whitespace-nowrap drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]">
+            {!isMuted ? <Volume2 className="w-4 h-4 shrink-0" /> : <VolumeX className="w-4 h-4 shrink-0" />}
+            <span>Sound FX</span>
+          </span>
+          <span
+            className={`px-1.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider shrink-0 shadow-2xs ${
+              !isMuted ? 'bg-white text-[#0369a1]' : 'bg-slate-300 text-slate-600'
+            }`}
+          >
+            {!isMuted ? 'ON' : 'OFF'}
+          </span>
+        </button>
+      </div>
+
+      {/* Sound Volume Slider (Lower or Increase Music & SFX Live) */}
+      {onChangeSoundVolume && (
+        <div className="rounded-2xl px-3.5 py-2.5 bg-gradient-to-b from-[#f0f9ff] to-[#e0f2fe] border-2 border-[#7dd3fc] shadow-[inset_0_2px_4px_rgba(255,255,255,0.9),0_3px_0_#38bdf8] flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onToggleMute}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all cursor-pointer border-2 active:scale-95 ${
+              effectiveVolume > 0
+                ? 'bg-gradient-to-b from-[#38bdf8] to-[#0284c7] border-[#bae6fd] text-white shadow-[0_2px_0_#075985]'
+                : 'bg-slate-200 border-slate-300 text-slate-500 shadow-[0_2px_0_#94a3b8]'
+            }`}
+            title={effectiveVolume > 0 ? 'Mute Sound' : 'Unmute Sound'}
+          >
+            {effectiveVolume > 0 ? <Volume2 className="w-4 h-4 stroke-[2.6]" /> : <VolumeX className="w-4 h-4 stroke-[2.6]" />}
+          </button>
+
+          <div className="flex-1 flex flex-col gap-1 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-[#0c4a6e]">
+                Sound Volume
+              </span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[11px] font-black tabular-nums ${
+                  effectiveVolume > 0
+                    ? 'bg-[#0284c7] text-white'
+                    : 'bg-slate-300 text-slate-600'
+                }`}
+              >
+                {effectiveVolume === 0 ? 'MUTED' : `${effectiveVolume}%`}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={effectiveVolume}
+              onChange={(e) => onChangeSoundVolume(Number(e.target.value))}
+              aria-label="Sound Volume"
+              className="w-full h-2.5 rounded-full appearance-none cursor-pointer accent-[#0284c7]"
+              style={{
+                background: `linear-gradient(to right, #0284c7 0%, #38bdf8 ${effectiveVolume}%, #cbd5e1 ${effectiveVolume}%, #cbd5e1 100%)`,
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -658,6 +716,8 @@ export function BoxModeSelector({
   onTogglePenalty,
   isMuted,
   onToggleMute,
+  soundVolume,
+  onChangeSoundVolume,
   headerTitle = 'BOX MODE',
 }: {
   difficulty: BoxDifficultyMode;
@@ -668,6 +728,8 @@ export function BoxModeSelector({
   onTogglePenalty: () => void;
   isMuted: boolean;
   onToggleMute: () => void;
+  soundVolume?: number;
+  onChangeSoundVolume?: (vol: number) => void;
   headerTitle?: string;
 }) {
   const modeLabel =
@@ -851,6 +913,8 @@ export function BoxModeSelector({
         onTogglePenalty={onTogglePenalty}
         isMuted={isMuted}
         onToggleMute={onToggleMute}
+        soundVolume={soundVolume}
+        onChangeSoundVolume={onChangeSoundVolume}
       />
     </div>
   );
@@ -1139,6 +1203,8 @@ export function MysteryBox3DLobby({
   onTogglePenalty,
   isMuted,
   onToggleMute,
+  soundVolume,
+  onChangeSoundVolume,
   selectedTheme,
   onSelectTheme,
   onStartGame,
@@ -1663,6 +1729,8 @@ export function MysteryBox3DLobby({
                 onTogglePenalty={onTogglePenalty}
                 isMuted={isMuted}
                 onToggleMute={onToggleMute}
+                soundVolume={soundVolume}
+                onChangeSoundVolume={onChangeSoundVolume}
                 headerTitle={modeHeaderTitle}
               />
             </div>
