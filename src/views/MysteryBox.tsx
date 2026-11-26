@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ViewState } from "../types";
 import { FullscreenButton } from "../components/FullscreenButton";
-import { MysteryBox3DLobby, BoxModeSelector, CuteHamsterAvatar } from "../components/MysteryBox3DLobby";
+import { MysteryBox3DLobby, BoxModeSelector, CuteHamsterAvatar, CUTE_HAMSTER_ICONS, TransparentCutoutImage } from "../components/MysteryBox3DLobby";
 import treasureCaveBg from "../assets/images/treasure_cave_bg_1795603145753.jpg";
 import treasureChestBlankShield from "../assets/images/treasure_chest_blank_shield_1795603185465.jpg";
 import { MediaPickerModal } from "../components/MediaPickerModal";
@@ -11,7 +11,7 @@ import { GameModeModal } from "../components/GameModeModal";
 import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput, convertQuestionsContentMode } from "../components/SetupSmartControls";
 import { OptionContentMode, parseOptionContent, formatOptionContent } from "../utils/mediaAndPresets";
 import { 
-  ArrowLeft, Edit3, Trash2, Plus, Sparkles, Save, X, Play, 
+  ArrowLeft, ArrowRight, Edit3, Trash2, Plus, Sparkles, Save, X, Play, 
   Image as ImageIcon, ClipboardList, Info, Copy, 
   Volume2, VolumeX, Eye, Check, RefreshCw, Trophy, Gift, ArrowRightLeft, Star, AlertTriangle, Skull, Bomb, Shuffle,
   Users, User, Minus, Flame, Zap, Crown, ShieldAlert, Coins, Settings
@@ -202,6 +202,43 @@ function GoldenLaurelSprig({ flip = false }: { flip?: boolean }) {
       <path d="M25 53 C33 49, 36 41, 28 39 C24 43, 24 49, 25 53 Z" fill="url(#goldLaurelGrad)" opacity="0.85" />
       <path d="M22 38 C30 34, 33 26, 25 25 C21 29, 21 34, 22 38 Z" fill="url(#goldLaurelGrad)" opacity="0.85" />
     </svg>
+  );
+}
+
+function getHamsterCharacterMeta(avatarId?: number, fallbackIdx = 0) {
+  const resolvedId = avatarId || ((fallbackIdx % CUTE_HAMSTER_ICONS.length) + 1);
+  const safeId = ((Math.max(1, resolvedId) - 1) % CUTE_HAMSTER_ICONS.length) + 1;
+  return CUTE_HAMSTER_ICONS[safeId - 1] || CUTE_HAMSTER_ICONS[0];
+}
+
+function TreasureChestBadge({
+  src,
+  boxNum,
+  className = 'w-20 h-20',
+  numClassName = 'text-base',
+}: {
+  src: string;
+  boxNum: number;
+  className?: string;
+  numClassName?: string;
+}) {
+  return (
+    <div className={`relative select-none pointer-events-none shrink-0 ${className}`}>
+      <img
+        src={src}
+        alt={`Mystery Chest #${boxNum}`}
+        referrerPolicy="no-referrer"
+        className="w-full h-full object-contain drop-shadow-[0_10px_18px_rgba(0,0,0,0.65)]"
+      />
+      <span
+        className={`absolute left-1/2 top-[51%] -translate-x-1/2 -translate-y-1/2 font-black text-[#fffbeb] tabular-nums leading-none ${numClassName}`}
+        style={{
+          textShadow: '0 2px 0 #78350f, 0 0 8px rgba(251,191,36,0.75)',
+        }}
+      >
+        {boxNum}
+      </span>
+    </div>
   );
 }
 
@@ -782,7 +819,7 @@ export function MysteryBox({
   const [studySingleRevealed, setStudySingleRevealed] = useState(false);
   const [studyHistory, setStudyHistory] = useState<Record<number, { selected: number; isCorrect: boolean }>>({});
 
-  // Rich Multi-Layered Web Audio SFX + YouTube Soundtrack Engine
+  // Rich Multi-Layered Web Audio SFX + Direct YouTube Soundtrack Engine
   // In-game BGM: https://www.youtube.com/watch?v=ldjZKkcu5_k
   // End-game sound: https://www.youtube.com/watch?v=BVQ_JHmvhCM
   const MYSTERY_BGM_VIDEO_ID = 'ldjZKkcu5_k';
@@ -790,12 +827,13 @@ export function MysteryBox({
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const hasAnnouncedGameOverRef = useRef<boolean>(false);
-  const ytPlayerRef = useRef<any>(null);
-  const ytReadyRef = useRef<boolean>(false);
-  const ytInitializingRef = useRef<boolean>(false);
+  const [ytActiveTrack, setYtActiveTrack] = useState<'bgm' | 'end' | null>(null);
+  const [ytTrackNonce, setYtTrackNonce] = useState(0);
+  const ytAudioIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const danceIframeRef = useRef<HTMLIFrameElement | null>(null);
   const ytTrackRef = useRef<'bgm' | 'end' | null>(null);
-  const ytLoadedVideoIdRef = useRef<string | null>(null);
   const ytFailedRef = useRef<boolean>(false);
+  const ytSyncTimersRef = useRef<number[]>([]);
   const soundPopoverRef = useRef<HTMLDivElement | null>(null);
 
   const isMutedRef = useRef<boolean>(isMuted);
@@ -818,245 +856,140 @@ export function MysteryBox({
     return clamped;
   };
 
-  const pauseMysteryYouTube = () => {
+  const clearYtSyncTimers = () => {
+    ytSyncTimersRef.current.forEach((id) => window.clearTimeout(id));
+    ytSyncTimersRef.current = [];
+  };
+
+  const sendYtCommand = (func: string, args: unknown[] = []) => {
     try {
-      if (ytReadyRef.current && ytPlayerRef.current && typeof ytPlayerRef.current.pauseVideo === 'function') {
-        ytPlayerRef.current.pauseVideo();
-      }
+      const win = ytAudioIframeRef.current?.contentWindow;
+      if (!win) return;
+      win.postMessage(
+        JSON.stringify({ event: 'command', func, args }),
+        '*'
+      );
+    } catch {
+      // ignore cross-origin postMessage errors
+    }
+  };
+
+  const registerYtListening = () => {
+    try {
+      const win = ytAudioIframeRef.current?.contentWindow;
+      if (!win) return;
+      win.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*');
     } catch {
       // ignore
     }
+  };
+
+  const pauseMysteryYouTube = () => {
+    clearYtSyncTimers();
+    sendYtCommand('pauseVideo');
   };
 
   const syncMysteryYouTubeVolume = (nextVol: number, forceResume = false) => {
+    if (isMutedRef.current || nextVol <= 0) {
+      sendYtCommand('mute');
+      sendYtCommand('pauseVideo');
+      return;
+    }
+    const targetVol = getEffectiveYouTubeVolume(ytTrackRef.current, nextVol);
+    sendYtCommand('unMute');
+    sendYtCommand('setVolume', [targetVol]);
+    if (forceResume && screenRef.current === 'game' && ytTrackRef.current) {
+      sendYtCommand('playVideo');
+    }
+  };
+
+  const handleYtAudioIframeLoad = () => {
+    clearYtSyncTimers();
+    const pushSync = () => {
+      if (screenRef.current !== 'game' || isMutedRef.current || soundVolumeRef.current <= 0) return;
+      registerYtListening();
+      syncMysteryYouTubeVolume(soundVolumeRef.current, true);
+    };
+    pushSync();
+    ytSyncTimersRef.current = [
+      window.setTimeout(pushSync, 350),
+      window.setTimeout(pushSync, 900),
+      window.setTimeout(pushSync, 1650),
+    ];
+  };
+
+  const playMysteryYouTubeTrack = (track: 'bgm' | 'end', forceRestart = false) => {
+    const trackChanged = ytTrackRef.current !== track;
+    ytTrackRef.current = track;
+    ytFailedRef.current = false;
+    setYtActiveTrack(track);
+
+    if (isMutedRef.current || soundVolumeRef.current <= 0) {
+      pauseMysteryYouTube();
+      return;
+    }
+
+    if (forceRestart || trackChanged) {
+      setYtTrackNonce((n) => n + 1);
+    } else {
+      syncMysteryYouTubeVolume(soundVolumeRef.current, true);
+    }
+  };
+
+  // Listen for YouTube embed postMessage readiness / error events for immediate volume & fallback sync
+  useEffect(() => {
+    const handleYouTubeMessage = (event: MessageEvent) => {
+      if (typeof event.origin !== 'string' || !event.origin.includes('youtube.com')) return;
+      if (event.source !== ytAudioIframeRef.current?.contentWindow) return;
+      try {
+        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (!data || typeof data !== 'object') return;
+        if (data.event === 'onReady' || data.event === 'infoDelivery') {
+          if (screenRef.current === 'game' && !isMutedRef.current && soundVolumeRef.current > 0) {
+            const targetVol = getEffectiveYouTubeVolume(ytTrackRef.current, soundVolumeRef.current);
+            sendYtCommand('unMute');
+            sendYtCommand('setVolume', [targetVol]);
+          }
+        } else if (data.event === 'onError') {
+          ytFailedRef.current = true;
+          if (ytTrackRef.current === 'end') {
+            playSound('jackpot');
+            setTimeout(() => playSound('win'), 360);
+          }
+        }
+      } catch {
+        // ignore non-JSON YouTube messages
+      }
+    };
+    window.addEventListener('message', handleYouTubeMessage);
+    return () => {
+      window.removeEventListener('message', handleYouTubeMessage);
+      clearYtSyncTimers();
+    };
+  }, []);
+
+  const triggerDanceIframePlay = () => {
     try {
-      const player = ytPlayerRef.current;
-      if (!ytReadyRef.current || !player) return;
-      if (isMutedRef.current || nextVol <= 0) {
-        if (typeof player.pauseVideo === 'function') player.pauseVideo();
-        return;
-      }
-      const targetVol = getEffectiveYouTubeVolume(ytTrackRef.current, nextVol);
-      if (typeof player.unMute === 'function') player.unMute();
-      if (typeof player.setVolume === 'function') player.setVolume(targetVol);
-      if (forceResume && screenRef.current === 'game' && ytTrackRef.current && typeof player.playVideo === 'function') {
-        player.playVideo();
-      }
+      const win = danceIframeRef.current?.contentWindow;
+      if (!win) return;
+      win.postMessage(JSON.stringify({ event: 'command', func: 'mute', args: [] }), '*');
+      win.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*');
     } catch {
       // ignore
     }
   };
 
-  const ensureMysteryYouTubePlayer = () => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return;
-    if (ytPlayerRef.current || ytInitializingRef.current) return;
-    ytInitializingRef.current = true;
-
-    const mountPlayer = () => {
-      const win = window as any;
-      if (!win.YT || !win.YT.Player) {
-        ytInitializingRef.current = false;
-        return;
-      }
-
-      let hostEl = document.getElementById('mb-yt-audio-host');
-      if (!hostEl) {
-        hostEl = document.createElement('div');
-        hostEl.id = 'mb-yt-audio-host';
-        hostEl.style.position = 'fixed';
-        hostEl.style.width = '1px';
-        hostEl.style.height = '1px';
-        hostEl.style.bottom = '0px';
-        hostEl.style.left = '0px';
-        hostEl.style.opacity = '0.001';
-        hostEl.style.pointerEvents = 'none';
-        hostEl.style.zIndex = '-1';
-        const innerEl = document.createElement('div');
-        innerEl.id = 'mb-yt-audio-iframe';
-        hostEl.appendChild(innerEl);
-        document.body.appendChild(hostEl);
-      }
-
-      const initialVideoId =
-        ytTrackRef.current === 'end' ? MYSTERY_END_VIDEO_ID : MYSTERY_BGM_VIDEO_ID;
-      ytLoadedVideoIdRef.current = initialVideoId;
-
-      try {
-        ytPlayerRef.current = new win.YT.Player('mb-yt-audio-iframe', {
-          width: '64',
-          height: '64',
-          videoId: initialVideoId,
-          playerVars: {
-            autoplay: 0,
-            controls: 0,
-            disablekb: 1,
-            fs: 0,
-            modestbranding: 1,
-            playsinline: 1,
-            rel: 0,
-            origin: window.location.origin,
-          },
-          events: {
-            onReady: (ev: any) => {
-              ytReadyRef.current = true;
-              ytInitializingRef.current = false;
-              ytFailedRef.current = false;
-              try {
-                const desiredTrack = ytTrackRef.current;
-                const shouldPlay =
-                  screenRef.current === 'game' &&
-                  desiredTrack !== null &&
-                  !isMutedRef.current &&
-                  soundVolumeRef.current > 0;
-                const targetVideoId =
-                  desiredTrack === 'end' ? MYSTERY_END_VIDEO_ID : MYSTERY_BGM_VIDEO_ID;
-                ev.target.setVolume(getEffectiveYouTubeVolume(desiredTrack, soundVolumeRef.current));
-                if (shouldPlay) {
-                  ev.target.unMute();
-                  if (ytLoadedVideoIdRef.current !== targetVideoId) {
-                    ytLoadedVideoIdRef.current = targetVideoId;
-                    ev.target.loadVideoById({ videoId: targetVideoId, startSeconds: 0 });
-                  } else {
-                    ev.target.playVideo();
-                  }
-                } else {
-                  ev.target.pauseVideo();
-                }
-              } catch {
-                // ignore
-              }
-            },
-            onStateChange: (ev: any) => {
-              // YT.PlayerState.ENDED === 0
-              if (ev.data === 0) {
-                if (
-                  ytTrackRef.current === 'bgm' &&
-                  screenRef.current === 'game' &&
-                  !manualGameEndedRef.current &&
-                  !isMutedRef.current &&
-                  soundVolumeRef.current > 0
-                ) {
-                  try {
-                    ev.target.seekTo(0);
-                    ev.target.playVideo();
-                  } catch {
-                    // ignore
-                  }
-                }
-              }
-            },
-            onError: () => {
-              ytFailedRef.current = true;
-              ytInitializingRef.current = false;
-              if (ytTrackRef.current === 'end') {
-                playSound('jackpot');
-                setTimeout(() => playSound('win'), 360);
-              }
-            },
-          },
-        });
-      } catch {
-        ytInitializingRef.current = false;
-        ytFailedRef.current = true;
-      }
-    };
-
-    const win = window as any;
-    if (win.YT && win.YT.Player) {
-      mountPlayer();
-    } else {
-      const existingScript = document.querySelector(
-        'script[src*="youtube.com/iframe_api"]'
-      );
-      const prevCallback = win.onYouTubeIframeAPIReady;
-      win.onYouTubeIframeAPIReady = () => {
-        if (typeof prevCallback === 'function') {
-          try {
-            prevCallback();
-          } catch {
-            // ignore
-          }
-        }
-        mountPlayer();
-      };
-      if (!existingScript) {
-        const tag = document.createElement('script');
-        tag.src = 'https://www.youtube.com/iframe_api';
-        tag.async = true;
-        document.head.appendChild(tag);
-      } else {
-        // Script already injected elsewhere — poll briefly for YT.Player
-        let attempts = 0;
-        const poll = setInterval(() => {
-          attempts += 1;
-          if (win.YT && win.YT.Player) {
-            clearInterval(poll);
-            mountPlayer();
-          } else if (attempts > 40) {
-            clearInterval(poll);
-            ytInitializingRef.current = false;
-          }
-        }, 150);
-      }
-    }
-  };
-
-  const playMysteryYouTubeTrack = (track: 'bgm' | 'end', forceRestart = false) => {
-    ytTrackRef.current = track;
-    ytFailedRef.current = false;
-    const videoId = track === 'end' ? MYSTERY_END_VIDEO_ID : MYSTERY_BGM_VIDEO_ID;
-
-    if (!ytPlayerRef.current) {
-      ensureMysteryYouTubePlayer();
-      return;
-    }
-    if (!ytReadyRef.current) return;
-
-    try {
-      const player = ytPlayerRef.current;
-      if (isMutedRef.current || soundVolumeRef.current <= 0) {
-        if (typeof player.pauseVideo === 'function') player.pauseVideo();
-        return;
-      }
-      const targetVol = getEffectiveYouTubeVolume(track, soundVolumeRef.current);
-      if (typeof player.unMute === 'function') player.unMute();
-      if (typeof player.setVolume === 'function') player.setVolume(targetVol);
-
-      if (forceRestart || ytLoadedVideoIdRef.current !== videoId) {
-        ytLoadedVideoIdRef.current = videoId;
-        if (typeof player.loadVideoById === 'function') {
-          player.loadVideoById({ videoId, startSeconds: 0 });
-        }
-      } else if (typeof player.playVideo === 'function') {
-        player.playVideo();
-      }
-    } catch {
-      ytFailedRef.current = true;
-    }
-  };
-
-  // Pre-warm YouTube audio player on mount & cleanly destroy on unmount
+  // Ensure pre-warmed dancing hamster video is actively playing the instant Reveal opens
   useEffect(() => {
-    ensureMysteryYouTubePlayer();
+    if (screen !== 'game' || activeBoxNum === null || modalStep !== 'reveal') return;
+    triggerDanceIframePlay();
+    const t1 = window.setTimeout(triggerDanceIframePlay, 250);
+    const t2 = window.setTimeout(triggerDanceIframePlay, 750);
     return () => {
-      try {
-        if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
-          ytPlayerRef.current.destroy();
-        }
-      } catch {
-        // ignore
-      }
-      ytPlayerRef.current = null;
-      ytReadyRef.current = false;
-      ytInitializingRef.current = false;
-      ytTrackRef.current = null;
-      ytLoadedVideoIdRef.current = null;
-      const hostEl = document.getElementById('mb-yt-audio-host');
-      if (hostEl && hostEl.parentNode) {
-        hostEl.parentNode.removeChild(hostEl);
-      }
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
     };
-  }, []);
+  }, [screen, activeBoxNum, modalStep]);
 
   // Close top-bar quick volume popover on outside click
   useEffect(() => {
@@ -1074,6 +1007,7 @@ export function MysteryBox({
   useEffect(() => {
     if (screen !== 'game') {
       ytTrackRef.current = null;
+      setYtActiveTrack(null);
       pauseMysteryYouTube();
       return;
     }
@@ -1093,12 +1027,13 @@ export function MysteryBox({
     if (ytTrackRef.current !== 'bgm') {
       playMysteryYouTubeTrack('bgm', false);
     } else {
-      syncMysteryYouTubeVolume(soundVolume, true);
+      syncMysteryYouTubeVolume(soundVolume, false);
     }
   }, [screen, isMuted, soundVolume, manualGameEnded, activeBoxNum]);
 
   const handleChangeSoundVolume = (nextVol: number) => {
     const clamped = Math.max(0, Math.min(100, Math.round(nextVol)));
+    const wasMuted = isMutedRef.current || soundVolumeRef.current <= 0;
     setSoundVolume(clamped);
     soundVolumeRef.current = clamped;
     if (clamped === 0) {
@@ -1113,8 +1048,8 @@ export function MysteryBox({
       ensureAudioContext();
       if (screenRef.current === 'game') {
         const desiredTrack = ytTrackRef.current || (manualGameEndedRef.current ? 'end' : 'bgm');
-        if (!ytReadyRef.current || ytTrackRef.current !== desiredTrack) {
-          playMysteryYouTubeTrack(desiredTrack, false);
+        if (wasMuted || ytTrackRef.current !== desiredTrack) {
+          playMysteryYouTubeTrack(desiredTrack, wasMuted);
         } else {
           syncMysteryYouTubeVolume(clamped, true);
         }
@@ -1137,7 +1072,7 @@ export function MysteryBox({
       ensureAudioContext();
       if (screenRef.current === 'game') {
         const desiredTrack = ytTrackRef.current || (manualGameEndedRef.current ? 'end' : 'bgm');
-        playMysteryYouTubeTrack(desiredTrack, false);
+        playMysteryYouTubeTrack(desiredTrack, true);
       }
     }
   };
@@ -2057,6 +1992,11 @@ export function MysteryBox({
 
     // Play appropriate dramatic winning or losing outcome sound effect
     const mainDelta = afterScore - beforeScore;
+    const isWinOutcome =
+      outcome.category !== 'bomb' &&
+      outcome.category !== 'trap' &&
+      mainDelta >= 0;
+
     if (outcome.category === 'bomb' || outcome.id.startsWith('sub500')) {
       playSound('bomb');
       setTimeout(() => playSound('lose'), 180);
@@ -2081,7 +2021,7 @@ export function MysteryBox({
       setCelebration('win');
     }
 
-    setTimeout(() => setCelebration(null), 3200);
+    setTimeout(() => setCelebration(null), isWinOutcome ? 4600 : 3200);
 
     if (activeBoxNum !== null) {
       if (!openedBoxes.includes(activeBoxNum)) {
@@ -2124,7 +2064,7 @@ export function MysteryBox({
       if (teams.length > 1) {
         setCurrentTeamIdx(prevIdx => (prevIdx + 1) % teams.length);
       }
-    }, 3400);
+    }, isWinOutcome ? 4800 : 3400);
   };
 
   // Exciting Mystery Unboxing Spin before landing on Outcome
@@ -2648,8 +2588,84 @@ export function MysteryBox({
             ? 'text-xl sm:text-3xl md:text-4xl lg:text-[44px]'
             : 'text-2xl sm:text-4xl md:text-[46px] lg:text-[52px]';
 
+        const ytOrigin =
+          typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : '';
+        const danceVideoId = 'dQtvgrl5lx8';
+        const danceEmbedUrl = `https://www.youtube.com/embed/${danceVideoId}?autoplay=1&mute=1&loop=1&playlist=${danceVideoId}&enablejsapi=1&controls=0&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3&disablekb=1&origin=${ytOrigin}`;
+        const isWinReveal =
+          modalStep === 'reveal' &&
+          Boolean(currentOutcome) &&
+          currentOutcome.category !== 'bomb' &&
+          currentOutcome.category !== 'trap' &&
+          (outcomeBeforeAfter?.delta ?? 0) >= 0;
+
+        const shouldMountYtAudio = ytActiveTrack !== null && !isMuted && soundVolume > 0;
+        const ytAudioVideoId =
+          ytActiveTrack === 'end' ? MYSTERY_END_VIDEO_ID : MYSTERY_BGM_VIDEO_ID;
+        const ytAudioEmbedUrl =
+          ytActiveTrack === 'end'
+            ? `https://www.youtube.com/embed/${ytAudioVideoId}?autoplay=1&mute=0&enablejsapi=1&controls=0&playsinline=1&rel=0&origin=${ytOrigin}`
+            : `https://www.youtube.com/embed/${ytAudioVideoId}?autoplay=1&mute=0&loop=1&playlist=${ytAudioVideoId}&enablejsapi=1&controls=0&playsinline=1&rel=0&origin=${ytOrigin}`;
+
         return (
           <div className={`h-screen max-h-screen w-full relative overflow-hidden flex flex-col justify-between select-none ${celebration === 'lose' ? 'animate-shake' : ''}`}>
+            {/* In-viewport hidden 240x135 YouTube Soundtrack Player (stays inside viewport so Chrome never throttles playback) */}
+            {shouldMountYtAudio && (
+              <div
+                className="fixed bottom-0 left-0 w-[240px] h-[135px] opacity-[0.005] pointer-events-none -z-10 overflow-hidden"
+                aria-hidden="true"
+              >
+                <iframe
+                  key={`${ytActiveTrack}-${ytTrackNonce}`}
+                  ref={ytAudioIframeRef}
+                  src={ytAudioEmbedUrl}
+                  title={ytActiveTrack === 'end' ? 'Mystery Box End Game Sound' : 'Mystery Box In-Game Music'}
+                  width={240}
+                  height={135}
+                  className="w-[240px] h-[135px] border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  onLoad={handleYtAudioIframeLoad}
+                />
+              </div>
+            )}
+
+            {/* sRGB SVG Chroma-Key Filter: removes bright green-screen RGB(21,255,11) cleanly to full transparency */}
+            <svg
+              className="fixed w-0 h-0 pointer-events-none overflow-hidden"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <defs>
+                <filter
+                  id="mystery-chroma-key-green"
+                  colorInterpolationFilters="sRGB"
+                  x="-10%"
+                  y="-10%"
+                  width="120%"
+                  height="120%"
+                >
+                  <feColorMatrix
+                    in="SourceGraphic"
+                    type="matrix"
+                    values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  3.85 -7.69 3.85 2.15 0"
+                    result="keyed"
+                  />
+                  <feMorphology
+                    in="keyed"
+                    operator="erode"
+                    radius="0.85"
+                    result="tightMatte"
+                  />
+                  <feComposite
+                    in="SourceGraphic"
+                    in2="tightMatte"
+                    operator="in"
+                  />
+                </filter>
+              </defs>
+            </svg>
+
             {/* Full-Screen 16:9 3D Magical Treasure Cave Environment Backdrop */}
             <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-[#18112c]">
               <img
@@ -3485,46 +3501,92 @@ export function MysteryBox({
                 );
               })()}
 
-              {/* 2. DECISION POPUP (KEEP IT OR GIVE IT AWAY BLUFFING STAGE) */}
-              {modalStep === 'decision' && (
-                <div className="w-full max-w-3xl my-auto animate-pop-in">
-                  <div className="bg-white border-4 border-amber-400 rounded-3xl sm:rounded-[2.5rem] shadow-2xl overflow-hidden text-center">
-                    <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-purple-600 px-6 py-4 text-white flex items-center justify-between">
-                      <span className="font-black text-sm sm:text-base uppercase tracking-wider flex items-center gap-2">
-                        🎁 Mystery Box #{activeBoxNum} Unlocked!
-                      </span>
-                      <span className="text-xs font-bold bg-black/25 px-3 py-1 rounded-lg">
-                        {teams[currentTeamIdx]?.name}: {teams[currentTeamIdx]?.score} PTS
-                      </span>
-                    </div>
+              {/* 2. DECISION POPUP (KEEP OR GIVE — HAMSTER CHARACTERS HOLDING & PASSING THE CHEST) */}
+              {modalStep === 'decision' && (() => {
+                const activeTeam = teams[currentTeamIdx];
+                const activeMeta = getHamsterCharacterMeta(activeTeam?.avatarId, currentTeamIdx);
+                const otherTeams = teams
+                  .map((t, idx) => ({ team: t, idx }))
+                  .filter(({ idx }) => idx !== currentTeamIdx);
+                const singleOpponent = otherTeams.length === 1 ? otherTeams[0] : null;
 
-                    <div className="p-6 sm:p-10">
-                      <div className="w-20 h-20 mx-auto mb-4 rounded-3xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-5xl shadow-lg shadow-amber-500/30 animate-bounce">
-                        📦
+                return (
+                  <div className="w-full max-w-4xl my-auto animate-pop-in">
+                    <div
+                      className="border-[4px] border-[#fbbf24] rounded-3xl sm:rounded-[2.25rem] p-5 sm:p-8 shadow-[0_28px_90px_rgba(0,0,0,0.85),0_0_50px_rgba(251,191,36,0.28)] text-center text-white relative overflow-hidden"
+                      style={{
+                        background:
+                          'linear-gradient(180deg, #2b1d54 0%, #1c1138 55%, #120a26 100%)',
+                      }}
+                    >
+                      {/* Clean Unboxed Top Metadata + Bold Title */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm font-bold text-amber-200/90 mb-3">
+                        <span className="text-[#fde047] font-black tracking-wide">
+                          Box #{activeBoxNum}
+                        </span>
+                        <div className="flex items-center gap-2 text-white/85 tabular-nums">
+                          <span className="font-black text-white">{activeTeam?.name}</span>
+                          <span aria-hidden="true" className="text-white/40">·</span>
+                          <span className="text-[#fde047] font-black">{activeTeam?.score ?? 0} PTS</span>
+                        </div>
                       </div>
 
-                      <h3 className="text-2xl sm:text-4xl font-black text-slate-900 mb-2">
-                        Keep the Box or Give It Away?
+                      <h3 className="text-3xl sm:text-5xl font-black text-white tracking-tight mb-6 sm:mb-7 drop-shadow-[0_3px_10px_rgba(0,0,0,0.55)]">
+                        Keep or Give?
                       </h3>
 
-                      {/* Mystery Box Vibe / Hint */}
-                      <p className="text-sm sm:text-base font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl py-2 px-4 inline-block mb-6">
-                        ✨ &ldquo;{mysteryHint}&rdquo;
-                      </p>
-
+                      {/* Two Character-Driven Action Cards */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-                        <button 
-                          onClick={() => handleExecuteDecision(currentTeamIdx)} 
-                          className="group flex flex-col items-center justify-center gap-2 p-6 sm:p-8 bg-gradient-to-br from-amber-50 to-orange-50 hover:from-amber-100 hover:to-orange-100 text-orange-700 border-3 border-orange-400 rounded-3xl transition-all cursor-pointer shadow-lg hover:scale-[1.03] active:scale-95"
+                        {/* KEEP CARD: Active Team's Hamster Holding the 3D Chest */}
+                        <button
+                          type="button"
+                          onClick={() => handleExecuteDecision(currentTeamIdx)}
+                          className="group relative flex flex-col items-center justify-between p-5 sm:p-6 rounded-3xl border-[3px] border-[#fbbf24]/80 hover:border-[#fde047] transition-all duration-200 cursor-pointer hover:scale-[1.02] active:scale-[0.98] shadow-[0_14px_34px_rgba(0,0,0,0.45)] overflow-hidden"
+                          style={{
+                            background:
+                              'linear-gradient(180deg, rgba(180,83,9,0.28) 0%, rgba(45,27,78,0.88) 60%, rgba(24,14,48,0.96) 100%)',
+                          }}
                         >
-                          <span className="text-5xl sm:text-6xl group-hover:scale-110 transition-transform">📦</span>
-                          <span className="font-black text-2xl sm:text-3xl text-slate-900">KEEP IT!</span>
-                          <span className="text-xs sm:text-sm font-bold bg-orange-500 text-white px-4 py-1 rounded-xl">
-                            Open for {teams[currentTeamIdx]?.name}
-                          </span>
+                          {/* Character Holding Chest Stage */}
+                          <div className="relative w-full h-44 sm:h-52 flex items-end justify-center mb-3">
+                            <div
+                              className="absolute inset-4 rounded-full blur-2xl opacity-45 group-hover:opacity-70 transition-opacity pointer-events-none"
+                              style={{
+                                background: `radial-gradient(circle, ${activeMeta.ringColors[0]} 0%, rgba(251,191,36,0.45) 45%, transparent 75%)`,
+                              }}
+                            />
+                            {/* Chosen 3D Hamster Character */}
+                            <div className="relative z-10 h-36 sm:h-44 w-36 sm:w-44 flex items-end justify-center transition-transform duration-200 group-hover:-translate-y-1.5 group-hover:scale-105">
+                              <TransparentCutoutImage
+                                src={activeMeta.imageSrc}
+                                alt={activeTeam?.name || activeMeta.name}
+                                className="w-full h-full object-contain drop-shadow-[0_12px_20px_rgba(0,0,0,0.55)]"
+                              />
+                            </div>
+                            {/* 3D Treasure Chest Held Tight in Front of Hamster's Paws */}
+                            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 z-20 transition-transform duration-200 group-hover:-translate-y-2 group-hover:scale-110">
+                              <TreasureChestBadge
+                                src={transparentChestSrc}
+                                boxNum={activeBoxNum}
+                                className="w-20 h-20 sm:w-24 sm:h-24"
+                                numClassName="text-lg sm:text-xl"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="relative z-10 flex flex-col items-center gap-1">
+                            <span className="text-2xl sm:text-4xl font-black text-[#fde047] tracking-tight drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)]">
+                              KEEP IT
+                            </span>
+                            <span className="text-sm sm:text-base font-extrabold text-amber-100/90">
+                              {activeTeam?.name}
+                            </span>
+                          </div>
                         </button>
 
-                        <button 
+                        {/* GIVE CARD: Active Team's Hamster Passing the 3D Chest to Opponent Character(s) */}
+                        <button
+                          type="button"
                           onClick={() => {
                             playSound('click');
                             if (teams.length === 2) {
@@ -3532,69 +3594,218 @@ export function MysteryBox({
                             } else {
                               setModalStep('give_away_selection');
                             }
-                          }} 
-                          className="group flex flex-col items-center justify-center gap-2 p-6 sm:p-8 bg-gradient-to-br from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 text-purple-700 border-3 border-purple-400 rounded-3xl transition-all cursor-pointer shadow-lg hover:scale-[1.03] active:scale-95"
+                          }}
+                          className="group relative flex flex-col items-center justify-between p-5 sm:p-6 rounded-3xl border-[3px] border-[#a78bfa]/80 hover:border-[#ddd6fe] transition-all duration-200 cursor-pointer hover:scale-[1.02] active:scale-[0.98] shadow-[0_14px_34px_rgba(0,0,0,0.45)] overflow-hidden"
+                          style={{
+                            background:
+                              'linear-gradient(180deg, rgba(109,40,217,0.32) 0%, rgba(40,22,78,0.88) 60%, rgba(20,12,44,0.96) 100%)',
+                          }}
                         >
-                          <span className="text-5xl sm:text-6xl group-hover:rotate-12 transition-transform">🔄</span>
-                          <span className="font-black text-2xl sm:text-3xl text-slate-900">GIVE IT AWAY!</span>
-                          <span className="text-xs sm:text-sm font-bold bg-purple-600 text-white px-4 py-1 rounded-xl">
-                            {teams.length === 2 ? `Force ${teams[(currentTeamIdx + 1) % teams.length]?.name} to Open` : "Pass Box to Another Team"}
-                          </span>
+                          {/* Character Giving Chest Action Stage */}
+                          <div className="relative w-full h-44 sm:h-52 flex items-end justify-center gap-1 sm:gap-2 mb-3">
+                            <div
+                              className="absolute inset-4 rounded-full blur-2xl opacity-45 group-hover:opacity-70 transition-opacity pointer-events-none"
+                              style={{
+                                background:
+                                  'radial-gradient(circle, rgba(167,139,250,0.65) 0%, rgba(56,189,248,0.28) 50%, transparent 78%)',
+                              }}
+                            />
+
+                            {/* Left: Giver Hamster Leaning Forward to Hand Over Chest */}
+                            <div className="relative z-10 h-32 sm:h-36 w-24 sm:w-28 flex items-end justify-center transition-transform duration-200 rotate-2 group-hover:rotate-6 group-hover:translate-x-1">
+                              <TransparentCutoutImage
+                                src={activeMeta.imageSrc}
+                                alt={activeTeam?.name || activeMeta.name}
+                                className="w-full h-full object-contain drop-shadow-[0_10px_18px_rgba(0,0,0,0.55)]"
+                              />
+                            </div>
+
+                            {/* Center: Chest Gliding Along Glowing Pass Arrow */}
+                            <div className="relative z-20 flex flex-col items-center justify-center self-center -mx-3 sm:-mx-2 transition-transform duration-200 group-hover:translate-x-2.5 group-hover:scale-110">
+                              <TreasureChestBadge
+                                src={transparentChestSrc}
+                                boxNum={activeBoxNum}
+                                className="w-16 h-16 sm:w-[74px] sm:h-[74px]"
+                                numClassName="text-sm sm:text-base"
+                              />
+                              <div className="flex items-center gap-0.5 text-[#c4b5fd] -mt-1 drop-shadow-[0_2px_6px_rgba(167,139,250,0.8)]">
+                                <span className="w-5 sm:w-7 h-1 rounded-full bg-gradient-to-r from-[#fbbf24] to-[#c4b5fd]" />
+                                <ArrowRight className="w-5 h-5 stroke-[3.2] -ml-1.5" />
+                              </div>
+                            </div>
+
+                            {/* Right: Receiver Team Character(s) Facing Giver */}
+                            {singleOpponent ? (() => {
+                              const oppMeta = getHamsterCharacterMeta(singleOpponent.team.avatarId, singleOpponent.idx);
+                              return (
+                                <div className="relative z-10 h-32 sm:h-36 w-24 sm:w-28 flex items-end justify-center transition-transform duration-200 group-hover:-translate-y-1 group-hover:scale-105">
+                                  <div className="w-full h-full -scale-x-100">
+                                    <TransparentCutoutImage
+                                      src={oppMeta.imageSrc}
+                                      alt={singleOpponent.team.name}
+                                      className="w-full h-full object-contain drop-shadow-[0_10px_18px_rgba(0,0,0,0.55)]"
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })() : (
+                              <div className="relative z-10 h-32 sm:h-36 flex items-end justify-center -space-x-7 sm:-space-x-8 pr-1 transition-transform duration-200 group-hover:-translate-y-1">
+                                {otherTeams.slice(0, 3).map(({ team: opp, idx: oppIdx }, stackIdx) => {
+                                  const oppMeta = getHamsterCharacterMeta(opp.avatarId, oppIdx);
+                                  return (
+                                    <div
+                                      key={opp.id}
+                                      className={`w-16 h-24 sm:w-20 sm:h-28 -scale-x-100 ${
+                                        stackIdx === 1 ? 'z-20 scale-105' : 'z-10 opacity-95'
+                                      }`}
+                                    >
+                                      <TransparentCutoutImage
+                                        src={oppMeta.imageSrc}
+                                        alt={opp.name}
+                                        className="w-full h-full object-contain drop-shadow-[0_8px_14px_rgba(0,0,0,0.55)]"
+                                      />
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="relative z-10 flex flex-col items-center gap-1">
+                            <span className="text-2xl sm:text-4xl font-black text-[#e9d5ff] tracking-tight drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)]">
+                              GIVE AWAY
+                            </span>
+                            <span className="text-sm sm:text-base font-extrabold text-purple-200/90 flex items-center gap-1.5">
+                              {singleOpponent ? (
+                                <>
+                                  <ArrowRight className="w-4 h-4 text-[#fde047] stroke-[3]" />
+                                  <span>{singleOpponent.team.name}</span>
+                                </>
+                              ) : (
+                                <span>Choose Team</span>
+                              )}
+                            </span>
+                          </div>
                         </button>
                       </div>
                     </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
-              {/* 3. PASS THE BOX POPUP (WHEN 3+ TEAMS AND GIVE IT AWAY SELECTED) */}
-              {modalStep === 'give_away_selection' && (
-                <div className="w-full max-w-3xl my-auto animate-pop-in">
-                  <div className="bg-white border-4 border-purple-400 rounded-3xl sm:rounded-[2.5rem] p-6 sm:p-10 shadow-2xl text-center">
-                    <div className="flex items-center justify-between mb-4">
-                      <button
-                        onClick={() => setModalStep('decision')}
-                        className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-1.5 font-bold text-sm cursor-pointer"
-                      >
-                        <ArrowLeft size={16} /> Back
-                      </button>
-                      <span className="text-xs font-black uppercase tracking-widest text-purple-600">
-                        Pass The Mystery Box
-                      </span>
-                      <div className="w-16" />
-                    </div>
+              {/* 3. PASS THE BOX POPUP (3+ TEAMS — SHOW EVERY TEAM'S CHOSEN HAMSTER CHARACTER RECEIVING THE CHEST) */}
+              {modalStep === 'give_away_selection' && (() => {
+                const giverTeam = teams[currentTeamIdx];
+                const giverMeta = getHamsterCharacterMeta(giverTeam?.avatarId, currentTeamIdx);
+                const recipientTeams = teams
+                  .map((t, idx) => ({ team: t, idx }))
+                  .filter(({ idx }) => idx !== currentTeamIdx);
+                const gridColsClass =
+                  recipientTeams.length <= 2
+                    ? 'grid-cols-2 max-w-2xl mx-auto'
+                    : recipientTeams.length === 4
+                    ? 'grid-cols-2 sm:grid-cols-4'
+                    : 'grid-cols-2 sm:grid-cols-3';
 
-                    <h3 className="text-2xl sm:text-4xl font-black text-slate-900 mb-2">
-                      Who Must Open Box #{activeBoxNum}?
-                    </h3>
-                    <p className="text-sm sm:text-base font-bold text-slate-500 mb-6">
-                      {teams[currentTeamIdx]?.name} is giving the box away! Pick the team that receives its fate:
-                    </p>
+                return (
+                  <div className="w-full max-w-4xl my-auto animate-pop-in">
+                    <div
+                      className="border-[4px] border-[#a78bfa] rounded-3xl sm:rounded-[2.25rem] p-5 sm:p-8 shadow-[0_28px_90px_rgba(0,0,0,0.85),0_0_50px_rgba(167,139,250,0.28)] text-center text-white relative overflow-hidden"
+                      style={{
+                        background:
+                          'linear-gradient(180deg, #2b1d54 0%, #1c1138 55%, #120a26 100%)',
+                      }}
+                    >
+                      {/* Clean Top Bar: Back + Giver Hamster Holding Chest + Short Title */}
+                      <div className="flex items-center justify-between gap-3 mb-6">
+                        <button
+                          type="button"
+                          onClick={() => setModalStep('decision')}
+                          className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white flex items-center gap-1.5 font-bold text-sm cursor-pointer transition-colors whitespace-nowrap shrink-0"
+                        >
+                          <ArrowLeft size={16} /> Back
+                        </button>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
-                      {teams.map((t, idx) => {
-                        if (idx === currentTeamIdx) return null;
-                        const cfg = DEFAULT_TEAM_CONFIGS[idx % DEFAULT_TEAM_CONFIGS.length];
-                        return (
-                          <button
-                            key={t.id}
-                            onClick={() => handleExecuteDecision(idx)}
-                            className="p-4 sm:p-5 rounded-2xl border-2 border-slate-200 hover:border-purple-500 bg-slate-50 hover:bg-purple-50 flex flex-col items-center gap-2 transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-sm"
-                          >
-                            <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${cfg.gradient} text-white font-black text-xl flex items-center justify-center shadow-md ring-2 ring-white/20`}>
-                              #{idx + 1}
+                        <div className="flex items-center justify-center gap-3 min-w-0">
+                          <div className="hidden sm:flex items-center -space-x-2 shrink-0">
+                            <div className="w-12 h-12">
+                              <TransparentCutoutImage
+                                src={giverMeta.imageSrc}
+                                alt={giverTeam?.name || giverMeta.name}
+                                className="w-full h-full object-contain drop-shadow-md"
+                              />
                             </div>
-                            <span className="font-black text-lg text-slate-900">{t.name}</span>
-                            <span className="text-xs font-bold text-slate-500 tabular-nums">
-                              Current: {t.score > 0 ? `+${t.score}` : t.score} pts
-                            </span>
-                          </button>
-                        );
-                      })}
+                            <TreasureChestBadge
+                              src={transparentChestSrc}
+                              boxNum={activeBoxNum}
+                              className="w-11 h-11"
+                              numClassName="text-[11px]"
+                            />
+                            <ArrowRight className="w-5 h-5 text-[#fde047] stroke-[3] ml-1" />
+                          </div>
+                          <h3 className="text-2xl sm:text-4xl font-black text-white tracking-tight truncate">
+                            Give Box #{activeBoxNum}
+                          </h3>
+                        </div>
+
+                        <div className="w-16 sm:w-20 shrink-0" />
+                      </div>
+
+                      {/* Recipient Team Character Cards (Teams 2, 3, 4, ...) */}
+                      <div className={`grid gap-4 sm:gap-5 ${gridColsClass}`}>
+                        {recipientTeams.map(({ team: t, idx }) => {
+                          const meta = getHamsterCharacterMeta(t.avatarId, idx);
+                          return (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => handleExecuteDecision(idx)}
+                              className="group relative p-4 sm:p-5 rounded-3xl border-[3px] border-white/15 hover:border-[#fbbf24] flex flex-col items-center gap-2 transition-all duration-200 cursor-pointer hover:scale-[1.04] active:scale-[0.97] shadow-[0_12px_28px_rgba(0,0,0,0.4)] overflow-hidden"
+                              style={{
+                                background:
+                                  'linear-gradient(180deg, rgba(67,48,107,0.65) 0%, rgba(28,17,56,0.92) 100%)',
+                              }}
+                            >
+                              {/* Character Glow + Full-Body Chosen Hamster + Receiving Chest */}
+                              <div className="relative w-full h-32 sm:h-36 flex items-end justify-center">
+                                <div
+                                  className="absolute inset-3 rounded-full blur-2xl opacity-35 group-hover:opacity-65 transition-opacity pointer-events-none"
+                                  style={{
+                                    background: `radial-gradient(circle, ${meta.ringColors[0]} 0%, ${meta.ringColors[1]} 45%, transparent 75%)`,
+                                  }}
+                                />
+                                <div className="relative z-10 h-28 sm:h-32 w-28 sm:w-32 flex items-end justify-center transition-transform duration-200 group-hover:-translate-y-1.5 group-hover:scale-105">
+                                  <TransparentCutoutImage
+                                    src={meta.imageSrc}
+                                    alt={t.name}
+                                    className="w-full h-full object-contain drop-shadow-[0_10px_16px_rgba(0,0,0,0.55)]"
+                                  />
+                                </div>
+                                {/* Mini 3D Chest Tucked at Hamster's Paws (Pops Up on Hover!) */}
+                                <div className="absolute bottom-0 right-2 sm:right-3 z-20 opacity-80 group-hover:opacity-100 transition-all duration-200 group-hover:-translate-y-1.5 group-hover:scale-110">
+                                  <TreasureChestBadge
+                                    src={transparentChestSrc}
+                                    boxNum={activeBoxNum}
+                                    className="w-12 h-12 sm:w-14 sm:h-14"
+                                    numClassName="text-xs"
+                                  />
+                                </div>
+                              </div>
+
+                              <span className="font-black text-lg sm:text-xl text-white tracking-tight truncate max-w-full">
+                                {t.name}
+                              </span>
+                              <span className="text-xs sm:text-sm font-black text-[#fde047] tabular-nums">
+                                {t.score} PTS
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* 4. UNBOXING REEL SPIN ANIMATION */}
               {modalStep === 'unboxing' && (
@@ -3616,56 +3827,94 @@ export function MysteryBox({
                 </div>
               )}
 
-              {/* 5. TARGET SELECTION POPUP (FOR STEAL / SWAP WHEN 3+ TEAMS) */}
-              {modalStep === 'target_selection' && currentOutcome && (
-                <div className="w-full max-w-3xl my-auto animate-pop-in">
-                  <div className="bg-white border-4 border-indigo-400 rounded-3xl sm:rounded-[2.5rem] p-6 sm:p-10 shadow-2xl text-center">
-                    <span className="text-xs font-black uppercase tracking-widest text-indigo-600 block mb-2">
-                      🎯 Choose Target Team
-                    </span>
-                    <div className={`mb-6 mx-auto w-full max-w-md bg-gradient-to-r ${currentOutcome.color} rounded-2xl p-5 shadow-xl flex flex-col items-center gap-1 border-2 border-white text-white`}>
-                      <span className="text-4xl">{currentOutcome.icon}</span>
-                      <h3 className="text-2xl sm:text-3xl font-black">{currentOutcome.text}</h3>
-                      <p className="text-xs text-white/90 font-semibold">{currentOutcome.subtitle}</p>
-                    </div>
-                    <p className="text-base sm:text-lg font-black text-slate-800 mb-5">
-                      Which team will <span className="text-indigo-600">{teams[targetTeamIdx ?? 0]?.name}</span> target?
-                    </p>
+              {/* 5. TARGET SELECTION POPUP (FOR STEAL / SWAP WHEN 3+ TEAMS — SHOWING CHOSEN HAMSTER CHARACTERS) */}
+              {modalStep === 'target_selection' && currentOutcome && (() => {
+                const opponentTeams = teams
+                  .map((t, idx) => ({ team: t, idx }))
+                  .filter(({ idx }) => idx !== targetTeamIdx);
+                const gridColsClass =
+                  opponentTeams.length <= 2
+                    ? 'grid-cols-2 max-w-2xl mx-auto'
+                    : opponentTeams.length === 4
+                    ? 'grid-cols-2 sm:grid-cols-4'
+                    : 'grid-cols-2 sm:grid-cols-3';
 
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
-                      {teams.map((t, idx) => {
-                        if (idx === targetTeamIdx) return null;
-                        const cfg = DEFAULT_TEAM_CONFIGS[idx % DEFAULT_TEAM_CONFIGS.length];
-                        return (
-                          <button
-                            key={t.id}
-                            onClick={() => handleTargetSelection(idx)}
-                            className="p-4 sm:p-5 rounded-2xl border-2 border-slate-200 hover:border-indigo-500 bg-slate-50 hover:bg-indigo-50 flex flex-col items-center gap-2 transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-sm"
-                          >
-                            <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${cfg.gradient} text-white font-black text-xl flex items-center justify-center shadow-md ring-2 ring-white/20`}>
-                              #{idx + 1}
-                            </div>
-                            <span className="font-black text-lg text-slate-900">{t.name}</span>
-                            <span className="text-xs font-bold text-slate-600 tabular-nums">
-                              Score: {t.score > 0 ? `+${t.score}` : t.score} pts
-                            </span>
-                          </button>
-                        );
-                      })}
+                return (
+                  <div className="w-full max-w-4xl my-auto animate-pop-in">
+                    <div
+                      className="border-[4px] border-[#818cf8] rounded-3xl sm:rounded-[2.25rem] p-5 sm:p-8 shadow-[0_28px_90px_rgba(0,0,0,0.85),0_0_50px_rgba(129,140,248,0.28)] text-center text-white relative overflow-hidden"
+                      style={{
+                        background:
+                          'linear-gradient(180deg, #2b1d54 0%, #1c1138 55%, #120a26 100%)',
+                      }}
+                    >
+                      <div className={`mb-5 mx-auto w-full max-w-md bg-gradient-to-r ${currentOutcome.color} rounded-2xl p-4 shadow-xl flex items-center justify-center gap-3 border-2 border-white/80 text-white`}>
+                        <span className="text-3xl sm:text-4xl shrink-0">{currentOutcome.icon}</span>
+                        <h3 className="text-xl sm:text-3xl font-black tracking-tight">{currentOutcome.text}</h3>
+                      </div>
+
+                      <h4 className="text-lg sm:text-2xl font-black text-white mb-5">
+                        Pick a Team
+                      </h4>
+
+                      <div className={`grid gap-4 sm:gap-5 ${gridColsClass}`}>
+                        {opponentTeams.map(({ team: t, idx }) => {
+                          const meta = getHamsterCharacterMeta(t.avatarId, idx);
+                          return (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => handleTargetSelection(idx)}
+                              className="group relative p-4 sm:p-5 rounded-3xl border-[3px] border-white/15 hover:border-[#fbbf24] flex flex-col items-center gap-2 transition-all duration-200 cursor-pointer hover:scale-[1.04] active:scale-[0.97] shadow-[0_12px_28px_rgba(0,0,0,0.4)] overflow-hidden"
+                              style={{
+                                background:
+                                  'linear-gradient(180deg, rgba(67,48,107,0.65) 0%, rgba(28,17,56,0.92) 100%)',
+                              }}
+                            >
+                              <div className="relative w-full h-28 sm:h-32 flex items-end justify-center">
+                                <div
+                                  className="absolute inset-3 rounded-full blur-2xl opacity-35 group-hover:opacity-65 transition-opacity pointer-events-none"
+                                  style={{
+                                    background: `radial-gradient(circle, ${meta.ringColors[0]} 0%, ${meta.ringColors[1]} 45%, transparent 75%)`,
+                                  }}
+                                />
+                                <div className="relative z-10 h-28 sm:h-32 w-28 sm:w-32 flex items-end justify-center transition-transform duration-200 group-hover:-translate-y-1.5 group-hover:scale-105">
+                                  <TransparentCutoutImage
+                                    src={meta.imageSrc}
+                                    alt={t.name}
+                                    className="w-full h-full object-contain drop-shadow-[0_10px_16px_rgba(0,0,0,0.55)]"
+                                  />
+                                </div>
+                              </div>
+                              <span className="font-black text-lg sm:text-xl text-white tracking-tight truncate max-w-full">
+                                {t.name}
+                              </span>
+                              <span className="text-xs sm:text-sm font-black text-[#fde047] tabular-nums">
+                                {t.score} PTS
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
-              {/* 6. REVEAL STAGE WITH LIVE SCOREBOARD AT TOP & MYSTERY BOX OUTCOME */}
-              {modalStep === 'reveal' && currentOutcome && (
-                <div
-                  onClick={handleCloseReveal}
-                  className="w-full max-w-5xl my-auto flex flex-col items-center gap-6 animate-pop-in cursor-pointer select-none px-2 sm:px-4"
-                  title="Click anywhere to skip to next turn immediately"
-                >
-                  {/* MAIN SCOREBOARD AT TOP SHOWING LIVE SCORE UPDATING */}
-                  <div className="w-full">
+              {/* 6. REVEAL STAGE WITH LIVE SCOREBOARD AT TOP & MYSTERY BOX OUTCOME (Persistent in-viewport wrapper keeps dancing iframe active with zero reload) */}
+              <div
+                onClick={modalStep === 'reveal' && currentOutcome ? handleCloseReveal : undefined}
+                className={
+                  modalStep === 'reveal' && currentOutcome
+                    ? 'w-full max-w-5xl my-auto flex flex-col items-center gap-4 sm:gap-5 cursor-pointer select-none px-2 sm:px-4'
+                    : 'fixed bottom-0 right-0 w-[196px] h-[264px] opacity-[0.005] -z-10 pointer-events-none overflow-hidden'
+                }
+                title={modalStep === 'reveal' ? 'Click anywhere to skip to next turn immediately' : undefined}
+                aria-hidden={modalStep !== 'reveal'}
+              >
+                {/* MAIN SCOREBOARD AT TOP SHOWING LIVE SCORE UPDATING (100% CENTERED) */}
+                {modalStep === 'reveal' && currentOutcome && (
+                  <div className="w-full animate-pop-in">
                     <div className="flex items-center justify-center gap-2 mb-2 text-center">
                       <Trophy className="w-5 h-5 text-amber-400" />
                       <h4 className="text-xs sm:text-sm font-black uppercase tracking-widest text-amber-300">
@@ -3681,12 +3930,19 @@ export function MysteryBox({
                       activeRevealDelta={outcomeBeforeAfter?.delta}
                     />
                   </div>
+                )}
 
-                  {/* REVEALED MYSTERY BOX OUTCOME CARD (WITHOUT DUPLICATE SCORE IN BOX) */}
-                  <div className="bg-slate-900 border-4 border-amber-400 rounded-3xl sm:rounded-[2.5rem] p-5 sm:p-8 lg:p-10 shadow-[0_25px_90px_rgba(0,0,0,0.85)] text-center text-white relative overflow-hidden w-full">
-                    
-                    {/* Top Outcome Header Banner */}
-                    <div className="flex items-center justify-between gap-2 mb-4">
+                {/* REVEALED MYSTERY BOX OUTCOME CARD (Persistent non-transformed parent keeps SVG-filtered iframe painting cleanly) */}
+                <div
+                  className={
+                    modalStep === 'reveal' && currentOutcome
+                      ? 'bg-slate-900 border-4 border-amber-400 rounded-3xl sm:rounded-[2.5rem] p-4 sm:p-6 lg:p-7 shadow-[0_25px_90px_rgba(0,0,0,0.85)] text-center text-white relative overflow-hidden w-full'
+                      : ''
+                  }
+                >
+                  {/* Top Outcome Header Banner */}
+                  {modalStep === 'reveal' && currentOutcome && (
+                    <div className="flex items-center justify-between gap-2 mb-3 sm:mb-4">
                       <span className="px-3.5 py-1 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-300 text-xs sm:text-sm font-black uppercase tracking-widest">
                         ✨ MYSTERY BOX #{activeBoxNum} REVEALED
                       </span>
@@ -3695,22 +3951,75 @@ export function MysteryBox({
                         Live Scoreboard Updating...
                       </span>
                     </div>
+                  )}
 
-                    {/* Revealed Outcome Card */}
-                    <div className={`mx-auto w-full bg-gradient-to-r ${currentOutcome.color} rounded-3xl p-6 sm:p-8 shadow-2xl flex flex-col sm:flex-row items-center justify-center gap-5 border-4 border-white/90 text-white mb-6`}>
-                      <span className="text-6xl sm:text-8xl drop-shadow-md animate-bounce shrink-0">{currentOutcome.icon}</span>
-                      <div className="text-center sm:text-left">
-                        <h3 className="text-3xl sm:text-5xl font-black tracking-tight leading-none mb-2">{currentOutcome.text}</h3>
-                        <p className="text-base sm:text-xl font-bold text-white/95">{outcomeSummary || currentOutcome.subtitle}</p>
+                  {/* Outcome Banner + Properly Scaled Chroma-Keyed Dancing Hamster Row */}
+                  <div
+                    className={
+                      modalStep === 'reveal' && currentOutcome
+                        ? 'flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-5 mb-4 sm:mb-5'
+                        : ''
+                    }
+                  >
+                    {modalStep === 'reveal' && currentOutcome && (
+                      <div className={`w-full flex-1 bg-gradient-to-r ${currentOutcome.color} rounded-3xl p-5 sm:p-7 shadow-2xl flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-5 border-4 border-white/90 text-white animate-pop-in`}>
+                        <span className="text-5xl sm:text-7xl drop-shadow-md animate-bounce shrink-0">{currentOutcome.icon}</span>
+                        <div className="text-center sm:text-left min-w-0">
+                          <h3 className="text-2xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-none mb-2 break-words">{currentOutcome.text}</h3>
+                          <p className="text-sm sm:text-lg lg:text-xl font-bold text-white/95">{outcomeSummary || currentOutcome.subtitle}</p>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
-                    {/* Live Auto-Advancing Status Bar */}
+                    {/* Persistent Pre-Warmed Chroma-Keyed Dancing Hamster (212x377 exact 9:16 iframe with zero CSS transform so Chrome paints SVG filter reliably) */}
+                    <div
+                      className={
+                        isWinReveal
+                          ? 'relative shrink-0 w-[196px] h-[264px] overflow-hidden bg-transparent pointer-events-none'
+                          : 'fixed bottom-0 right-0 w-[196px] h-[264px] opacity-[0.005] -z-10 pointer-events-none overflow-hidden'
+                      }
+                      aria-hidden={!isWinReveal}
+                    >
+                      <div
+                        className="absolute inset-3 rounded-full blur-2xl opacity-45 pointer-events-none"
+                        style={{
+                          background:
+                            'radial-gradient(circle, rgba(251,191,36,0.75) 0%, rgba(16,185,129,0.28) 58%, rgba(0,0,0,0) 80%)',
+                        }}
+                      />
+                      <iframe
+                        ref={danceIframeRef}
+                        src={danceEmbedUrl}
+                        title="Mystery Box Win Dancing Animation"
+                        width={212}
+                        height={377}
+                        className="absolute border-0 block bg-transparent"
+                        style={{
+                          width: '212px',
+                          height: '377px',
+                          left: '-8px',
+                          top: '-56px',
+                          filter: 'url(#mystery-chroma-key-green)',
+                          backgroundColor: 'transparent',
+                        }}
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        referrerPolicy="strict-origin-when-cross-origin"
+                        onLoad={triggerDanceIframePlay}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Live Auto-Advancing Status Bar */}
+                  {modalStep === 'reveal' && currentOutcome && (
                     <div className="max-w-md mx-auto flex flex-col items-center gap-2">
                       <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-white/10">
                         <div
                           className={`h-full rounded-full bg-gradient-to-r from-amber-400 via-emerald-400 to-cyan-400 transition-all ease-linear ${
-                            revealScoreApplied ? 'w-full duration-[2900ms]' : 'w-1/12 duration-300'
+                            revealScoreApplied
+                              ? isWinReveal
+                                ? 'w-full duration-[4300ms]'
+                                : 'w-full duration-[2900ms]'
+                              : 'w-1/12 duration-300'
                           }`}
                         />
                       </div>
@@ -3719,13 +4028,13 @@ export function MysteryBox({
                         Scores updated live on main board! Auto-switching to <span className="text-amber-300 font-black">{teams[(currentTeamIdx + 1) % teams.length]?.name}&apos;s Turn</span>...
                       </p>
                     </div>
-                  </div>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
           )}
 
-          {/* GAME OVER / WINNER ANNOUNCEMENT MODAL (PODIUM LEADERBOARD, BIG HAMSTER AVATAR & MEDALS) */}
+          {/* GAME OVER / WINNER ANNOUNCEMENT MODAL (CHROMA-KEYED VICTORY DANCE, PODIUM LEADERBOARD & MEDALS) */}
           {isGameOver && (() => {
             const sortedTeams = [...teams].sort((a, b) => b.score - a.score);
             const topScore = sortedTeams[0]?.score ?? 0;
@@ -3734,108 +4043,148 @@ export function MysteryBox({
             const winnerTeam = sortedTeams[0];
 
             return (
-              <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto">
+              <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-5 bg-slate-950/85 backdrop-blur-md overflow-y-auto">
                 <div
-                  className="border-[4px] border-[#fbbf24] rounded-3xl sm:rounded-[2.5rem] p-6 sm:p-9 max-w-2xl w-full shadow-[0_25px_80px_rgba(0,0,0,0.85),0_0_40px_rgba(251,191,36,0.4)] my-auto animate-pop-in text-center text-white relative overflow-hidden"
+                  className="border-[4px] border-[#fbbf24] rounded-3xl sm:rounded-[2.5rem] p-5 sm:p-7 md:p-8 max-w-4xl w-full shadow-[0_25px_80px_rgba(0,0,0,0.85),0_0_45px_rgba(251,191,36,0.42)] my-auto text-white relative overflow-hidden"
                   style={{
                     background:
                       'linear-gradient(180deg, #2b1d52 0%, #1d1238 55%, #140c29 100%)',
                   }}
                 >
-                  {/* Winning Hamster Character & Golden Trophy Header */}
-                  <div className="relative mx-auto mb-4 flex flex-col items-center justify-center">
-                    <div className="text-4xl sm:text-5xl mb-1 animate-bounce drop-shadow-[0_4px_12px_rgba(251,191,36,0.8)]">
-                      👑
-                    </div>
-                    <div className="flex items-center justify-center gap-3">
-                      {(isTie ? tiedWinners : [winnerTeam]).filter(Boolean).map((wTeam) => (
-                        <CuteHamsterAvatar
-                          key={wTeam.id}
-                          avatarId={wTeam.avatarId || ((wTeam.id % 20) + 1)}
-                          className="w-24 h-24 sm:w-28 sm:h-28 !border-4 shadow-[0_0_30px_rgba(251,191,36,0.65)]"
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  <p className="text-xs sm:text-sm font-black text-[#fde047] uppercase tracking-widest mb-1">
-                    🏆 OFFICIAL WINNER ANNOUNCEMENT 🏆
-                  </p>
-                  <h2 className="text-3xl sm:text-5xl font-black text-white uppercase mb-2 drop-shadow-[0_3px_8px_rgba(0,0,0,0.6)]">
-                    {teams.length === 1
-                      ? `${winnerTeam?.name}: ${winnerTeam?.score} PTS!`
-                      : isTie
-                      ? `🤝 IT'S A TIE! (${topScore} PTS)`
-                      : `👑 ${winnerTeam?.name} WINS!`}
-                  </h2>
-                  {teams.length > 1 && (
-                    <p className="text-sm sm:text-base font-bold text-amber-200/90 mb-5">
-                      {isTie
-                        ? `${tiedWinners.map((w) => w.name).join(' & ')} tied for 1st Place with ${topScore} PTS!`
-                        : `Congratulations to ${winnerTeam?.name} for claiming victory with ${topScore} PTS!`}
-                    </p>
-                  )}
-
-                  {/* Leaderboard Rankings */}
-                  <div className="w-full flex flex-col gap-2.5 mb-7 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
-                    {sortedTeams.map((t, rank) => {
-                      const medals = ['🥇', '🥈', '🥉'];
-                      const medal = medals[rank] || `#${rank + 1}`;
-                      const isWinner = t.score === topScore;
-                      return (
+                  <div className="flex flex-col md:flex-row items-center md:items-stretch gap-6 md:gap-8">
+                    {/* Left Column: Properly Scaled Chroma-Keyed Transparent 9:16 Victory Dancing Animation (zero CSS transform for reliable Chrome rendering) */}
+                    <div className="flex flex-col items-center justify-center shrink-0">
+                      <div className="relative w-[208px] h-[296px] overflow-hidden bg-transparent pointer-events-none">
                         <div
-                          key={t.id}
-                          className={`flex items-center justify-between p-3.5 sm:p-4 rounded-2xl border-2 transition-all ${
-                            isWinner
-                              ? 'bg-gradient-to-r from-[#fbbf24]/25 via-[#f59e0b]/20 to-[#fbbf24]/25 border-[#fbbf24] text-white shadow-[0_0_20px_rgba(251,191,36,0.3)] font-black'
-                              : 'bg-white/10 border-white/15 text-white/90'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <span className="text-2xl sm:text-3xl shrink-0">{medal}</span>
-                            <CuteHamsterAvatar
-                              avatarId={t.avatarId || ((t.id % 20) + 1)}
-                              className="w-12 h-12 sm:w-14 sm:h-14 shrink-0 !border-2"
-                            />
-                            <span className="text-lg sm:text-2xl font-black truncate">{t.name}</span>
+                          className="absolute inset-4 rounded-full blur-2xl opacity-50 pointer-events-none"
+                          style={{
+                            background:
+                              'radial-gradient(circle, rgba(251,191,36,0.75) 0%, rgba(168,85,247,0.3) 60%, rgba(0,0,0,0) 80%)',
+                          }}
+                        />
+                        <iframe
+                          src={danceEmbedUrl}
+                          title="Mystery Box Victory Dance"
+                          width={224}
+                          height={398}
+                          className="absolute border-0 block bg-transparent"
+                          style={{
+                            width: '224px',
+                            height: '398px',
+                            left: '-8px',
+                            top: '-51px',
+                            filter: 'url(#mystery-chroma-key-green)',
+                            backgroundColor: 'transparent',
+                          }}
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                          referrerPolicy="strict-origin-when-cross-origin"
+                        />
+                      </div>
+                      <span className="mt-2 text-xs font-black uppercase tracking-widest text-[#fde047] drop-shadow">
+                        {isTie ? '🎉 CELEBRATION DANCE!' : '🎉 VICTORY DANCE!'}
+                      </span>
+                    </div>
+
+                    {/* Right Column: Winner Header, Leaderboard & Controls */}
+                    <div className="flex-1 min-w-0 w-full flex flex-col justify-between text-center">
+                      <div>
+                        {/* Winning Hamster Character & Golden Trophy Header */}
+                        <div className="relative mx-auto mb-3 flex flex-col items-center justify-center">
+                          <div className="text-3xl sm:text-4xl mb-1 animate-bounce drop-shadow-[0_4px_12px_rgba(251,191,36,0.8)]">
+                            👑
                           </div>
-                          <div className="text-2xl sm:text-3xl font-black text-[#fde047] tabular-nums shrink-0 ml-3">
-                            {t.score} <span className="text-xs sm:text-sm uppercase">PTS</span>
+                          <div className="flex items-center justify-center gap-3">
+                            {(isTie ? tiedWinners : [winnerTeam]).filter(Boolean).map((wTeam) => (
+                              <CuteHamsterAvatar
+                                key={wTeam.id}
+                                avatarId={wTeam.avatarId || ((wTeam.id % 20) + 1)}
+                                className="w-20 h-20 sm:w-24 sm:h-24 !border-4 shadow-[0_0_30px_rgba(251,191,36,0.65)]"
+                              />
+                            ))}
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
 
-                  <div className="flex flex-col sm:flex-row gap-3 w-full">
-                    <button
-                      onClick={() => {
-                        playSound('click');
-                        setTeams(teams.map((t) => ({ ...t, score: 0, streak: 0 })));
-                        setOpenedBoxes([]);
-                        setBoxRecords({});
-                        manualGameEndedRef.current = false;
-                        setManualGameEnded(false);
-                        hasAnnouncedGameOverRef.current = false;
-                        setRemainingSeconds(gameTimeMinutes > 0 ? gameTimeMinutes * 60 : null);
-                        playMysteryYouTubeTrack('bgm', true);
-                      }}
-                      className="flex-1 py-4 bg-gradient-to-b from-[#fde047] via-[#fbbf24] to-[#f59e0b] hover:brightness-105 text-[#1e1303] border-2 border-[#fef08a] font-black text-xl rounded-2xl shadow-lg transition-all cursor-pointer"
-                    >
-                      Play Again 🔄
-                    </button>
-                    <button
-                      onClick={() => {
-                        manualGameEndedRef.current = false;
-                        setManualGameEnded(false);
-                        hasAnnouncedGameOverRef.current = false;
-                        pauseMysteryYouTube();
-                        setScreen('setup');
-                      }}
-                      className="flex-1 py-4 bg-[#43306b] hover:bg-[#563e88] border-2 border-[#a78bfa]/60 text-white font-black text-xl rounded-2xl shadow-lg transition-all cursor-pointer"
-                    >
-                      Game Setup ⚙️
-                    </button>
+                        <p className="text-xs sm:text-sm font-black text-[#fde047] uppercase tracking-widest mb-1">
+                          🏆 OFFICIAL WINNER ANNOUNCEMENT 🏆
+                        </p>
+                        <h2 className="text-2xl sm:text-4xl font-black text-white uppercase mb-1.5 drop-shadow-[0_3px_8px_rgba(0,0,0,0.6)]">
+                          {teams.length === 1
+                            ? `${winnerTeam?.name}: ${winnerTeam?.score} PTS!`
+                            : isTie
+                            ? `🤝 IT'S A TIE! (${topScore} PTS)`
+                            : `👑 ${winnerTeam?.name} WINS!`}
+                        </h2>
+                        {teams.length > 1 && (
+                          <p className="text-xs sm:text-sm font-bold text-amber-200/90 mb-4">
+                            {isTie
+                              ? `${tiedWinners.map((w) => w.name).join(' & ')} tied for 1st Place with ${topScore} PTS!`
+                              : `Congratulations to ${winnerTeam?.name} for claiming victory with ${topScore} PTS!`}
+                          </p>
+                        )}
+
+                        {/* Leaderboard Rankings */}
+                        <div className="w-full flex flex-col gap-2.5 mb-5 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
+                          {sortedTeams.map((t, rank) => {
+                            const medals = ['🥇', '🥈', '🥉'];
+                            const medal = medals[rank] || `#${rank + 1}`;
+                            const isWinner = t.score === topScore;
+                            return (
+                              <div
+                                key={t.id}
+                                className={`flex items-center justify-between p-3 sm:p-3.5 rounded-2xl border-2 transition-all ${
+                                  isWinner
+                                    ? 'bg-gradient-to-r from-[#fbbf24]/25 via-[#f59e0b]/20 to-[#fbbf24]/25 border-[#fbbf24] text-white shadow-[0_0_20px_rgba(251,191,36,0.3)] font-black'
+                                    : 'bg-white/10 border-white/15 text-white/90'
+                                }`}
+                              >
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <span className="text-xl sm:text-2xl shrink-0">{medal}</span>
+                                  <CuteHamsterAvatar
+                                    avatarId={t.avatarId || ((t.id % 20) + 1)}
+                                    className="w-11 h-11 sm:w-12 sm:h-12 shrink-0 !border-2"
+                                  />
+                                  <span className="text-base sm:text-xl font-black truncate">{t.name}</span>
+                                </div>
+                                <div className="text-xl sm:text-2xl font-black text-[#fde047] tabular-nums shrink-0 ml-3">
+                                  {t.score} <span className="text-xs uppercase">PTS</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row gap-3 w-full mt-auto">
+                        <button
+                          onClick={() => {
+                            playSound('click');
+                            setTeams(teams.map((t) => ({ ...t, score: 0, streak: 0 })));
+                            setOpenedBoxes([]);
+                            setBoxRecords({});
+                            manualGameEndedRef.current = false;
+                            setManualGameEnded(false);
+                            hasAnnouncedGameOverRef.current = false;
+                            setRemainingSeconds(gameTimeMinutes > 0 ? gameTimeMinutes * 60 : null);
+                            playMysteryYouTubeTrack('bgm', true);
+                          }}
+                          className="flex-1 py-3.5 bg-gradient-to-b from-[#fde047] via-[#fbbf24] to-[#f59e0b] hover:brightness-105 text-[#1e1303] border-2 border-[#fef08a] font-black text-lg sm:text-xl rounded-2xl shadow-lg transition-all cursor-pointer"
+                        >
+                          Play Again 🔄
+                        </button>
+                        <button
+                          onClick={() => {
+                            manualGameEndedRef.current = false;
+                            setManualGameEnded(false);
+                            hasAnnouncedGameOverRef.current = false;
+                            pauseMysteryYouTube();
+                            setScreen('setup');
+                          }}
+                          className="flex-1 py-3.5 bg-[#43306b] hover:bg-[#563e88] border-2 border-[#a78bfa]/60 text-white font-black text-lg sm:text-xl rounded-2xl shadow-lg transition-all cursor-pointer"
+                        >
+                          Game Setup ⚙️
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

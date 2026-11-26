@@ -13,6 +13,8 @@ interface CoconutBoatStageProps {
     students: string[];
     isMuted: boolean;
     volume: number; // 0..100
+    canClickToSpin?: boolean;
+    onStageClick?: () => void;
     onStateChange?: (state: {
         phase: string;
         msg: string;
@@ -20,6 +22,7 @@ interface CoconutBoatStageProps {
         activeCount: number;
         chaseSecondsLeft?: number;
         cameraMode?: 'side' | 'dynamic' | 'high';
+        isMusicPlaying?: boolean;
     }) => void;
     onRoundComplete?: (eliminatedNames: string[]) => void;
 }
@@ -65,6 +68,26 @@ const CHAOS_QUOTES = [
     "I DROPPED MY SUNFLOWER SEED!",
     "HOLD ONTO YOUR LIFE VESTS!",
     "I'M GETTING DIZZY!! 🌀"
+];
+
+const LILY_PANIC_QUOTES = [
+    "DON'T EAT ME!! 😱",
+    "I'M JUST A LILY PAD! 🙈",
+    "I TASTE TERRIBLE!! 🤢",
+    "PICK SOMEONE ELSE! 👉",
+    "MOMMY!! 😭",
+    "RIBBIT! I'M A FROG! 🐸",
+    "NOPE NOPE NOPE!! 💦",
+    "MY SUNFLOWER SEEDS! 🌻"
+];
+
+const ESCAPE_QUOTES = [
+    "TOO SLOW!! 😜",
+    "NOT TODAY, CROC!! 💨",
+    "HAHA! MISSED ME!! 🏃",
+    "WHOA! CLOSE CALL!! 😅",
+    "CAN'T CATCH ME!! ✨",
+    "BOING!! BYE-BYE!! 🪷"
 ];
 
 const RIM_COLORS = ['#EF233C', '#FFD166', '#00BBF9', '#06D6A0'];
@@ -242,27 +265,150 @@ class CoconutSoundEngine {
         noise.start(now);
     }
 
-    startTropicalMusic() {
-        this.stopTropicalMusic();
+    playLilyBounce() {
+        if (!this.sfxEnabled) return;
         this.init();
-        const scale = [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5];
-        const pattern = [0, 2, 3, 2, 4, 3, 1, 0, 2, 4, 5, 4, 3, 2, 1, 0];
-        this.musicTimer = window.setInterval(() => {
-            if (!this.sfxEnabled || !this.ctx) return;
-            const freq = scale[pattern[this.melodyStep % pattern.length]];
-            this.melodyStep++;
-            const now = this.ctx.currentTime;
-            const osc = this.ctx.createOscillator();
-            const gain = this.ctx.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(freq, now);
-            gain.gain.setValueAtTime(0.07 * this.volume, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
-            osc.connect(gain);
-            gain.connect(this.ctx.destination);
-            osc.start(now);
-            osc.stop(now + 0.22);
-        }, 210);
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+
+        // Playful springy boing + cheerful marimba chime
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(320, now);
+        osc.frequency.exponentialRampToValueAtTime(760, now + 0.14);
+        osc.frequency.exponentialRampToValueAtTime(520, now + 0.22);
+        osc.frequency.exponentialRampToValueAtTime(980, now + 0.36);
+        gain.gain.setValueAtTime(0.26 * this.volume, now);
+        gain.gain.exponentialRampToValueAtTime(0.008, now + 0.39);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.4);
+
+        // Sparkle confirmation note
+        const chime = this.ctx.createOscillator();
+        const chimeGain = this.ctx.createGain();
+        chime.type = 'triangle';
+        chime.frequency.setValueAtTime(1046.5, now + 0.12);
+        chime.frequency.setValueAtTime(1318.5, now + 0.21);
+        chimeGain.gain.setValueAtTime(0.16 * this.volume, now + 0.12);
+        chimeGain.gain.exponentialRampToValueAtTime(0.005, now + 0.42);
+        chime.connect(chimeGain);
+        chimeGain.connect(this.ctx.destination);
+        chime.start(now + 0.12);
+        chime.stop(now + 0.44);
+    }
+
+    playCrocGrowl() {
+        if (!this.sfxEnabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(115, now);
+        osc.frequency.linearRampToValueAtTime(145, now + 0.14);
+        osc.frequency.exponentialRampToValueAtTime(72, now + 0.42);
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(420, now);
+
+        gain.gain.setValueAtTime(0.22 * this.volume, now);
+        gain.gain.exponentialRampToValueAtTime(0.008, now + 0.45);
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.46);
+    }
+
+    playCrocChomp() {
+        if (!this.sfxEnabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+
+        // Snappy jaw-clap percussive thump
+        const thump = this.ctx.createOscillator();
+        const thumpGain = this.ctx.createGain();
+        thump.type = 'triangle';
+        thump.frequency.setValueAtTime(220, now);
+        thump.frequency.exponentialRampToValueAtTime(48, now + 0.14);
+        thumpGain.gain.setValueAtTime(0.55 * this.volume, now);
+        thumpGain.gain.exponentialRampToValueAtTime(0.008, now + 0.18);
+        thump.connect(thumpGain);
+        thumpGain.connect(this.ctx.destination);
+        thump.start(now);
+        thump.stop(now + 0.2);
+
+        // Crisp teeth-snap noise burst
+        const snapSize = Math.floor(this.ctx.sampleRate * 0.12);
+        const snapBuf = this.ctx.createBuffer(1, snapSize, this.ctx.sampleRate);
+        const snapData = snapBuf.getChannelData(0);
+        for (let i = 0; i < snapSize; i++) {
+            snapData[i] = (Math.random() * 2 - 1) * Math.exp(-i / (snapSize * 0.22));
+        }
+        const snapSrc = this.ctx.createBufferSource();
+        snapSrc.buffer = snapBuf;
+        const snapFilter = this.ctx.createBiquadFilter();
+        snapFilter.type = 'bandpass';
+        snapFilter.frequency.setValueAtTime(1600, now);
+        snapFilter.Q.setValueAtTime(1.6, now);
+        const snapGain = this.ctx.createGain();
+        snapGain.gain.setValueAtTime(0.52 * this.volume, now);
+        snapGain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+        snapSrc.connect(snapFilter);
+        snapFilter.connect(snapGain);
+        snapGain.connect(this.ctx.destination);
+        snapSrc.start(now);
+
+        // Water splash tail
+        this.playBigSplash();
+    }
+
+    playCrocMissSnap() {
+        if (!this.sfxEnabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+
+        // Hollow comedic jaw clack on empty air
+        const clack = this.ctx.createOscillator();
+        const clackGain = this.ctx.createGain();
+        clack.type = 'square';
+        clack.frequency.setValueAtTime(340, now);
+        clack.frequency.exponentialRampToValueAtTime(110, now + 0.08);
+        clackGain.gain.setValueAtTime(0.26 * this.volume, now);
+        clackGain.gain.exponentialRampToValueAtTime(0.008, now + 0.09);
+        clack.connect(clackGain);
+        clackGain.connect(this.ctx.destination);
+        clack.start(now);
+        clack.stop(now + 0.1);
+
+        // Grumpy cartoon trombone grumble ("womp-grrr")
+        const grump = this.ctx.createOscillator();
+        const grumpGain = this.ctx.createGain();
+        grump.type = 'sawtooth';
+        grump.frequency.setValueAtTime(175, now + 0.12);
+        grump.frequency.exponentialRampToValueAtTime(88, now + 0.48);
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(380, now + 0.12);
+        grumpGain.gain.setValueAtTime(0.18 * this.volume, now + 0.12);
+        grumpGain.gain.exponentialRampToValueAtTime(0.008, now + 0.5);
+        grump.connect(filter);
+        filter.connect(grumpGain);
+        grumpGain.connect(this.ctx.destination);
+        grump.start(now + 0.12);
+        grump.stop(now + 0.52);
+    }
+
+    startTropicalMusic() {
+        // Background music is handled by the Coconut Boat YouTube music player (W16EsK4JCKM)
+        this.stopTropicalMusic();
     }
 
     stopTropicalMusic() {
@@ -280,6 +426,13 @@ interface HamsterStudent {
     vest: typeof VEST_COLORS[number];
     accessory: string;
     eliminated: boolean;
+    onLilyPadIndex: number | null;
+    lilyLandTime: number;
+    chompedByCroc: boolean;
+    panicStyle: 'terrified' | 'hiding' | 'crying_funny';
+    speechBubble: string;
+    speechExpiry: number;
+    relievedUntil: number;
     seatX: number;
     seatY: number;
     seatType: 'bench' | 'rim' | 'floor';
@@ -291,10 +444,22 @@ interface HamsterStudent {
     bobOffset: number;
     eatingSeed: boolean;
     wobbleAngle: number;
-    expression: 'happy' | 'excited' | 'dizzy' | 'shocked' | 'scream' | 'crown';
+    expression: 'happy' | 'excited' | 'dizzy' | 'shocked' | 'scream' | 'crown' | 'terrified' | 'hiding' | 'crying_funny' | 'relieved_smug';
     floatAngle: number;
     floatDist: number;
     tubeColor: string;
+}
+
+interface LotusPadState {
+    xRatio: number;
+    yRatio: number;
+    r: number;
+    rot: number;
+    flower: string | null;
+    bounce: number;
+    bounceVel: number;
+    ripple: number;
+    occupantId: string | null;
 }
 
 interface FlyingHamster {
@@ -306,19 +471,65 @@ interface FlyingHamster {
     t: number;
     delay: number;
     splashed: boolean;
+    fromLilyPad?: boolean;
+    trail: { x: number; y: number }[];
 }
 
-interface FakeOutFlight {
+interface LilySafeFlight {
+    hamster: HamsterStudent;
+    padIndex: number;
+    startX: number;
+    startY: number;
+    targetX: number;
+    targetY: number;
+    t: number;
+    duration: number;
+    isClimaxFlight: boolean;
+    trail: { x: number; y: number }[];
+}
+
+interface EscapeJump {
     hamster: HamsterStudent;
     startX: number;
     startY: number;
-    peakOutX: number;
-    peakOutY: number;
+    targetPadIndex: number | null; // null = leaps all the way back to the boat!
+    targetX: number;
+    targetY: number;
     t: number;
     duration: number;
-    savedTriggered: boolean;
-    isClimaxFakeOut: boolean;
+    escapeQuote: string;
     trail: { x: number; y: number }[];
+}
+
+interface CrocodileState {
+    phase: 'PATROL' | 'STALKING' | 'LILY_ROAM' | 'LILY_STALK' | 'LILY_LUNGE' | 'LILY_MISS_GRUMP' | 'SURFACING' | 'OPEN_JAWS' | 'CHOMP' | 'HAPPY_CHEW';
+    initialized: boolean;
+    x: number;
+    y: number;
+    angle: number;
+    facingDir: number;
+    patrolAngle: number;
+    swimPhase: number;
+    jawOpen: number;
+    jawTarget: number;
+    surfaceHeight: number;
+    blinkTimer: number;
+    isBlinking: boolean;
+    teaseSnapTimer: number;
+    chompImpact: number;
+    chompTextTimer: number;
+    chewTimer: number;
+    targetX: number;
+    targetY: number;
+    caughtHamsters: HamsterStudent[];
+    bubbleTimer: number;
+    huntTargetPadIndex: number | null;
+    huntTimer: number;
+    huntEscapeTriggered: boolean;
+    grumpTimer: number;
+    petalOnNose: boolean;
+    lastHuntedHamsterId: string;
+    escapeCount: number;
 }
 
 interface Particle {
@@ -803,7 +1014,75 @@ function drawHamsterCharacter(
             targetCtx.stroke();
             targetCtx.restore();
         });
-    } else if (expr === 'shocked' || expr === 'scream') {
+    } else if (expr === 'terrified') {
+        // Huge bulging terrified eyes with tiny vibrating pupils + flying cartoon sweat drop!
+        const jitterX = Math.sin(time * 58) * radius * 0.04;
+        const jitterY = Math.cos(time * 64) * radius * 0.04;
+        [-1, 1].forEach(dir => {
+            targetCtx.fillStyle = '#FFFFFF';
+            targetCtx.strokeStyle = '#3A1F0D';
+            targetCtx.lineWidth = Math.max(1.8, radius * 0.085);
+            targetCtx.beginPath();
+            targetCtx.arc(dir * eyeX, eyeY, radius * 0.27, 0, Math.PI * 2);
+            targetCtx.fill();
+            targetCtx.stroke();
+
+            targetCtx.fillStyle = '#1F1209';
+            targetCtx.beginPath();
+            targetCtx.arc(dir * eyeX + jitterX, eyeY + jitterY, radius * 0.065, 0, Math.PI * 2);
+            targetCtx.fill();
+        });
+        // Panic blue sweat drop flying off forehead
+        const dropY = -radius * 0.56 + Math.sin(time * 14) * radius * 0.08;
+        targetCtx.fillStyle = '#38BDF8';
+        targetCtx.strokeStyle = '#0369A1';
+        targetCtx.lineWidth = 1.4;
+        targetCtx.beginPath();
+        targetCtx.moveTo(radius * 0.62, dropY - radius * 0.18);
+        targetCtx.quadraticCurveTo(radius * 0.78, dropY + radius * 0.06, radius * 0.62, dropY + radius * 0.14);
+        targetCtx.quadraticCurveTo(radius * 0.46, dropY + radius * 0.06, radius * 0.62, dropY - radius * 0.18);
+        targetCtx.fill();
+        targetCtx.stroke();
+    } else if (expr === 'crying_funny') {
+        // Anime cartoon waterfall tears streaming out from "> <" squished eyes!
+        const tearFlow = (time * 18) % 6;
+        [-1, 1].forEach(dir => {
+            // Curved cyan waterfall stream
+            targetCtx.fillStyle = 'rgba(56, 189, 248, 0.85)';
+            targetCtx.beginPath();
+            targetCtx.moveTo(dir * (eyeX - radius * 0.06), eyeY + radius * 0.06);
+            targetCtx.quadraticCurveTo(dir * (eyeX + radius * 0.22), eyeY + radius * 0.34, dir * (eyeX + radius * 0.12), eyeY + radius * 0.62);
+            targetCtx.lineTo(dir * (eyeX - radius * 0.08), eyeY + radius * 0.58);
+            targetCtx.quadraticCurveTo(dir * (eyeX + radius * 0.02), eyeY + radius * 0.30, dir * (eyeX - radius * 0.06), eyeY + radius * 0.06);
+            targetCtx.fill();
+
+            // Little animated splash droplets
+            targetCtx.fillStyle = '#BAE6FD';
+            targetCtx.beginPath();
+            targetCtx.arc(dir * (eyeX + radius * 0.14), eyeY + radius * (0.28 + tearFlow * 0.055), radius * 0.075, 0, Math.PI * 2);
+            targetCtx.fill();
+
+            // Squished "> <" eyes
+            targetCtx.strokeStyle = '#3A1F0D';
+            targetCtx.lineWidth = Math.max(2.2, radius * 0.1);
+            targetCtx.lineCap = 'round';
+            targetCtx.beginPath();
+            targetCtx.moveTo(dir * (eyeX + radius * 0.16), eyeY - radius * 0.12);
+            targetCtx.lineTo(dir * (eyeX - radius * 0.06), eyeY);
+            targetCtx.lineTo(dir * (eyeX + radius * 0.16), eyeY + radius * 0.12);
+            targetCtx.stroke();
+        });
+    } else if (expr === 'relieved_smug') {
+        // Joyful relieved "^ ^" closed curved eyes!
+        targetCtx.strokeStyle = '#3A1F0D';
+        targetCtx.lineWidth = Math.max(2.2, radius * 0.1);
+        targetCtx.lineCap = 'round';
+        [-1, 1].forEach(dir => {
+            targetCtx.beginPath();
+            targetCtx.arc(dir * eyeX, eyeY + radius * 0.05, radius * 0.17, Math.PI * 1.15, Math.PI * 1.85);
+            targetCtx.stroke();
+        });
+    } else if (expr === 'shocked' || expr === 'scream' || expr === 'hiding') {
         [-1, 1].forEach(dir => {
             targetCtx.fillStyle = '#FFFFFF';
             targetCtx.strokeStyle = '#3A1F0D';
@@ -850,10 +1129,26 @@ function drawHamsterCharacter(
 
     targetCtx.strokeStyle = '#3A1F0D';
     targetCtx.lineWidth = Math.max(1.8, radius * 0.08);
-    if (expr === 'scream' || expr === 'shocked') {
+    if (expr === 'terrified') {
+        // Chattering zig-zag scared teeth box!
+        const chatter = Math.sin(time * 48) * radius * 0.03;
+        targetCtx.fillStyle = '#FFFFFF';
+        targetCtx.beginPath();
+        targetCtx.roundRect(-radius * 0.25, radius * 0.08 + chatter, radius * 0.50, radius * 0.22, radius * 0.08);
+        targetCtx.fill();
+        targetCtx.stroke();
+        targetCtx.beginPath();
+        targetCtx.moveTo(-radius * 0.22, radius * 0.19 + chatter);
+        targetCtx.lineTo(radius * 0.22, radius * 0.19 + chatter);
+        targetCtx.moveTo(-radius * 0.08, radius * 0.08 + chatter);
+        targetCtx.lineTo(-radius * 0.08, radius * 0.30 + chatter);
+        targetCtx.moveTo(radius * 0.08, radius * 0.08 + chatter);
+        targetCtx.lineTo(radius * 0.08, radius * 0.30 + chatter);
+        targetCtx.stroke();
+    } else if (expr === 'scream' || expr === 'shocked' || expr === 'crying_funny') {
         targetCtx.fillStyle = '#D90429';
         targetCtx.beginPath();
-        targetCtx.ellipse(0, radius * 0.16, radius * 0.17, radius * 0.21, 0, 0, Math.PI * 2);
+        targetCtx.ellipse(0, radius * 0.16, radius * 0.18, radius * 0.22, 0, 0, Math.PI * 2);
         targetCtx.fill();
         targetCtx.stroke();
         // Little pink tongue inside mouth
@@ -861,6 +1156,16 @@ function drawHamsterCharacter(
         targetCtx.beginPath();
         targetCtx.arc(0, radius * 0.24, radius * 0.09, 0, Math.PI, true);
         targetCtx.fill();
+    } else if (expr === 'relieved_smug') {
+        // Cheeky victorious smile with playful tongue sticking out!
+        targetCtx.beginPath();
+        targetCtx.arc(0, radius * 0.07, radius * 0.20, 0.1 * Math.PI, 0.9 * Math.PI);
+        targetCtx.stroke();
+        targetCtx.fillStyle = '#FF5D8F';
+        targetCtx.beginPath();
+        targetCtx.ellipse(radius * 0.08, radius * 0.22, radius * 0.11, radius * 0.14, 0.25, 0, Math.PI * 2);
+        targetCtx.fill();
+        targetCtx.stroke();
     } else {
         // Cute cat/hamster 'w' smile with tiny buck tooth
         targetCtx.fillStyle = '#FFFFFF';
@@ -871,8 +1176,8 @@ function drawHamsterCharacter(
         targetCtx.stroke();
     }
 
-    // Animated Paws (raised in panic during chaos or gripping vest straps)
-    const isPanic = expr === 'scream' || expr === 'shocked' || expr === 'dizzy';
+    // Animated Paws (hiding over eyes, Home-Alone cheeks pose, frantic panic wave, or relaxed grip)
+    const isPanic = expr === 'scream' || expr === 'shocked' || expr === 'dizzy' || expr === 'crying_funny';
     const pawWave = isPanic
         ? Math.sin(time * 24 + (hamster.bobOffset || 0)) * radius * 0.26
         : Math.sin(time * 4 + (hamster.bobOffset || 0)) * radius * 0.07;
@@ -880,8 +1185,21 @@ function drawHamsterCharacter(
     targetCtx.strokeStyle = '#3A1F0D';
     targetCtx.lineWidth = Math.max(1.8, radius * 0.08);
     [-1, 1].forEach(dir => {
-        const px = dir * radius * (isPanic ? 0.78 : 0.56);
-        const py = isPanic ? (-radius * 0.12 + dir * pawWave) : (radius * 0.48 - Math.abs(pawWave));
+        let px = dir * radius * (isPanic ? 0.78 : 0.56);
+        let py = isPanic ? (-radius * 0.12 + dir * pawWave) : (radius * 0.48 - Math.abs(pawWave));
+        if (expr === 'terrified') {
+            // Paws clutched tightly to cheeks in comical shock!
+            px = dir * radius * 0.62;
+            py = radius * 0.12 + Math.sin(time * 44) * radius * 0.05;
+        } else if (expr === 'hiding') {
+            // Both paws covering eyes while peeking nervously!
+            px = dir * radius * 0.34;
+            py = -radius * 0.12 + Math.sin(time * 16) * radius * 0.03;
+        } else if (expr === 'relieved_smug') {
+            // Celebratory waving paws!
+            px = dir * radius * 0.76;
+            py = -radius * 0.06 + Math.sin(time * 12 + dir) * radius * 0.14;
+        }
         targetCtx.beginPath();
         targetCtx.arc(px, py, radius * 0.18, 0, Math.PI * 2);
         targetCtx.fill();
@@ -915,6 +1233,8 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
     students,
     isMuted,
     volume,
+    canClickToSpin = false,
+    onStageClick,
     onStateChange,
     onRoundComplete
 }, ref) => {
@@ -922,7 +1242,7 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
     const soundRef = useRef<CoconutSoundEngine>(new CoconutSoundEngine());
 
     const gameRef = useRef({
-        state: 'IDLE' as 'IDLE' | 'READY' | 'SLOW_SPIN' | 'CHAOS_SPIN' | 'LAUNCHING' | 'RESULT',
+        state: 'IDLE' as 'IDLE' | 'READY' | 'SLOW_SPIN' | 'CHAOS_SPIN' | 'LILY_HUNT' | 'LAUNCHING' | 'RESULT',
         boatAngle: 0,
         boatSpeed: 0.28,
         boatRockPhase: 0,
@@ -938,26 +1258,59 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
         phaseTimer: 0,
         roundDuration: 10.0,
         slowMoFactor: 1.0,
+        screenShake: 0,
         students: [] as HamsterStudent[],
         targetsToEliminate: [] as string[],
         flyingHamsters: [] as FlyingHamster[],
-        fakeOutFlight: null as FakeOutFlight | null,
-        nextFakeOutTime: 1.25,
-        didClimaxFakeOut: false,
-        lastFakeOutId: '',
+        lilyFlights: [] as LilySafeFlight[],
+        escapeJumps: [] as EscapeJump[],
+        nextLilyFlightTime: 1.15,
+        didClimaxLilyFlight: false,
         particles: [] as Particle[],
         quoteTimer: 0,
         activeBanner: '',
         bannerExpiry: 0,
         lastReportedSec: -1,
+        crocodile: {
+            phase: 'PATROL',
+            initialized: false,
+            x: 0,
+            y: 0,
+            angle: 0,
+            facingDir: 1,
+            patrolAngle: 0.9,
+            swimPhase: 0,
+            jawOpen: 0,
+            jawTarget: 0,
+            surfaceHeight: 0,
+            blinkTimer: 2.2,
+            isBlinking: false,
+            teaseSnapTimer: 1.1,
+            chompImpact: 0,
+            chompTextTimer: 0,
+            chewTimer: 0,
+            targetX: 0,
+            targetY: 0,
+            caughtHamsters: [],
+            bubbleTimer: 0.4,
+            huntTargetPadIndex: null,
+            huntTimer: 0,
+            huntEscapeTriggered: false,
+            grumpTimer: 0,
+            petalOnNose: false,
+            lastHuntedHamsterId: '',
+            escapeCount: 0
+        } as CrocodileState,
         lotusPads: [
-            { xRatio: 0.10, yRatio: 0.46, r: 26, rot: 0.4, flower: '#FF758F' as string | null },
-            { xRatio: 0.89, yRatio: 0.49, r: 30, rot: 2.1, flower: '#FFD166' as string | null },
-            { xRatio: 0.08, yRatio: 0.78, r: 36, rot: 1.2, flower: '#FF4D6D' as string | null },
-            { xRatio: 0.91, yRatio: 0.82, r: 32, rot: 3.8, flower: '#FF8FA3' as string | null },
-            { xRatio: 0.20, yRatio: 0.89, r: 28, rot: 5.1, flower: '#FFF8E7' as string | null },
-            { xRatio: 0.81, yRatio: 0.66, r: 24, rot: 1.9, flower: null as string | null }
-        ],
+            { xRatio: 0.08, yRatio: 0.43, r: 30, rot: 0.4, flower: '#FF758F', bounce: 0, bounceVel: 0, ripple: 0, occupantId: null },
+            { xRatio: 0.92, yRatio: 0.44, r: 32, rot: 2.1, flower: '#FFD166', bounce: 0, bounceVel: 0, ripple: 0, occupantId: null },
+            { xRatio: 0.13, yRatio: 0.61, r: 31, rot: 3.1, flower: '#FF8FA3', bounce: 0, bounceVel: 0, ripple: 0, occupantId: null },
+            { xRatio: 0.87, yRatio: 0.62, r: 30, rot: 1.5, flower: '#FFF8E7', bounce: 0, bounceVel: 0, ripple: 0, occupantId: null },
+            { xRatio: 0.09, yRatio: 0.79, r: 35, rot: 1.2, flower: '#FF4D6D', bounce: 0, bounceVel: 0, ripple: 0, occupantId: null },
+            { xRatio: 0.91, yRatio: 0.80, r: 34, rot: 3.8, flower: '#FF758F', bounce: 0, bounceVel: 0, ripple: 0, occupantId: null },
+            { xRatio: 0.22, yRatio: 0.88, r: 31, rot: 5.1, flower: '#FFD166', bounce: 0, bounceVel: 0, ripple: 0, occupantId: null },
+            { xRatio: 0.78, yRatio: 0.88, r: 31, rot: 2.7, flower: '#FF8FA3', bounce: 0, bounceVel: 0, ripple: 0, occupantId: null }
+        ] as LotusPadState[],
         koiShadows: [
             { angle: 0.5, dist: 0.35, speed: 0.22, size: 17, color: 'rgba(255, 123, 37, 0.42)' },
             { angle: 2.6, dist: 0.41, speed: -0.18, size: 15, color: 'rgba(239, 35, 60, 0.36)' },
@@ -994,6 +1347,7 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
         const palette = FUR_PALETTES[seed % FUR_PALETTES.length];
         const vest = VEST_COLORS[(seed + index) % VEST_COLORS.length];
         const accessory = ACCESSORIES[seed % ACCESSORIES.length];
+        const panicStyles: ('terrified' | 'hiding' | 'crying_funny')[] = ['terrified', 'crying_funny', 'hiding'];
         return {
             id: `ham_${index}_${name}`,
             name: name.trim(),
@@ -1001,6 +1355,13 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             vest,
             accessory,
             eliminated: false,
+            onLilyPadIndex: null,
+            lilyLandTime: 0,
+            chompedByCroc: false,
+            panicStyle: panicStyles[seed % panicStyles.length],
+            speechBubble: '',
+            speechExpiry: 0,
+            relievedUntil: 0,
             seatX: 0,
             seatY: 0,
             seatType: 'floor',
@@ -1171,9 +1532,49 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
         });
     };
 
+    const resetRoundEntities = () => {
+        const g = gameRef.current;
+        g.flyingHamsters = [];
+        g.lilyFlights = [];
+        g.nextLilyFlightTime = 1.1;
+        g.didClimaxLilyFlight = false;
+        g.screenShake = 0;
+        g.lotusPads.forEach(pad => {
+            pad.occupantId = null;
+            pad.bounce = 0;
+            pad.bounceVel = 0;
+            pad.ripple = 0;
+        });
+        g.escapeJumps = [];
+        g.students.forEach(s => {
+            s.onLilyPadIndex = null;
+            s.lilyLandTime = 0;
+            s.chompedByCroc = false;
+            s.speechBubble = '';
+            s.speechExpiry = 0;
+            s.relievedUntil = 0;
+        });
+        g.crocodile.phase = 'PATROL';
+        g.crocodile.jawTarget = 0;
+        g.crocodile.jawOpen = 0;
+        g.crocodile.surfaceHeight = 0;
+        g.crocodile.chompImpact = 0;
+        g.crocodile.chompTextTimer = 0;
+        g.crocodile.chewTimer = 0;
+        g.crocodile.caughtHamsters = [];
+        g.crocodile.huntTargetPadIndex = null;
+        g.crocodile.huntTimer = 0;
+        g.crocodile.huntEscapeTriggered = false;
+        g.crocodile.grumpTimer = 0;
+        g.crocodile.petalOnNose = false;
+        g.crocodile.lastHuntedHamsterId = '';
+        g.crocodile.escapeCount = 0;
+    };
+
     const syncRoster = (names: string[]) => {
         const g = gameRef.current;
         g.students = names.map((n, i) => createHamsterFromName(n, i));
+        resetRoundEntities();
         arrangeHamstersInBoat(true);
     };
 
@@ -1194,11 +1595,6 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             g.quoteTimer = 1.1;
             g.slowMoFactor = 1.0;
             g.boatSpeed = 0.25;
-            g.flyingHamsters = [];
-            g.fakeOutFlight = null;
-            g.nextFakeOutTime = 1.15;
-            g.didClimaxFakeOut = false;
-            g.lastFakeOutId = '';
             g.state = 'READY';
             g.activeBanner = '';
             g.lastReportedSec = Math.ceil(g.roundDuration);
@@ -1209,22 +1605,20 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 eliminatedThisRound: [],
                 activeCount: roster.length,
                 chaseSecondsLeft: Math.ceil(g.roundDuration),
-                cameraMode: g.cameraMode
+                cameraMode: g.cameraMode,
+                isMusicPlaying: false
             });
         },
         beginSpin: () => {
             const g = gameRef.current;
+            if (g.state !== 'READY' && g.state !== 'IDLE') return;
+            resetRoundEntities();
             g.phaseTimer = 0;
             g.quoteTimer = 1.1;
             g.slowMoFactor = 1.0;
-            g.flyingHamsters = [];
-            g.fakeOutFlight = null;
-            g.nextFakeOutTime = 1.15;
-            g.didClimaxFakeOut = false;
-            g.lastFakeOutId = '';
             g.state = 'SLOW_SPIN';
-            g.activeBanner = '🚣 NICE AND EASY… EVERYONE IS SAFE! 🐹';
-            g.bannerExpiry = performance.now() + 2200;
+            g.activeBanner = '🚣 HOLD ON! LAND ON A WATER LILY TO STAY SAFE! 🪷';
+            g.bannerExpiry = performance.now() + 2400;
             g.lastReportedSec = Math.ceil(g.roundDuration);
 
             soundRef.current.init();
@@ -1234,11 +1628,12 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
 
             onStateChangeRef.current?.({
                 phase: 'SLOW_SPIN',
-                msg: '🚣 NICE AND EASY… EVERYONE IS SAFE! 🐹',
+                msg: '🚣 HOLD ON! LAND ON A WATER LILY TO STAY SAFE! 🪷',
                 eliminatedThisRound: [],
                 activeCount: g.students.filter(s => !s.eliminated).length,
                 chaseSecondsLeft: Math.ceil(g.roundDuration),
-                cameraMode: g.cameraMode
+                cameraMode: g.cameraMode,
+                isMusicPlaying: true
             });
         },
         startRound: (roster: string[], targetsToPick: string[], durationSec: number) => {
@@ -1249,14 +1644,9 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             g.phaseTimer = 0;
             g.quoteTimer = 1.1;
             g.slowMoFactor = 1.0;
-            g.flyingHamsters = [];
-            g.fakeOutFlight = null;
-            g.nextFakeOutTime = 1.15;
-            g.didClimaxFakeOut = false;
-            g.lastFakeOutId = '';
             g.state = 'SLOW_SPIN';
-            g.activeBanner = '🚣 NICE AND EASY… EVERYONE IS SAFE! 🐹';
-            g.bannerExpiry = performance.now() + 2200;
+            g.activeBanner = '🚣 HOLD ON! LAND ON A WATER LILY TO STAY SAFE! 🪷';
+            g.bannerExpiry = performance.now() + 2400;
             g.lastReportedSec = Math.ceil(g.roundDuration);
 
             soundRef.current.init();
@@ -1265,20 +1655,18 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
 
             onStateChangeRef.current?.({
                 phase: 'SLOW_SPIN',
-                msg: '🚣 NICE AND EASY… EVERYONE IS SAFE! 🐹',
+                msg: '🚣 HOLD ON! LAND ON A WATER LILY TO STAY SAFE! 🪷',
                 eliminatedThisRound: [],
                 activeCount: roster.length,
                 chaseSecondsLeft: Math.ceil(g.roundDuration),
-                cameraMode: g.cameraMode
+                cameraMode: g.cameraMode,
+                isMusicPlaying: true
             });
         },
         resetToIdle: (roster: string[]) => {
             const g = gameRef.current;
             soundRef.current.stopTropicalMusic();
             g.state = 'IDLE';
-            g.flyingHamsters = [];
-            g.fakeOutFlight = null;
-            g.didClimaxFakeOut = false;
             g.slowMoFactor = 1.0;
             g.boatSpeed = 0.28;
             g.activeBanner = '';
@@ -1596,110 +1984,408 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             };
         };
 
-        const startFakeOutFlight = (w: number, h: number, isClimaxFakeOut = false) => {
-            const g = gameRef.current;
-            const active = g.students.filter(s => !s.eliminated);
-            if (active.length === 0) return false;
+        const getLotusPadScreenPos = (
+            pad: LotusPadState,
+            idx: number,
+            w: number,
+            h: number,
+            time: number,
+            layout?: BoatLayoutMetrics
+        ) => {
+            const horizonY = h * 0.22;
+            const pr = pad.r * (w < 640 ? 0.78 : 1.0);
+            let px = pad.xRatio * w + Math.sin(time * 1.15 + idx * 1.4) * 5;
+            let py = pad.yRatio * h + Math.cos(time * 1.45 + idx * 1.2) * 3.5;
 
+            if (layout) {
+                const g = gameRef.current;
+                const sinCam = Math.sin(g.cameraPitch);
+                const rx = layout.boatRadius * 1.14 + pr * 0.9;
+                const ry = layout.boatRadius * sinCam * 1.14 + layout.bowlDepth * 0.28 + pr * 0.65;
+                const dx = px - layout.cx;
+                const dy = py - layout.cy;
+                const normDist = Math.hypot(dx / Math.max(1, rx), dy / Math.max(1, ry));
+                if (normDist < 1.0 && normDist > 0.001) {
+                    const push = 1.02 / normDist;
+                    px = layout.cx + dx * push;
+                    py = layout.cy + dy * push;
+                }
+                px = Math.max(layout.safeLeft + pr + 4, Math.min(layout.safeRight - pr - 4, px));
+                py = Math.max(horizonY + pr + 18, Math.min(h - pr - 16, py));
+            }
+            return { x: px, y: py, r: pr };
+        };
+
+        const pickCrocCatchSpot = (w: number, h: number, layout: BoatLayoutMetrics, time: number) => {
+            const g = gameRef.current;
+            const sinCam = Math.sin(g.cameraPitch);
+            const preferredSide = g.crocodile.x >= layout.cx ? 1 : -1;
+            const candidateSpots = [
+                {
+                    x: layout.cx + preferredSide * Math.min(w * 0.24, layout.boatRadius * 1.08 + 46),
+                    y: Math.min(h - 72, layout.cy + layout.boatRadius * sinCam * 0.72 + 54)
+                },
+                {
+                    x: layout.cx - preferredSide * Math.min(w * 0.24, layout.boatRadius * 1.08 + 46),
+                    y: Math.min(h - 72, layout.cy + layout.boatRadius * sinCam * 0.72 + 54)
+                },
+                {
+                    x: layout.cx,
+                    y: Math.min(h - 64, layout.cy + layout.boatRadius * sinCam * 1.02 + layout.bowlDepth * 0.42 + 44)
+                }
+            ];
+
+            let bestSpot = candidateSpots[0];
+            let bestClearance = -1;
+
+            candidateSpots.forEach(spot => {
+                const cx = Math.max(layout.safeLeft + 92, Math.min(layout.safeRight - 92, spot.x));
+                const cy = Math.max(h * 0.36, Math.min(h - 62, spot.y));
+                let minPadDist = Infinity;
+                g.lotusPads.forEach((pad, idx) => {
+                    const pos = getLotusPadScreenPos(pad, idx, w, h, time, layout);
+                    minPadDist = Math.min(minPadDist, Math.hypot(cx - pos.x, cy - pos.y) - pos.r);
+                });
+                if (minPadDist > bestClearance) {
+                    bestClearance = minPadDist;
+                    bestSpot = { x: cx, y: cy };
+                }
+            });
+
+            return bestSpot;
+        };
+
+        const startLilySafeFlight = (
+            w: number,
+            h: number,
+            time: number,
+            isClimaxFlight = false,
+            allowTarget = false,
+            preferTarget = false
+        ) => {
+            const g = gameRef.current;
             const targetSet = new Set(g.targetsToEliminate);
-            let candidates = active.filter(s => s.id !== g.lastFakeOutId && (!isClimaxFakeOut || !targetSet.has(s.name)));
-            if (candidates.length === 0) {
-                candidates = active.filter(s => s.id !== g.lastFakeOutId);
+            const inFlightIds = new Set([
+                ...g.lilyFlights.map(f => f.hamster.id),
+                ...g.escapeJumps.map(e => e.hamster.id)
+            ]);
+            const targetedPadIndices = new Set([
+                ...g.lilyFlights.map(f => f.padIndex),
+                ...g.escapeJumps.filter(e => e.targetPadIndex !== null).map(e => e.targetPadIndex as number)
+            ]);
+
+            let candidates = g.students.filter(
+                s => !s.eliminated && s.onLilyPadIndex === null && !inFlightIds.has(s.id) && (allowTarget || !targetSet.has(s.name))
+            );
+            if (candidates.length === 0) return false;
+
+            if (preferTarget) {
+                const targetCandidates = candidates.filter(s => targetSet.has(s.name));
+                if (targetCandidates.length > 0) {
+                    candidates = targetCandidates;
+                }
             }
-            if (candidates.length === 0) {
-                candidates = active;
-            }
+
+            const freePadIndices = g.lotusPads
+                .map((pad, idx) => ({ pad, idx }))
+                .filter(({ pad, idx }) => pad.occupantId === null && !targetedPadIndices.has(idx))
+                .map(({ idx }) => idx);
+            if (freePadIndices.length === 0) return false;
 
             const chosen = candidates[Math.floor(Math.random() * candidates.length)];
-            g.lastFakeOutId = chosen.id;
-
             const layout = getBoatLayoutMetrics(w, h);
-            const { cx, cy, boatRadius, usableRadius, floatBaseRatio, safeLeft, safeRight, safeTop, safeBottom } = layout;
+            const { cx, cy, boatRadius, usableRadius } = layout;
 
             const lx = (g.state === 'CHAOS_SPIN' ? chosen.curX : chosen.seatX) * usableRadius;
             const ly = (g.state === 'CHAOS_SPIN' ? chosen.curY : chosen.seatY) * usableRadius;
             const startProj = projectBoatPoint(lx, ly, -boatRadius * 0.06, cx, cy);
 
-            const baseAngle = Math.atan2(startProj.y - cy, startProj.x - cx);
-            const outDist = boatRadius * Math.min(1.42, floatBaseRatio);
-            const peakOutX = Math.max(safeLeft + 36, Math.min(safeRight - 36, cx + Math.cos(baseAngle) * outDist));
-            const peakOutY = Math.max(safeTop + 56, Math.min(safeBottom - 36, cy + Math.sin(baseAngle) * outDist * Math.sin(g.cameraPitch) - 18));
+            // Pick a water lily pad naturally on the outward side of where this hamster is spinning
+            let bestPadIdx = freePadIndices[0];
+            let bestScore = Infinity;
+            freePadIndices.forEach(padIdx => {
+                const pos = getLotusPadScreenPos(g.lotusPads[padIdx], padIdx, w, h, time, layout);
+                const dist = Math.hypot(pos.x - startProj.x, pos.y - startProj.y);
+                const jitter = Math.random() * 85;
+                if (dist + jitter < bestScore) {
+                    bestScore = dist + jitter;
+                    bestPadIdx = padIdx;
+                }
+            });
 
-            g.fakeOutFlight = {
+            const padPos = getLotusPadScreenPos(g.lotusPads[bestPadIdx], bestPadIdx, w, h, time, layout);
+
+            g.lilyFlights.push({
                 hamster: chosen,
+                padIndex: bestPadIdx,
                 startX: startProj.x,
                 startY: startProj.y,
-                peakOutX,
-                peakOutY,
+                targetX: padPos.x,
+                targetY: padPos.y,
                 t: 0,
-                duration: isClimaxFakeOut ? 1.55 : 1.35,
-                savedTriggered: false,
-                isClimaxFakeOut,
+                duration: isClimaxFlight ? 1.12 : (g.roundDuration >= 20 ? 0.84 : 1.02),
+                isClimaxFlight,
                 trail: [{ x: startProj.x, y: startProj.y }]
-            };
+            });
 
-            const fakeLabel = `OH NOOOOO! 💦 ${chosen.name.toUpperCase()} IS FLYING OVER THE RIM!`;
-            g.activeBanner = fakeLabel;
-            g.bannerExpiry = performance.now() + 1800;
+            const flyLabel = `😱 WHOA!! ${chosen.name.toUpperCase()} FLEW OUT TOWARD A WATER LILY! 🪷`;
+            g.activeBanner = flyLabel;
+            g.bannerExpiry = performance.now() + 1700;
             soundRef.current.playFakeoutWhistle();
 
             const remSec = Math.max(0, Math.ceil(g.roundDuration - g.phaseTimer));
             onStateChangeRef.current?.({
                 phase: g.state,
-                msg: fakeLabel,
+                msg: flyLabel,
                 eliminatedThisRound: [],
-                activeCount: active.length,
+                activeCount: g.students.filter(s => !s.eliminated).length,
                 chaseSecondsLeft: remSec,
                 cameraMode: g.cameraMode
             });
             return true;
         };
 
-        const launchTargetVictims = (w: number, h: number) => {
+        const triggerLilyEscapeJump = (
+            hamster: HamsterStudent,
+            fromPadIndex: number,
+            w: number,
+            h: number,
+            time: number,
+            layout: BoatLayoutMetrics
+        ) => {
+            const g = gameRef.current;
+            const fromPad = g.lotusPads[fromPadIndex];
+            const fromPos = fromPad
+                ? getLotusPadScreenPos(fromPad, fromPadIndex, w, h, time, layout)
+                : { x: g.crocodile.x, y: g.crocodile.y, r: 30 };
+
+            if (fromPad) {
+                fromPad.occupantId = null;
+                fromPad.bounce = 1.1;
+                fromPad.bounceVel = -8.5;
+                fromPad.ripple = 1.0;
+            }
+            hamster.onLilyPadIndex = null;
+
+            const targetedPadIndices = new Set([
+                ...g.lilyFlights.map(f => f.padIndex),
+                ...g.escapeJumps.filter(e => e.targetPadIndex !== null).map(e => e.targetPadIndex as number)
+            ]);
+            const freePadIndices = g.lotusPads
+                .map((pad, idx) => ({ pad, idx }))
+                .filter(({ pad, idx }) => idx !== fromPadIndex && pad.occupantId === null && !targetedPadIndices.has(idx))
+                .map(({ idx }) => idx);
+
+            // Pick either the farthest free lily pad from the crocodile OR a comedic bounce back into the boat!
+            let targetPadIndex: number | null = null;
+            let targetX = layout.cx;
+            let targetY = layout.cy;
+            const shouldBounceToBoat = freePadIndices.length === 0 || (g.crocodile.escapeCount % 3 === 2 && g.students.filter(s => !s.eliminated).length > 1);
+
+            if (!shouldBounceToBoat && freePadIndices.length > 0) {
+                let farthestPad = freePadIndices[0];
+                let maxDist = -1;
+                freePadIndices.forEach(idx => {
+                    const pos = getLotusPadScreenPos(g.lotusPads[idx], idx, w, h, time, layout);
+                    const d = Math.hypot(pos.x - fromPos.x, pos.y - fromPos.y);
+                    if (d > maxDist) {
+                        maxDist = d;
+                        farthestPad = idx;
+                    }
+                });
+                targetPadIndex = farthestPad;
+                const dest = getLotusPadScreenPos(g.lotusPads[farthestPad], farthestPad, w, h, time, layout);
+                targetX = dest.x;
+                targetY = dest.y - 6;
+            } else {
+                const lx = hamster.seatX * layout.usableRadius;
+                const ly = hamster.seatY * layout.usableRadius;
+                const seatProj = projectBoatPoint(lx, ly, -layout.boatRadius * 0.06, layout.cx, layout.cy);
+                targetX = seatProj.x;
+                targetY = seatProj.y;
+            }
+
+            const escapeQuote = ESCAPE_QUOTES[g.crocodile.escapeCount % ESCAPE_QUOTES.length];
+            g.crocodile.escapeCount += 1;
+
+            g.escapeJumps.push({
+                hamster,
+                startX: fromPos.x,
+                startY: fromPos.y - 10,
+                targetPadIndex,
+                targetX,
+                targetY,
+                t: 0,
+                duration: 0.92,
+                escapeQuote,
+                trail: [{ x: fromPos.x, y: fromPos.y - 10 }]
+            });
+
+            spawnSaveSparkles(fromPos.x, fromPos.y - 8, true);
+            soundRef.current.playBoingSave();
+
+            const escMsg = `💨 WHOA!! ${hamster.name.toUpperCase()} ESCAPED THE CROCODILE!! "${escapeQuote}"`;
+            g.activeBanner = escMsg;
+            g.bannerExpiry = performance.now() + 2100;
+            const remSec = Math.max(0, Math.ceil(g.roundDuration - g.phaseTimer));
+            onStateChangeRef.current?.({
+                phase: g.state,
+                msg: escMsg,
+                eliminatedThisRound: [],
+                activeCount: g.students.filter(s => !s.eliminated).length,
+                chaseSecondsLeft: remSec,
+                cameraMode: g.cameraMode
+            });
+        };
+
+        const updateEscapeJumps = (dt: number, time: number, w: number, h: number) => {
+            const g = gameRef.current;
+            if (g.escapeJumps.length === 0) return;
+
+            const layout = getBoatLayoutMetrics(w, h);
+            for (let i = g.escapeJumps.length - 1; i >= 0; i--) {
+                const ej = g.escapeJumps[i];
+                ej.t += dt / ej.duration;
+
+                if (ej.targetPadIndex !== null) {
+                    const pad = g.lotusPads[ej.targetPadIndex];
+                    if (pad) {
+                        const dest = getLotusPadScreenPos(pad, ej.targetPadIndex, w, h, time, layout);
+                        ej.targetX = dest.x;
+                        ej.targetY = dest.y - 6;
+                    }
+                } else {
+                    const lx = ej.hamster.seatX * layout.usableRadius;
+                    const ly = ej.hamster.seatY * layout.usableRadius;
+                    const seatProj = projectBoatPoint(lx, ly, -layout.boatRadius * 0.06, layout.cx, layout.cy);
+                    ej.targetX = seatProj.x;
+                    ej.targetY = seatProj.y;
+                }
+
+                if (ej.t >= 1.0) {
+                    if (ej.targetPadIndex !== null) {
+                        const pad = g.lotusPads[ej.targetPadIndex];
+                        if (pad && pad.occupantId === null) {
+                            pad.occupantId = ej.hamster.id;
+                            pad.bounce = 1.0;
+                            pad.bounceVel = -7.5;
+                            pad.ripple = 1.0;
+                            ej.hamster.onLilyPadIndex = ej.targetPadIndex;
+                            ej.hamster.lilyLandTime = time;
+                        }
+                    }
+                    ej.hamster.expression = 'relieved_smug';
+                    ej.hamster.relievedUntil = time + 2.6;
+                    ej.hamster.speechBubble = ej.escapeQuote;
+                    ej.hamster.speechExpiry = time + 2.4;
+                    ej.hamster.wobbleAngle = 0;
+
+                    spawnSaveSparkles(ej.targetX, ej.targetY, true);
+                    soundRef.current.playLilyBounce();
+                    g.escapeJumps.splice(i, 1);
+                }
+            }
+        };
+
+        const launchTargetVictims = (w: number, h: number, time: number) => {
             const g = gameRef.current;
             const active = g.students.filter(s => !s.eliminated);
             if (active.length === 0) return;
 
+            // Cancel any in-flight escape jumps so targets are clean
+            g.escapeJumps.forEach(ej => {
+                ej.hamster.expression = 'happy';
+            });
+            g.escapeJumps = [];
+
             const targetSet = new Set(g.targetsToEliminate);
             let victims = active.filter(s => targetSet.has(s.name));
             if (victims.length === 0) {
-                victims = [active[Math.floor(Math.random() * active.length)]];
+                const lilyRiders = active.filter(s => s.onLilyPadIndex !== null);
+                const pool = lilyRiders.length > 0 ? lilyRiders : active;
+                victims = [pool[Math.floor(Math.random() * pool.length)]];
             }
 
             const layout = getBoatLayoutMetrics(w, h);
-            const { cx, cy, boatRadius, usableRadius, floatBaseRatio, safeLeft, safeRight, safeTop, safeBottom } = layout;
+            const { cx, cy, boatRadius, usableRadius } = layout;
+
+            // If single target is currently on a water lily pad (Extended 20s+ Hunt finale!),
+            // have the crocodile lunge right beneath their lily pad as their final panic jump fails!
+            const primaryOnLily = victims.length === 1 && victims[0].onLilyPadIndex !== null;
+            let catchSpot = pickCrocCatchSpot(w, h, layout, time);
+            if (primaryOnLily && victims[0].onLilyPadIndex !== null) {
+                const padIdx = victims[0].onLilyPadIndex;
+                const padPos = getLotusPadScreenPos(g.lotusPads[padIdx], padIdx, w, h, time, layout);
+                catchSpot = {
+                    x: Math.max(layout.safeLeft + 76, Math.min(layout.safeRight - 76, padPos.x)),
+                    y: Math.max(h * 0.36, Math.min(h - 60, padPos.y + 10))
+                };
+            }
+
+            // Set crocodile to rush to the catch spot and open its jaws wide!
+            const croc = g.crocodile;
+            croc.phase = 'SURFACING';
+            croc.huntTargetPadIndex = null;
+            croc.petalOnNose = false;
+            croc.targetX = catchSpot.x;
+            croc.targetY = catchSpot.y;
+            croc.facingDir = catchSpot.x >= cx ? -1 : 1;
+            croc.jawTarget = 1.0;
+            croc.caughtHamsters = [];
+            croc.chewTimer = 0;
 
             g.flyingHamsters = victims.map((victim, idx) => {
-                const lx = victim.seatX * usableRadius;
-                const ly = victim.seatY * usableRadius;
-                const startProj = projectBoatPoint(lx, ly, -boatRadius * 0.06, cx, cy);
+                let startX = cx;
+                let startY = cy;
+                let fromLilyPad = false;
 
-                const splashAngle = (idx / Math.max(1, victims.length)) * Math.PI * 2 + Math.atan2(startProj.y - cy, startProj.x - cx);
-                const targetDist = boatRadius * floatBaseRatio;
-                const targetX = Math.max(safeLeft + 34, Math.min(safeRight - 34, cx + Math.cos(splashAngle) * targetDist));
-                const targetY = Math.max(safeTop + 44, Math.min(safeBottom - 34, cy + Math.sin(splashAngle) * targetDist * Math.sin(g.cameraPitch)));
-
-                victim.floatAngle = splashAngle;
+                if (victim.onLilyPadIndex !== null) {
+                    const prevPad = g.lotusPads[victim.onLilyPadIndex];
+                    const padPos = prevPad
+                        ? getLotusPadScreenPos(prevPad, victim.onLilyPadIndex, w, h, time, layout)
+                        : { x: catchSpot.x, y: catchSpot.y - 10, r: 30 };
+                    startX = padPos.x;
+                    startY = padPos.y - 10;
+                    fromLilyPad = true;
+                    if (prevPad) {
+                        prevPad.occupantId = null;
+                        prevPad.bounce = 1.2;
+                        prevPad.bounceVel = -9;
+                        prevPad.ripple = 1.0;
+                    }
+                    victim.onLilyPadIndex = null;
+                } else {
+                    const lx = victim.curX * usableRadius;
+                    const ly = victim.curY * usableRadius;
+                    const startProj = projectBoatPoint(lx, ly, -boatRadius * 0.06, cx, cy);
+                    startX = startProj.x;
+                    startY = startProj.y;
+                }
 
                 return {
                     hamster: victim,
-                    startX: startProj.x,
-                    startY: startProj.y,
-                    targetX,
-                    targetY,
+                    startX,
+                    startY,
+                    targetX: catchSpot.x,
+                    targetY: catchSpot.y - 16,
                     t: 0,
-                    delay: idx * 0.14,
-                    splashed: false
+                    delay: idx * 0.85,
+                    splashed: false,
+                    fromLilyPad,
+                    trail: [{ x: startX, y: startY }]
                 };
             });
 
             g.state = 'LAUNCHING';
             const label = victims.length === 1
-                ? `OH NOOOOO! 💦 ${victims[0].name.toUpperCase()} FELL OFF THE BOAT!`
-                : `OH NOOOOO! 💦 ${victims.length} HAMSTERS FELL OFF THE BOAT!`;
+                ? (primaryOnLily
+                    ? `🐊 NO ESCAPE!! ${victims[0].name.toUpperCase()} SLIPPED INTO THE CROCODILE'S MOUTH!!`
+                    : `🐊 WATCH OUT!! ${victims[0].name.toUpperCase()} IS FALLING INTO THE CROCODILE'S MOUTH!!`)
+                : `🐊 WATCH OUT!! ${victims.length} STUDENTS ARE HEADED FOR THE CROCODILE!!`;
             g.activeBanner = label;
-            g.bannerExpiry = performance.now() + 2000;
+            g.bannerExpiry = performance.now() + 2400;
             soundRef.current.playFallWhistle();
+            soundRef.current.playCrocGrowl();
 
             onStateChangeRef.current?.({
                 phase: 'LAUNCHING',
@@ -1711,60 +2397,395 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             });
         };
 
-        const updateFakeOutFlight = (dt: number, w: number, h: number) => {
+        const updateLilyFlights = (dt: number, time: number, w: number, h: number) => {
             const g = gameRef.current;
-            const fo = g.fakeOutFlight;
-            if (!fo) return;
+            if (g.lilyFlights.length === 0) return;
 
-            fo.t += dt / fo.duration;
+            const layout = getBoatLayoutMetrics(w, h);
+            let triggerLaunchAfterClimax = false;
 
-            if (fo.t > 0.36 && fo.t < 0.56) {
-                g.slowMoFactor = 0.52;
-            } else {
-                g.slowMoFactor = 1.0;
-            }
+            for (let i = g.lilyFlights.length - 1; i >= 0; i--) {
+                const lf = g.lilyFlights[i];
+                lf.t += dt / lf.duration;
 
-            if (fo.t >= 0.54 && !fo.savedTriggered) {
-                fo.savedTriggered = true;
-                soundRef.current.playBoingSave();
-                spawnSaveSparkles(fo.peakOutX, fo.peakOutY, true);
-
-                const saveMsg = `😅 PHEW!! ${fo.hamster.name.toUpperCase()} FLEW BACK INTO THE BOAT!! 🛶✨`;
-                g.activeBanner = saveMsg;
-                g.bannerExpiry = performance.now() + 1700;
-
-                const remSec = Math.max(0, Math.ceil(g.roundDuration - g.phaseTimer));
-                onStateChangeRef.current?.({
-                    phase: g.state,
-                    msg: saveMsg,
-                    eliminatedThisRound: [],
-                    activeCount: g.students.filter(s => !s.eliminated).length,
-                    chaseSecondsLeft: remSec,
-                    cameraMode: g.cameraMode
-                });
-            }
-
-            if (fo.t >= 1.0) {
-                const layout = getBoatLayoutMetrics(w, h);
-                const rockScale = Math.max(0.55, layout.cameraScale);
-                const cx = layout.cx + Math.sin(g.boatRockPhase * 0.5) * 7 * rockScale;
-                const cy = layout.cy + Math.cos(g.boatRockPhase * 0.8) * 5 * rockScale;
-                const { boatRadius, usableRadius } = layout;
-                const lx = (g.state === 'CHAOS_SPIN' ? fo.hamster.curX : fo.hamster.seatX) * usableRadius;
-                const ly = (g.state === 'CHAOS_SPIN' ? fo.hamster.curY : fo.hamster.seatY) * usableRadius;
-                const landProj = projectBoatPoint(lx, ly, -boatRadius * 0.06, cx, cy);
-
-                spawnSaveSparkles(landProj.x, landProj.y, false);
-                soundRef.current.playPop(740);
-                fo.hamster.expression = 'happy';
-                fo.hamster.wobbleAngle = 0;
-                const wasClimax = fo.isClimaxFakeOut;
-                g.fakeOutFlight = null;
-                g.slowMoFactor = 1.0;
-
-                if (wasClimax) {
-                    launchTargetVictims(w, h);
+                const pad = g.lotusPads[lf.padIndex];
+                if (pad) {
+                    const livePad = getLotusPadScreenPos(pad, lf.padIndex, w, h, time, layout);
+                    lf.targetX = livePad.x;
+                    lf.targetY = livePad.y - 4;
                 }
+
+                if (lf.t >= 1.0) {
+                    if (pad) {
+                        pad.occupantId = lf.hamster.id;
+                        pad.bounce = 1.0;
+                        pad.bounceVel = -7.5;
+                        pad.ripple = 1.0;
+                    }
+                    lf.hamster.onLilyPadIndex = lf.padIndex;
+                    lf.hamster.lilyLandTime = time;
+                    lf.hamster.expression = 'happy';
+                    lf.hamster.wobbleAngle = 0;
+
+                    spawnSaveSparkles(lf.targetX, lf.targetY, true);
+                    soundRef.current.playLilyBounce();
+
+                    const saveMsg = `🪷 SAFE ON THE WATER LILY!! ${lf.hamster.name.toUpperCase()} LANDED! ✨`;
+                    g.activeBanner = saveMsg;
+                    g.bannerExpiry = performance.now() + 1700;
+
+                    const remSec = Math.max(0, Math.ceil(g.roundDuration - g.phaseTimer));
+                    onStateChangeRef.current?.({
+                        phase: g.state,
+                        msg: saveMsg,
+                        eliminatedThisRound: [],
+                        activeCount: g.students.filter(s => !s.eliminated).length,
+                        chaseSecondsLeft: remSec,
+                        cameraMode: g.cameraMode
+                    });
+
+                    const wasClimax = lf.isClimaxFlight;
+                    g.lilyFlights.splice(i, 1);
+                    if (wasClimax) {
+                        triggerLaunchAfterClimax = true;
+                    }
+                }
+            }
+
+            if (triggerLaunchAfterClimax && g.lilyFlights.length === 0) {
+                launchTargetVictims(w, h, time);
+            }
+        };
+
+        const updateCrocodile = (dt: number, time: number, w: number, h: number, layout: BoatLayoutMetrics) => {
+            const g = gameRef.current;
+            const croc = g.crocodile;
+            const sinCam = Math.sin(g.cameraPitch);
+            const orbitRx = Math.min(w * 0.39, layout.boatRadius * 1.38 + 42);
+            const orbitRy = Math.min(h * 0.30, layout.boatRadius * sinCam * 1.35 + layout.bowlDepth * 0.32 + 34);
+            const orbitCy = Math.min(h - 70, layout.cy + 14);
+
+            if (!croc.initialized) {
+                croc.initialized = true;
+                croc.x = layout.cx + Math.cos(croc.patrolAngle) * orbitRx;
+                croc.y = orbitCy + Math.sin(croc.patrolAngle) * orbitRy;
+                croc.angle = croc.patrolAngle + Math.PI * 0.5;
+            }
+
+            // Blinking animation
+            croc.blinkTimer -= dt;
+            if (croc.blinkTimer <= 0) {
+                if (croc.isBlinking) {
+                    croc.isBlinking = false;
+                    croc.blinkTimer = 2.2 + Math.random() * 2.6;
+                } else {
+                    croc.isBlinking = true;
+                    croc.blinkTimer = 0.14;
+                }
+            }
+
+            // Decay chomp squash/flash
+            if (croc.chompImpact > 0) {
+                croc.chompImpact = Math.max(0, croc.chompImpact - dt * 3.2);
+            }
+            if (croc.chompTextTimer > 0) {
+                croc.chompTextTimer = Math.max(0, croc.chompTextTimer - dt);
+            }
+
+            if (croc.phase === 'PATROL' || croc.phase === 'STALKING') {
+                const isStalking = g.state === 'CHAOS_SPIN';
+                croc.phase = isStalking ? 'STALKING' : 'PATROL';
+                const angularSpeed = isStalking ? 0.62 : 0.24;
+                croc.patrolAngle += angularSpeed * dt;
+                croc.swimPhase += dt * (isStalking ? 10.5 : 4.8);
+
+                const desiredX = Math.max(layout.safeLeft + 74, Math.min(layout.safeRight - 74, layout.cx + Math.cos(croc.patrolAngle) * orbitRx));
+                const desiredY = Math.max(h * 0.31, Math.min(h - 56, orbitCy + Math.sin(croc.patrolAngle) * orbitRy));
+
+                const dx = desiredX - croc.x;
+                const dy = desiredY - croc.y;
+                const moveEase = Math.min(1, (isStalking ? 5.2 : 2.8) * dt);
+                croc.x += dx * moveEase;
+                croc.y += dy * moveEase;
+
+                if (Math.hypot(dx, dy) > 0.6) {
+                    const desiredAngle = Math.atan2(dy, dx);
+                    let diff = desiredAngle - croc.angle;
+                    while (diff > Math.PI) diff -= Math.PI * 2;
+                    while (diff < -Math.PI) diff += Math.PI * 2;
+                    croc.angle += diff * Math.min(1, 5.5 * dt);
+                }
+
+                croc.surfaceHeight += (0 - croc.surfaceHeight) * Math.min(1, 6 * dt);
+
+                if (isStalking) {
+                    croc.teaseSnapTimer -= dt;
+                    if (croc.teaseSnapTimer <= 0) {
+                        croc.jawTarget = 0.58;
+                        croc.teaseSnapTimer = 1.25 + Math.random() * 0.7;
+                    } else if (croc.jawOpen > 0.45) {
+                        croc.jawTarget = 0;
+                    }
+                } else {
+                    croc.jawTarget = 0.05 + Math.sin(time * 2.2) * 0.04;
+                }
+                croc.jawOpen += (croc.jawTarget - croc.jawOpen) * Math.min(1, 14 * dt);
+
+                croc.bubbleTimer -= dt;
+                if (croc.bubbleTimer <= 0) {
+                    croc.bubbleTimer = isStalking ? 0.16 : 0.42;
+                    const snoutX = croc.x + Math.cos(croc.angle) * 44;
+                    const snoutY = croc.y + Math.sin(croc.angle) * 26;
+                    g.particles.push({
+                        x: snoutX + (Math.random() - 0.5) * 8,
+                        y: snoutY + (Math.random() - 0.5) * 6,
+                        vx: (Math.random() - 0.5) * 16,
+                        vy: -22 - Math.random() * 24,
+                        gravity: -8,
+                        size: 2.8 + Math.random() * 3.2,
+                        color: 'rgba(224, 242, 254, 0.85)',
+                        life: 0.45 + Math.random() * 0.35,
+                        maxLife: 0.8,
+                        shape: 'circle'
+                    });
+                }
+            } else if (croc.phase === 'LILY_ROAM') {
+                // Extended 20s+ Hunt: Crocodile prowls menacingly around the water lilies!
+                croc.swimPhase += dt * 9.5;
+                croc.surfaceHeight += (0 - croc.surfaceHeight) * Math.min(1, 7 * dt);
+                croc.petalOnNose = false;
+                croc.huntTimer += dt;
+
+                // Pick an occupied lily pad to stalk! Prefer non-targets (or any pad if only 1 player)
+                const targetSet = new Set(g.targetsToEliminate);
+                const occupied = g.lotusPads
+                    .map((pad, idx) => {
+                        const ham = pad.occupantId ? g.students.find(s => s.id === pad.occupantId && !s.eliminated) : null;
+                        return { pad, idx, ham };
+                    })
+                    .filter(item => item.ham !== null) as { pad: LotusPadState; idx: number; ham: HamsterStudent }[];
+
+                if (croc.huntTargetPadIndex === null || !occupied.some(o => o.idx === croc.huntTargetPadIndex)) {
+                    let huntPool = occupied.filter(o => !targetSet.has(o.ham.name) && o.ham.id !== croc.lastHuntedHamsterId);
+                    if (huntPool.length === 0) {
+                        huntPool = occupied.filter(o => !targetSet.has(o.ham.name));
+                    }
+                    if (huntPool.length === 0) {
+                        huntPool = occupied;
+                    }
+                    if (huntPool.length > 0) {
+                        const pick = huntPool[Math.floor(Math.random() * huntPool.length)];
+                        croc.huntTargetPadIndex = pick.idx;
+                        croc.huntTimer = 0;
+                    }
+                }
+
+                if (croc.huntTargetPadIndex !== null) {
+                    const pad = g.lotusPads[croc.huntTargetPadIndex];
+                    const padPos = getLotusPadScreenPos(pad, croc.huntTargetPadIndex, w, h, time, layout);
+                    // Approach the lily pad from the lagoon-center side so the crocodile stays nicely visible
+                    const inwardDirX = padPos.x < layout.cx ? 1 : -1;
+                    const desiredX = padPos.x + inwardDirX * (padPos.r + 54);
+                    const desiredY = padPos.y + 18;
+                    const dx = desiredX - croc.x;
+                    const dy = desiredY - croc.y;
+                    const dist = Math.hypot(dx, dy);
+
+                    // Swim smoothly with subtle S-sway
+                    const speed = Math.min(340, 210 + dist * 0.65);
+                    if (dist > 6) {
+                        croc.x += (dx / dist) * speed * dt;
+                        croc.y += (dy / dist) * speed * dt;
+                        const desiredAngle = Math.atan2(dy, dx);
+                        let diff = desiredAngle - croc.angle;
+                        while (diff > Math.PI) diff -= Math.PI * 2;
+                        while (diff < -Math.PI) diff += Math.PI * 2;
+                        croc.angle += diff * Math.min(1, 6.5 * dt);
+                    }
+
+                    croc.jawTarget = 0.25 + Math.sin(time * 9) * 0.14;
+                    croc.jawOpen += (croc.jawTarget - croc.jawOpen) * Math.min(1, 12 * dt);
+
+                    if (dist < 42 || croc.huntTimer > 2.2) {
+                        croc.phase = 'LILY_STALK';
+                        croc.huntTimer = 0;
+                        const victimHam = g.students.find(s => s.id === pad.occupantId);
+                        if (victimHam) {
+                            victimHam.speechBubble = 'OH NO!! IT PICKED ME!! 😱';
+                            victimHam.speechExpiry = time + 1.8;
+                            soundRef.current.playSqueak();
+                            const stalkMsg = `🐊 UH-OH!! THE CROCODILE IS STALKING ${victimHam.name.toUpperCase()} ON THE WATER LILY!!`;
+                            g.activeBanner = stalkMsg;
+                            g.bannerExpiry = performance.now() + 1800;
+                            onStateChangeRef.current?.({
+                                phase: 'LILY_HUNT',
+                                msg: stalkMsg,
+                                eliminatedThisRound: [],
+                                activeCount: g.students.filter(s => !s.eliminated).length,
+                                chaseSecondsLeft: Math.max(0, Math.ceil(g.roundDuration - g.phaseTimer)),
+                                cameraMode: g.cameraMode
+                            });
+                        }
+                    }
+                } else {
+                    // Fallback cruise while waiting for a pad to fill
+                    croc.patrolAngle += 0.55 * dt;
+                    const desiredX = layout.cx + Math.cos(croc.patrolAngle) * orbitRx;
+                    const desiredY = orbitCy + Math.sin(croc.patrolAngle) * orbitRy;
+                    croc.x += (desiredX - croc.x) * Math.min(1, 4 * dt);
+                    croc.y += (desiredY - croc.y) * Math.min(1, 4 * dt);
+                }
+            } else if (croc.phase === 'LILY_STALK') {
+                // Tight menacing circling right around the targeted water lily!
+                croc.swimPhase += dt * 13;
+                croc.huntTimer += dt;
+                const padIdx = croc.huntTargetPadIndex;
+                const pad = padIdx !== null ? g.lotusPads[padIdx] : null;
+                if (!pad || !pad.occupantId) {
+                    croc.phase = 'LILY_ROAM';
+                    croc.huntTargetPadIndex = null;
+                } else {
+                    const padPos = getLotusPadScreenPos(pad, padIdx!, w, h, time, layout);
+                    const orbitAng = time * 3.8;
+                    const desiredX = Math.max(layout.safeLeft + 62, Math.min(layout.safeRight - 62, padPos.x + Math.cos(orbitAng) * (padPos.r + 44)));
+                    const desiredY = Math.max(h * 0.34, Math.min(h - 50, padPos.y + Math.sin(orbitAng) * (padPos.r * 0.65 + 24)));
+                    const dx = desiredX - croc.x;
+                    const dy = desiredY - croc.y;
+                    croc.x += dx * Math.min(1, 7.5 * dt);
+                    croc.y += dy * Math.min(1, 7.5 * dt);
+
+                    // Keep snout pointed wickedly toward the trembling lily pad!
+                    const aimAngle = Math.atan2(padPos.y - croc.y, padPos.x - croc.x);
+                    let diff = aimAngle - croc.angle;
+                    while (diff > Math.PI) diff -= Math.PI * 2;
+                    while (diff < -Math.PI) diff += Math.PI * 2;
+                    croc.angle += diff * Math.min(1, 9 * dt);
+
+                    croc.jawTarget = 0.45 + Math.sin(time * 14) * 0.18;
+                    croc.jawOpen += (croc.jawTarget - croc.jawOpen) * Math.min(1, 16 * dt);
+
+                    // Dramatic bubbles around lily pad
+                    if (Math.random() < 0.35) {
+                        g.particles.push({
+                            x: padPos.x + (Math.random() - 0.5) * 45,
+                            y: padPos.y + (Math.random() - 0.5) * 20,
+                            vx: (Math.random() - 0.5) * 18,
+                            vy: -20 - Math.random() * 20,
+                            gravity: -4,
+                            size: 3 + Math.random() * 3,
+                            color: '#E0F2FE',
+                            life: 0.4,
+                            maxLife: 0.4,
+                            shape: 'circle'
+                        });
+                    }
+
+                    // Time remaining check: only lunge if enough time left before finale!
+                    const timeLeft = g.roundDuration - g.phaseTimer;
+                    if (croc.huntTimer >= 1.15 && timeLeft > 1.35) {
+                        croc.phase = 'LILY_LUNGE';
+                        croc.huntTimer = 0;
+                        croc.huntEscapeTriggered = false;
+                        croc.targetX = padPos.x;
+                        croc.targetY = padPos.y + 10;
+                        croc.facingDir = croc.x <= padPos.x ? 1 : -1;
+                        croc.jawTarget = 1.0;
+                        soundRef.current.playCrocGrowl();
+                    }
+                }
+            } else if (croc.phase === 'LILY_LUNGE') {
+                // Crocodile lunges UP with wide-open jaws at the water lily — BUT THE STUDENT ESCAPES AT THE LAST SECOND!
+                croc.swimPhase += dt * 15;
+                croc.huntTimer += dt;
+                const padIdx = croc.huntTargetPadIndex;
+                const pad = padIdx !== null ? g.lotusPads[padIdx] : null;
+                if (pad && padIdx !== null) {
+                    const padPos = getLotusPadScreenPos(pad, padIdx, w, h, time, layout);
+                    croc.targetX = padPos.x;
+                    croc.targetY = padPos.y + 10;
+                }
+
+                croc.x += (croc.targetX - croc.x) * Math.min(1, 9.5 * dt);
+                croc.y += (croc.targetY - croc.y) * Math.min(1, 9.5 * dt);
+                croc.surfaceHeight += (1 - croc.surfaceHeight) * Math.min(1, 10 * dt);
+
+                if (croc.huntTimer < 0.52) {
+                    croc.jawTarget = 1.0;
+                    croc.jawOpen += (croc.jawTarget - croc.jawOpen) * Math.min(1, 16 * dt);
+                }
+
+                // Trigger last-second hilarious escape jump right before the jaws slam shut!
+                if (!croc.huntEscapeTriggered && croc.huntTimer >= 0.32 && pad && padIdx !== null && pad.occupantId) {
+                    croc.huntEscapeTriggered = true;
+                    const victimHam = g.students.find(s => s.id === pad.occupantId);
+                    if (victimHam) {
+                        croc.lastHuntedHamsterId = victimHam.id;
+                        triggerLilyEscapeJump(victimHam, padIdx, w, h, time, layout);
+                    }
+                }
+
+                // Jaws SLAM SHUT on empty air — missed bite!
+                if (croc.huntTimer >= 0.54) {
+                    croc.phase = 'LILY_MISS_GRUMP';
+                    croc.grumpTimer = 0;
+                    croc.jawOpen = 0;
+                    croc.jawTarget = 0;
+                    croc.chompImpact = 0.85;
+                    croc.petalOnNose = true;
+                    croc.huntTargetPadIndex = null;
+                    g.screenShake = 5.5;
+                    spawnWaterSplash(croc.x, croc.y - 6);
+                    soundRef.current.playCrocMissSnap();
+                }
+            } else if (croc.phase === 'LILY_MISS_GRUMP') {
+                // Comical grumpy crocodile reaction after snapping empty air!
+                croc.swimPhase += dt * 8;
+                croc.grumpTimer += dt;
+                croc.jawOpen = Math.abs(Math.sin(croc.grumpTimer * 18)) * 0.08;
+                croc.surfaceHeight += (0.78 - croc.surfaceHeight) * Math.min(1, 6 * dt);
+
+                if (croc.grumpTimer >= 1.05) {
+                    croc.phase = 'LILY_ROAM';
+                    croc.petalOnNose = false;
+                    croc.huntTimer = 0;
+                }
+            } else if (croc.phase === 'SURFACING' || croc.phase === 'OPEN_JAWS') {
+                croc.swimPhase += dt * 13;
+                const rushEase = Math.min(1, 8.5 * dt);
+                croc.x += (croc.targetX - croc.x) * rushEase;
+                croc.y += (croc.targetY - croc.y) * rushEase;
+                croc.surfaceHeight += (1 - croc.surfaceHeight) * Math.min(1, 8.5 * dt);
+                croc.jawTarget = 1.0;
+                croc.jawOpen += (croc.jawTarget - croc.jawOpen) * Math.min(1, 13 * dt);
+
+                if (Math.hypot(croc.targetX - croc.x, croc.targetY - croc.y) < 16 && croc.surfaceHeight > 0.72) {
+                    croc.phase = 'OPEN_JAWS';
+                }
+
+                if (Math.random() < 0.45) {
+                    const ang = Math.random() * Math.PI * 2;
+                    g.particles.push({
+                        x: croc.x + Math.cos(ang) * (24 + Math.random() * 24),
+                        y: croc.y + Math.sin(ang) * 14 + 14,
+                        vx: Math.cos(ang) * 25,
+                        vy: -18 - Math.random() * 28,
+                        gravity: 50,
+                        size: 3 + Math.random() * 4.5,
+                        color: Math.random() < 0.5 ? '#FFFFFF' : '#CAF0F8',
+                        life: 0.42,
+                        maxLife: 0.42,
+                        shape: 'circle'
+                    });
+                }
+            } else if (croc.phase === 'CHOMP') {
+                croc.swimPhase += dt * 9;
+                croc.jawOpen += (0 - croc.jawOpen) * Math.min(1, 30 * dt);
+                croc.surfaceHeight += (0.88 - croc.surfaceHeight) * Math.min(1, 6 * dt);
+            } else if (croc.phase === 'HAPPY_CHEW') {
+                croc.swimPhase += dt * 7;
+                croc.chewTimer += dt;
+                croc.jawOpen = Math.abs(Math.sin(croc.chewTimer * 14)) * 0.16;
+                croc.surfaceHeight += (0.76 - croc.surfaceHeight) * Math.min(1, 5 * dt);
             }
         };
 
@@ -1773,6 +2794,29 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             const activeList = g.students.filter(s => !s.eliminated);
             const activeCount = activeList.length;
             const eliminatedCount = g.students.length - activeCount;
+            const isExtendedHunt = g.roundDuration >= 20;
+
+            if (g.screenShake > 0) {
+                g.screenShake = Math.max(0, g.screenShake - dt * 28);
+            }
+
+            // Spring-physics bounce & ripple update for every water lily pad
+            g.lotusPads.forEach(pad => {
+                if (pad.bounce !== 0 || pad.bounceVel !== 0) {
+                    const springK = 140;
+                    const damping = 9.5;
+                    const acc = -springK * pad.bounce - damping * pad.bounceVel;
+                    pad.bounceVel += acc * dt;
+                    pad.bounce += pad.bounceVel * dt;
+                    if (Math.abs(pad.bounce) < 0.005 && Math.abs(pad.bounceVel) < 0.02) {
+                        pad.bounce = 0;
+                        pad.bounceVel = 0;
+                    }
+                }
+                if (pad.ripple > 0) {
+                    pad.ripple = Math.max(0, pad.ripple - dt * 1.15);
+                }
+            });
 
             // Gentle pitch elevation for larger classes so concentric seating rings read clearly from above
             const largeClassPitchBoost = Math.min(0.08, Math.max(0, (activeCount - 14) / 38) * 0.08);
@@ -1799,10 +2843,15 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 g.currentEliminatedMargin += (framingTargets.targetElimMargin - g.currentEliminatedMargin) * frameRate;
             }
 
+            const layout = getBoatLayoutMetrics(w, h);
+            updateCrocodile(dt, time, w, h, layout);
+            updateEscapeJumps(dt, time, w, h);
+
             // Smoothly ease seated hamsters into updated ring coordinates between rounds
             if (g.state !== 'CHAOS_SPIN') {
                 const seatEase = Math.min(1, 6.5 * dt);
                 activeList.forEach(ham => {
+                    if (ham.onLilyPadIndex !== null) return;
                     ham.curX += (ham.seatX - ham.curX) * seatEase;
                     ham.curY += (ham.seatY - ham.curY) * seatEase;
                 });
@@ -1813,8 +2862,8 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             let tiltIntensity = 0.08;
             if (g.state === 'SLOW_SPIN') tiltIntensity = 0.20;
             else if (g.state === 'CHAOS_SPIN') tiltIntensity = 0.34;
+            else if (g.state === 'LILY_HUNT') tiltIntensity = 0.15;
             else if (g.state === 'LAUNCHING') tiltIntensity = 0.28;
-            // Slightly steadier tilt amplitude on mega-boats so outer-ring hamsters stay poised
             const stabilityFactor = 1 / (1 + Math.max(0, g.currentBoatScale - 1) * 0.35);
             tiltIntensity *= stabilityFactor;
 
@@ -1827,7 +2876,8 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             } else if (g.state === 'SLOW_SPIN') {
                 g.phaseTimer += dt;
                 const totalDur = g.roundDuration;
-                g.boatSpeed = 1.2 + (g.phaseTimer / totalDur) * 1.4;
+                const slowEnd = isExtendedHunt ? totalDur * 0.14 : totalDur * 0.32;
+                g.boatSpeed = 1.2 + (g.phaseTimer / Math.max(1, slowEnd)) * 1.4;
                 g.boatAngle += g.boatSpeed * dt;
                 g.captainPaddlePhase += dt * 9;
 
@@ -1835,19 +2885,22 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                     soundRef.current.playPaddleSplash(0.5);
                 }
 
-                updateFakeOutFlight(dt, w, h);
-                if (!g.fakeOutFlight && g.phaseTimer >= g.nextFakeOutTime && g.phaseTimer < totalDur - 0.9) {
-                    startFakeOutFlight(w, h, false);
-                    g.nextFakeOutTime = g.phaseTimer + 1.85;
+                updateLilyFlights(dt, time, w, h);
+                if (g.lilyFlights.length === 0 && g.phaseTimer >= g.nextLilyFlightTime && g.phaseTimer < totalDur - 0.9) {
+                    if (startLilySafeFlight(w, h, time, false, isExtendedHunt, false)) {
+                        g.nextLilyFlightTime = g.phaseTimer + (isExtendedHunt ? 0.72 : 1.55);
+                    } else {
+                        g.nextLilyFlightTime = g.phaseTimer + 1.4;
+                    }
                 }
 
                 const remSec = Math.max(0, Math.ceil(totalDur - g.phaseTimer));
                 if (remSec !== g.lastReportedSec) {
                     g.lastReportedSec = remSec;
-                    if (!g.fakeOutFlight) {
+                    if (g.lilyFlights.length === 0) {
                         onStateChangeRef.current?.({
                             phase: 'SLOW_SPIN',
-                            msg: '🚣 NICE AND EASY… EVERYONE IS SAFE! 🐹',
+                            msg: '🚣 HOLD ON! LAND ON A WATER LILY TO STAY SAFE! 🪷',
                             eliminatedThisRound: [],
                             activeCount,
                             chaseSecondsLeft: remSec,
@@ -1856,14 +2909,17 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                     }
                 }
 
-                if (g.phaseTimer >= totalDur * 0.32) {
+                if (g.phaseTimer >= slowEnd) {
                     g.state = 'CHAOS_SPIN';
-                    if (!g.fakeOutFlight) {
-                        g.activeBanner = '🌪️ ACROBATIC COCONUT CHAOS!! 🌪️';
+                    if (g.lilyFlights.length === 0) {
+                        const msg = isExtendedHunt
+                            ? '🌪️ FLYING TO THE WATER LILIES!! WATCH THE CROCODILE!! 🐊'
+                            : '🐊 THE CROCODILE IS CIRCLING! HANG ON!! 🌪️';
+                        g.activeBanner = msg;
                         g.bannerExpiry = performance.now() + 1800;
                         onStateChangeRef.current?.({
                             phase: 'CHAOS_SPIN',
-                            msg: '🌪️ ACROBATIC COCONUT CHAOS!! 🌪️',
+                            msg,
                             eliminatedThisRound: [],
                             activeCount,
                             chaseSecondsLeft: remSec,
@@ -1874,7 +2930,9 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             } else if (g.state === 'CHAOS_SPIN') {
                 g.phaseTimer += dt;
                 const totalDur = g.roundDuration;
-                const chaosProgress = Math.min(1, (g.phaseTimer - totalDur * 0.32) / Math.max(0.1, totalDur * 0.68));
+                const chaosStart = isExtendedHunt ? totalDur * 0.14 : totalDur * 0.32;
+                const chaosEnd = isExtendedHunt ? totalDur * 0.36 : totalDur;
+                const chaosProgress = Math.min(1, (g.phaseTimer - chaosStart) / Math.max(0.1, chaosEnd - chaosStart));
                 g.boatSpeed = 2.2 + chaosProgress * 5.8;
                 g.boatAngle += g.boatSpeed * dt;
                 g.captainPaddlePhase += dt * 22;
@@ -1886,24 +2944,42 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                     soundRef.current.playSqueak();
                 }
 
-                updateFakeOutFlight(dt, w, h);
-                if (!g.fakeOutFlight && g.phaseTimer >= g.nextFakeOutTime && g.phaseTimer < totalDur - 0.65) {
-                    startFakeOutFlight(w, h, false);
-                    g.nextFakeOutTime = g.phaseTimer + 1.75;
+                updateLilyFlights(dt, time, w, h);
+
+                const occupiedCount = g.lotusPads.filter(p => p.occupantId !== null).length;
+                const maxConcurrentFlights = isExtendedHunt ? 2 : 2;
+                const lilyCooldown = isExtendedHunt ? 0.58 : 1.35;
+
+                if (
+                    g.lilyFlights.length < maxConcurrentFlights &&
+                    g.phaseTimer >= g.nextLilyFlightTime &&
+                    g.phaseTimer < chaosEnd - 0.35
+                ) {
+                    // In 20s+ mode, ensure the target also flies onto a lily pad so everyone's guessing during the hunt!
+                    const targetSet = new Set(g.targetsToEliminate);
+                    const targetOnLily = activeList.some(s => targetSet.has(s.name) && s.onLilyPadIndex !== null);
+                    const targetInFlight = g.lilyFlights.some(f => targetSet.has(f.hamster.name));
+                    const preferTarget = isExtendedHunt && !targetOnLily && !targetInFlight && (occupiedCount >= 2 || activeCount <= 2);
+
+                    if (startLilySafeFlight(w, h, time, false, isExtendedHunt, preferTarget)) {
+                        g.nextLilyFlightTime = g.phaseTimer + lilyCooldown;
+                    } else {
+                        g.nextLilyFlightTime = g.phaseTimer + 1.2;
+                    }
                 }
 
                 g.quoteTimer -= dt;
-                if (g.quoteTimer <= 0 && !g.fakeOutFlight) {
+                if (g.quoteTimer <= 0 && g.lilyFlights.length === 0) {
                     const quote = CHAOS_QUOTES[Math.floor(Math.random() * CHAOS_QUOTES.length)];
                     g.activeBanner = quote;
                     g.bannerExpiry = performance.now() + 1300;
                     g.quoteTimer = 1.45;
                 }
 
-                // Keep outer-ring riders neatly inside the woven rim even under centrifugal push
+                const inLilyFlightIds = new Set(g.lilyFlights.map(f => f.hamster.id));
                 const maxPushOut = activeCount > 24 ? 0.08 : 0.14;
                 activeList.forEach((ham, idx) => {
-                    if (g.fakeOutFlight?.hamster.id === ham.id) return;
+                    if (ham.onLilyPadIndex !== null || inLilyFlightIds.has(ham.id)) return;
                     ham.wobbleAngle = Math.sin(time * 18 + idx) * 0.32 - g.boatTiltRoll * 0.45;
                     const pushOut = 1 + Math.min(maxPushOut, chaosProgress * maxPushOut);
                     const slideGravityX = Math.sin(g.boatTiltRoll) * 0.06;
@@ -1923,10 +2999,10 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 const remSec = Math.max(0, Math.ceil(totalDur - g.phaseTimer));
                 if (remSec !== g.lastReportedSec) {
                     g.lastReportedSec = remSec;
-                    if (!g.fakeOutFlight) {
+                    if (g.lilyFlights.length === 0) {
                         onStateChangeRef.current?.({
                             phase: 'CHAOS_SPIN',
-                            msg: g.activeBanner || '🌪️ ACROBATIC COCONUT CHAOS!! 🌪️',
+                            msg: g.activeBanner || '🐊 THE CROCODILE IS CIRCLING! HANG ON!! 🌪️',
                             eliminatedThisRound: [],
                             activeCount,
                             chaseSecondsLeft: remSec,
@@ -1935,56 +3011,198 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                     }
                 }
 
-                if (g.phaseTimer >= totalDur && !g.fakeOutFlight) {
-                    if (!g.didClimaxFakeOut && activeCount > 1) {
-                        g.didClimaxFakeOut = true;
-                        startFakeOutFlight(w, h, true);
+                if (isExtendedHunt && g.phaseTimer >= chaosEnd) {
+                    // Enter Extended Act 2: LILY_HUNT!
+                    g.state = 'LILY_HUNT';
+                    g.crocodile.phase = 'LILY_ROAM';
+                    g.crocodile.huntTargetPadIndex = null;
+                    g.crocodile.huntTimer = 0;
+                    const huntMsg = '🐊 UH-OH!! THE CROCODILE IS HUNTING AROUND THE WATER LILIES!! 😱';
+                    g.activeBanner = huntMsg;
+                    g.bannerExpiry = performance.now() + 2600;
+                    soundRef.current.playCrocGrowl();
+                    onStateChangeRef.current?.({
+                        phase: 'LILY_HUNT',
+                        msg: huntMsg,
+                        eliminatedThisRound: [],
+                        activeCount,
+                        chaseSecondsLeft: remSec,
+                        cameraMode: g.cameraMode
+                    });
+                } else if (!isExtendedHunt && g.phaseTimer >= totalDur && g.lilyFlights.length === 0) {
+                    if (!g.didClimaxLilyFlight && activeCount > 1) {
+                        g.didClimaxLilyFlight = true;
+                        const launchedSafe = startLilySafeFlight(w, h, time, true, false, false);
+                        if (!launchedSafe) {
+                            launchTargetVictims(w, h, time);
+                        }
                     } else {
-                        launchTargetVictims(w, h);
+                        launchTargetVictims(w, h, time);
                     }
+                }
+            } else if (g.state === 'LILY_HUNT') {
+                // Extended 20s+ Act 2: Crocodile prowls water lilies, scaring hamsters with funny emotions & near-miss escapes!
+                g.phaseTimer += dt;
+                const totalDur = g.roundDuration;
+                g.boatSpeed += (1.15 - g.boatSpeed) * Math.min(1, 2.5 * dt);
+                g.boatAngle += g.boatSpeed * dt;
+                g.captainPaddlePhase += dt * 7;
+
+                updateLilyFlights(dt, time, w, h);
+
+                // Keep lily pads lively if a pad opens up and there's plenty of time left
+                const occupiedCount = g.lotusPads.filter(p => p.occupantId !== null).length;
+                const targetSet = new Set(g.targetsToEliminate);
+                const targetOnLily = activeList.some(s => targetSet.has(s.name) && s.onLilyPadIndex !== null);
+                const targetInFlight = g.lilyFlights.some(f => targetSet.has(f.hamster.name));
+
+                if (
+                    g.lilyFlights.length === 0 &&
+                    g.phaseTimer < totalDur - 3.2 &&
+                    g.phaseTimer >= g.nextLilyFlightTime &&
+                    (occupiedCount < Math.min(6, activeCount) || !targetOnLily)
+                ) {
+                    const preferTarget = !targetOnLily && !targetInFlight;
+                    if (startLilySafeFlight(w, h, time, false, true, preferTarget)) {
+                        g.nextLilyFlightTime = g.phaseTimer + 2.4;
+                    } else {
+                        g.nextLilyFlightTime = g.phaseTimer + 2.0;
+                    }
+                }
+
+                // Boat riders watch nervously!
+                activeList.forEach((ham, idx) => {
+                    if (ham.onLilyPadIndex !== null) return;
+                    ham.wobbleAngle = Math.sin(time * 8 + idx) * 0.14;
+                    ham.expression = ham.relievedUntil > time ? 'relieved_smug' : 'shocked';
+                });
+
+                // Lily pad hamsters react live with funny scared emotions & panic speech bubbles when the crocodile approaches!
+                activeList.forEach(ham => {
+                    if (ham.onLilyPadIndex === null) return;
+                    const pad = g.lotusPads[ham.onLilyPadIndex];
+                    if (!pad) return;
+                    const pos = getLotusPadScreenPos(pad, ham.onLilyPadIndex, w, h, time, layout);
+                    const distToCroc = Math.hypot(g.crocodile.x - pos.x, g.crocodile.y - pos.y);
+                    const isStalked = g.crocodile.huntTargetPadIndex === ham.onLilyPadIndex;
+
+                    if (isStalked || distToCroc < 185) {
+                        ham.expression = isStalked ? 'terrified' : ham.panicStyle;
+                        if (time > ham.speechExpiry && Math.random() < (isStalked ? 0.08 : 0.025)) {
+                            ham.speechBubble = LILY_PANIC_QUOTES[Math.floor(Math.random() * LILY_PANIC_QUOTES.length)];
+                            ham.speechExpiry = time + 2.1;
+                        }
+                    } else if (ham.relievedUntil > time) {
+                        ham.expression = 'relieved_smug';
+                    } else {
+                        ham.expression = 'happy';
+                    }
+                });
+
+                const remSec = Math.max(0, Math.ceil(totalDur - g.phaseTimer));
+                if (remSec !== g.lastReportedSec) {
+                    g.lastReportedSec = remSec;
+                    onStateChangeRef.current?.({
+                        phase: 'LILY_HUNT',
+                        msg: g.activeBanner || '🐊 THE CROCODILE IS PROWLING THE WATER LILIES!! 😱',
+                        eliminatedThisRound: [],
+                        activeCount,
+                        chaseSecondsLeft: remSec,
+                        cameraMode: g.cameraMode
+                    });
+                }
+
+                // Grand Finale! Once timer finishes (and any active mid-lunge completes), catch the real target!
+                const crocReadyForFinale =
+                    g.crocodile.phase !== 'LILY_LUNGE' &&
+                    g.lilyFlights.length === 0 &&
+                    g.escapeJumps.length === 0;
+                if (g.phaseTimer >= totalDur && crocReadyForFinale) {
+                    launchTargetVictims(w, h, time);
                 }
             } else if (g.state === 'LAUNCHING') {
                 g.boatAngle += g.boatSpeed * 0.35 * dt;
-                let allFinished = true;
+                let allChomped = true;
                 let anyMidAir = false;
+                let anyUpcoming = false;
 
                 g.flyingHamsters.forEach(fh => {
                     if (fh.delay > 0) {
                         fh.delay -= dt;
-                        allFinished = false;
+                        allChomped = false;
+                        anyUpcoming = true;
                         return;
                     }
-                    fh.t += dt / 1.1;
-                    if (fh.t > 0.15 && fh.t < 0.65) {
-                        anyMidAir = true;
-                    }
-                    if (fh.t >= 1 && !fh.splashed) {
-                        fh.splashed = true;
-                        fh.hamster.eliminated = true;
-                        fh.hamster.expression = 'happy';
-                        fh.hamster.wobbleAngle = 0;
-                        spawnWaterSplash(fh.targetX, fh.targetY);
-                        soundRef.current.playBigSplash();
-                    }
-                    if (fh.t < 1.35) {
-                        allFinished = false;
+                    if (!fh.splashed) {
+                        fh.t += dt / 1.18;
+                        if (fh.t > 0.22 && fh.t < 0.84) {
+                            anyMidAir = true;
+                        }
+                        if (fh.t >= 1) {
+                            fh.t = 1;
+                            fh.splashed = true;
+                            fh.hamster.eliminated = true;
+                            fh.hamster.chompedByCroc = true;
+                            fh.hamster.expression = 'shocked';
+                            fh.hamster.wobbleAngle = 0;
+
+                            // Crocodile CHOMP impact!
+                            const croc = g.crocodile;
+                            croc.phase = 'CHOMP';
+                            croc.jawOpen = 0;
+                            croc.jawTarget = 0;
+                            croc.chompImpact = 1.0;
+                            croc.chompTextTimer = 1.25;
+                            croc.caughtHamsters.push(fh.hamster);
+                            g.screenShake = 11;
+
+                            spawnWaterSplash(croc.x, croc.y - 6);
+                            spawnSaveSparkles(croc.x, croc.y - 16, true);
+                            soundRef.current.playCrocChomp();
+
+                            const chompMsg = `🐊 CHOMP!! ${fh.hamster.name.toUpperCase()} FELL INTO THE CROCODILE'S MOUTH!!`;
+                            g.activeBanner = chompMsg;
+                            g.bannerExpiry = performance.now() + 2200;
+                            const hasMoreTargets = g.flyingHamsters.some(other => !other.splashed);
+                            onStateChangeRef.current?.({
+                                phase: 'LAUNCHING',
+                                msg: chompMsg,
+                                eliminatedThisRound: croc.caughtHamsters.map(h => h.name),
+                                activeCount: g.students.filter(s => !s.eliminated).length,
+                                chaseSecondsLeft: 0,
+                                cameraMode: g.cameraMode,
+                                isMusicPlaying: hasMoreTargets
+                            });
+                        } else {
+                            allChomped = false;
+                            if (g.crocodile.phase === 'CHOMP' && fh.t > 0.15) {
+                                g.crocodile.phase = 'OPEN_JAWS';
+                                g.crocodile.jawTarget = 1.0;
+                            }
+                        }
                     }
                 });
 
                 g.slowMoFactor = anyMidAir ? 0.48 : 1.0;
 
-                if (allFinished) {
-                    g.slowMoFactor = 1.0;
-                    const eliminatedNames = g.flyingHamsters.map(f => f.hamster.name);
-                    g.flyingHamsters = [];
-                    arrangeHamstersInBoat(false);
-                    g.students.filter(s => !s.eliminated).forEach(ham => {
-                        ham.expression = 'happy';
-                        ham.wobbleAngle = 0;
-                    });
-                    soundRef.current.stopTropicalMusic();
-                    g.state = 'RESULT';
-                    onRoundCompleteRef.current?.(eliminatedNames);
+                if (allChomped && !anyUpcoming) {
+                    if (g.crocodile.phase !== 'HAPPY_CHEW') {
+                        g.crocodile.phase = 'HAPPY_CHEW';
+                        g.crocodile.chewTimer = 0;
+                    }
+                    if (g.crocodile.chewTimer >= 1.15) {
+                        g.slowMoFactor = 1.0;
+                        const eliminatedNames = g.flyingHamsters.map(f => f.hamster.name);
+                        g.flyingHamsters = [];
+                        arrangeHamstersInBoat(false);
+                        g.students.filter(s => !s.eliminated).forEach(ham => {
+                            ham.expression = 'happy';
+                            ham.wobbleAngle = 0;
+                        });
+                        soundRef.current.stopTropicalMusic();
+                        g.state = 'RESULT';
+                        onRoundCompleteRef.current?.(eliminatedNames);
+                    }
                 }
             }
 
@@ -2363,19 +3581,38 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             // Wooden piers & glowing Hoi An lanterns along the riverbanks
             drawHoiAnRiversidePiersAndLanterns(w, horizonY, time);
 
-            // Detailed 3D Lotus Pads & Blooming Lotus Flowers
+            // Detailed 3D Lotus Pads & Blooming Lotus Flowers (interactive safe landing zones!)
+            const padLayout = getBoatLayoutMetrics(w, h);
             g.lotusPads.forEach((pad, idx) => {
-                const px = pad.xRatio * w + Math.sin(time * 1.2 + idx) * 6;
-                const py = pad.yRatio * h + Math.cos(time * 1.5 + idx) * 4;
-                const pr = pad.r * (w < 640 ? 0.75 : 1);
+                const pos = getLotusPadScreenPos(pad, idx, w, h, time, padLayout);
+                const px = pos.x;
+                const py = pos.y + pad.bounce * 8;
+                const pr = pos.r * (1 + pad.bounce * 0.16);
+                const isOccupied = pad.occupantId !== null;
                 ctx.save();
                 ctx.translate(px, py);
 
-                // Gentle water ripple ring around lotus pad
-                ctx.strokeStyle = 'rgba(224, 242, 254, 0.35)';
-                ctx.lineWidth = 1.5;
+                // Expanding splash ripple when a student lands safely
+                if (pad.ripple > 0) {
+                    const expand = 1 - pad.ripple;
+                    ctx.strokeStyle = `rgba(116, 198, 157, ${pad.ripple * 0.85})`;
+                    ctx.lineWidth = 3.2 * pad.ripple;
+                    ctx.beginPath();
+                    ctx.ellipse(0, 3, pr * (1.2 + expand * 1.45), pr * (0.68 + expand * 0.82), 0, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${pad.ripple * 0.9})`;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.ellipse(0, 3, pr * (1.05 + expand * 0.95), pr * (0.60 + expand * 0.54), 0, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                // Gentle water ripple ring around lotus pad (golden-emerald glow when occupied!)
+                ctx.strokeStyle = isOccupied ? 'rgba(6, 214, 160, 0.78)' : 'rgba(224, 242, 254, 0.38)';
+                ctx.lineWidth = isOccupied ? 2.6 : 1.5;
                 ctx.beginPath();
-                ctx.ellipse(0, 2, pr * 1.22, pr * 0.68, 0, 0, Math.PI * 2);
+                ctx.ellipse(0, 2, pr * 1.24, pr * 0.69, 0, 0, Math.PI * 2);
                 ctx.stroke();
 
                 ctx.scale(1, 0.58);
@@ -2391,12 +3628,12 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
 
                 // Shaded green lily pad with veins
                 const padGrad = ctx.createRadialGradient(-pr * 0.2, -pr * 0.2, 2, 0, 0, pr);
-                padGrad.addColorStop(0, '#74C69D');
-                padGrad.addColorStop(0.75, '#40916C');
+                padGrad.addColorStop(0, isOccupied ? '#95D5B2' : '#74C69D');
+                padGrad.addColorStop(0.72, '#40916C');
                 padGrad.addColorStop(1, '#1B4332');
                 ctx.fillStyle = padGrad;
-                ctx.strokeStyle = '#1B4332';
-                ctx.lineWidth = 2.4;
+                ctx.strokeStyle = isOccupied ? '#D8F3DC' : '#1B4332';
+                ctx.lineWidth = isOccupied ? 2.8 : 2.4;
                 ctx.beginPath();
                 ctx.arc(0, 0, pr, 0.25, Math.PI * 2 - 0.25);
                 ctx.lineTo(0, 0);
@@ -2404,7 +3641,23 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 ctx.fill();
                 ctx.stroke();
 
+                // Leaf radial veins for botanical richness
+                ctx.strokeStyle = 'rgba(216, 243, 220, 0.32)';
+                ctx.lineWidth = 1.2;
+                for (let v = 0; v < 6; v++) {
+                    const va = 0.6 + (v / 6) * (Math.PI * 2 - 1.1);
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.lineTo(Math.cos(va) * pr * 0.84, Math.sin(va) * pr * 0.84);
+                    ctx.stroke();
+                }
+
                 if (pad.flower) {
+                    const flowerOffset = isOccupied ? pr * 0.42 : 0;
+                    ctx.save();
+                    ctx.translate(flowerOffset, -flowerOffset * 0.3);
+                    const fScale = isOccupied ? 0.72 : 1;
+                    ctx.scale(fScale, fScale);
                     ctx.fillStyle = pad.flower;
                     ctx.strokeStyle = '#3A1F0D';
                     ctx.lineWidth = 1.6;
@@ -2419,6 +3672,7 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                     ctx.beginPath();
                     ctx.arc(0, 0, pr * 0.15, 0, Math.PI * 2);
                     ctx.fill();
+                    ctx.restore();
                 }
                 ctx.restore();
             });
@@ -2636,11 +3890,684 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             ctx.restore();
         };
 
+        // Expressive Animated Cartoon Lagoon Crocodile (Swimming Patrol + Lunging Open-Jaws Chomp)
+        const drawCrocodileSwimming = (croc: CrocodileState, time: number, scale: number) => {
+            ctx.save();
+            ctx.translate(croc.x, croc.y);
+            ctx.scale(scale, scale);
+
+            // Water shadow & V-shaped swimming wake ripples
+            ctx.save();
+            ctx.rotate(croc.angle);
+            ctx.strokeStyle = 'rgba(224, 242, 254, 0.52)';
+            ctx.lineWidth = 2.4;
+            ctx.lineCap = 'round';
+            const wakePulse = Math.sin(time * 6) * 4;
+            ctx.beginPath();
+            ctx.moveTo(42, 0);
+            ctx.quadraticCurveTo(10, -28 - wakePulse * 0.5, -62, -40 - wakePulse);
+            ctx.moveTo(42, 0);
+            ctx.quadraticCurveTo(10, 28 + wakePulse * 0.5, -62, 40 + wakePulse);
+            ctx.stroke();
+
+            // Subtle underwater body shadow
+            ctx.fillStyle = 'rgba(6, 38, 48, 0.34)';
+            ctx.beginPath();
+            ctx.ellipse(-8, 5, 58, 20, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Articulated S-wave swimming tail (7 tapered emerald segments + dorsal ridge spikes)
+            const tailSegments = 7;
+            for (let i = tailSegments; i >= 1; i--) {
+                const frac = i / tailSegments;
+                const tx = -18 - i * 11.5;
+                const ty = Math.sin(croc.swimPhase - i * 0.68) * (5.5 + i * 2.1);
+                const segR = Math.max(4.5, 16.5 * (1 - frac * 0.72));
+
+                ctx.fillStyle = i % 2 === 0 ? '#2D6A4F' : '#40916C';
+                ctx.strokeStyle = '#143324';
+                ctx.lineWidth = 2.4;
+                ctx.beginPath();
+                ctx.ellipse(tx, ty, segR * 1.25, segR * 0.82, Math.cos(croc.swimPhase - i * 0.68) * 0.22, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                // Dorsal ridge scute along spine
+                ctx.fillStyle = '#1B4332';
+                ctx.beginPath();
+                ctx.ellipse(tx, ty, segR * 0.48, segR * 0.28, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Stubby webbed paddling legs stroking rhythmically
+            const legStroke = Math.sin(croc.swimPhase) * 0.45;
+            const drawLeg = (lx: number, side: number, phaseSign: number) => {
+                ctx.save();
+                ctx.translate(lx, side * 15);
+                ctx.rotate(side * (0.55 + legStroke * phaseSign));
+                ctx.fillStyle = '#40916C';
+                ctx.strokeStyle = '#143324';
+                ctx.lineWidth = 2.2;
+                ctx.beginPath();
+                ctx.ellipse(0, side * 9, 7.5, 11.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                // Cute 3 webbed toes
+                ctx.fillStyle = '#74C69D';
+                for (let t = -1; t <= 1; t++) {
+                    ctx.beginPath();
+                    ctx.arc(t * 4.5, side * 18, 2.6, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.restore();
+            };
+            drawLeg(-16, -1, 1);
+            drawLeg(-16, 1, -1);
+            drawLeg(12, -1, -1);
+            drawLeg(12, 1, 1);
+
+            // Muscular torpedo torso
+            const torsoGrad = ctx.createLinearGradient(-28, -18, 24, 18);
+            torsoGrad.addColorStop(0, '#74C69D');
+            torsoGrad.addColorStop(0.55, '#40916C');
+            torsoGrad.addColorStop(1, '#1B4332');
+            ctx.fillStyle = torsoGrad;
+            ctx.strokeStyle = '#143324';
+            ctx.lineWidth = 2.8;
+            ctx.beginPath();
+            ctx.ellipse(-2, 0, 28, 17, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // Armored dorsal scute plates along torso back
+            for (let s = -2; s <= 1; s++) {
+                ctx.fillStyle = '#2D6A4F';
+                ctx.strokeStyle = '#143324';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.roundRect(s * 10 - 3, -8, 7.5, 5.5, 2.5);
+                ctx.roundRect(s * 10 - 3, 2.5, 7.5, 5.5, 2.5);
+                ctx.fill();
+                ctx.stroke();
+            }
+
+            // Head & expressive snapping snout
+            const headYaw = Math.sin(croc.swimPhase * 0.5) * 0.06;
+            ctx.save();
+            ctx.translate(22, 0);
+            ctx.rotate(headYaw);
+
+            // Snout tease-open glow inside jaws when stalking
+            if (croc.jawOpen > 0.08) {
+                ctx.fillStyle = '#B91C1C';
+                ctx.strokeStyle = '#143324';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.ellipse(22, 0, 18 + croc.jawOpen * 7, 9 + croc.jawOpen * 7, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                // Cute pink tongue peek
+                ctx.fillStyle = '#FB7185';
+                ctx.beginPath();
+                ctx.ellipse(20, 0, 10, 5 + croc.jawOpen * 3, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Rounded zig-zag white cartoon teeth peeking along jawline
+            ctx.fillStyle = '#FFFFFF';
+            ctx.strokeStyle = '#143324';
+            ctx.lineWidth = 1.4;
+            const teethSpread = croc.jawOpen * 3.5;
+            [-1, 1].forEach(side => {
+                [12, 20, 28].forEach(tx => {
+                    ctx.beginPath();
+                    ctx.moveTo(tx - 3, side * (9.5 + teethSpread));
+                    ctx.lineTo(tx, side * (14.5 + teethSpread));
+                    ctx.lineTo(tx + 3, side * (9.5 + teethSpread));
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                });
+            });
+
+            // Sculpted crocodile snout & skull
+            const headGrad = ctx.createLinearGradient(0, -14, 38, 14);
+            headGrad.addColorStop(0, '#74C69D');
+            headGrad.addColorStop(0.6, '#40916C');
+            headGrad.addColorStop(1, '#2D6A4F');
+            ctx.fillStyle = headGrad;
+            ctx.strokeStyle = '#143324';
+            ctx.lineWidth = 2.8;
+            ctx.beginPath();
+            ctx.moveTo(-6, -13);
+            ctx.quadraticCurveTo(10, -14, 24, -10.5);
+            ctx.quadraticCurveTo(40, -9, 41, 0);
+            ctx.quadraticCurveTo(40, 9, 24, 10.5);
+            ctx.quadraticCurveTo(10, 14, -6, 13);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Snout bridge highlight & bumpy nostrils
+            ctx.fillStyle = 'rgba(183, 228, 199, 0.45)';
+            ctx.beginPath();
+            ctx.ellipse(18, -3, 14, 4, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#143324';
+            ctx.beginPath();
+            ctx.arc(34, -4.2, 2.1, 0, Math.PI * 2);
+            ctx.arc(34, 4.2, 2.1, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Bulging yellow cartoon eyes with sneaky eyebrows & blinking
+            [-1, 1].forEach(side => {
+                ctx.fillStyle = '#52B788';
+                ctx.strokeStyle = '#143324';
+                ctx.lineWidth = 2.2;
+                ctx.beginPath();
+                ctx.arc(4, side * 9.5, 7.2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                if (croc.isBlinking) {
+                    ctx.strokeStyle = '#143324';
+                    ctx.lineWidth = 2.2;
+                    ctx.beginPath();
+                    ctx.moveTo(1, side * 9.5);
+                    ctx.lineTo(8, side * 9.5);
+                    ctx.stroke();
+                } else {
+                    ctx.fillStyle = '#FDE047';
+                    ctx.beginPath();
+                    ctx.arc(5, side * 9.5, 5.2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // Expressive vertical slit pupil tracking forward
+                    ctx.fillStyle = '#143324';
+                    ctx.beginPath();
+                    ctx.ellipse(6.5, side * 9.5, 2.0, 3.6, 0, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Specular catchlight
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.beginPath();
+                    ctx.arc(3.8, side * 8.2, 1.6, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+
+            ctx.restore();
+            ctx.restore();
+            ctx.restore();
+        };
+
+        // Dramatic Heroic Lunging / Open-Jaws / Chomp / Happy-Chew Crocodile (supports 2-pass layering so falling hamster drops INSIDE the jaws!)
+        const drawCrocodileLunging = (
+            croc: CrocodileState,
+            time: number,
+            scale: number,
+            pass: 'back' | 'front'
+        ) => {
+            const impactSquash = croc.chompImpact;
+            const sx = scale * (1 + impactSquash * 0.22) * croc.facingDir;
+            const sy = scale * (1 - impactSquash * 0.16);
+            const bobY = croc.phase === 'HAPPY_CHEW'
+                ? Math.sin(time * 9) * 4.5
+                : Math.sin(time * 12) * 2.5;
+            const riseY = (1 - croc.surfaceHeight) * 32;
+
+            ctx.save();
+            ctx.translate(croc.x, croc.y + bobY + riseY);
+
+            if (pass === 'back') {
+                // Turbulent water swirl & foaming surface collar
+                const swirlR = (46 + croc.jawOpen * 14 + Math.sin(time * 10) * 4) * scale;
+                ctx.save();
+                const waterRingGrad = ctx.createRadialGradient(0, 14 * scale, 4, 0, 14 * scale, swirlR * 1.25);
+                waterRingGrad.addColorStop(0, 'rgba(6, 48, 66, 0.45)');
+                waterRingGrad.addColorStop(0.7, 'rgba(202, 240, 248, 0.45)');
+                waterRingGrad.addColorStop(1, 'rgba(202, 240, 248, 0)');
+                ctx.fillStyle = waterRingGrad;
+                ctx.beginPath();
+                ctx.ellipse(0, 14 * scale, swirlR * 1.25, swirlR * 0.56, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+                ctx.lineWidth = 3 * scale;
+                ctx.beginPath();
+                ctx.ellipse(0, 15 * scale, swirlR, swirlR * 0.44, 0, 0, Math.PI * 2);
+                ctx.stroke();
+
+                ctx.strokeStyle = 'rgba(144, 224, 239, 0.65)';
+                ctx.lineWidth = 2 * scale;
+                ctx.beginPath();
+                ctx.ellipse(0, 17 * scale, swirlR * 1.28, swirlR * 0.56, 0, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            ctx.scale(sx, sy);
+
+            const jawAngle = croc.jawOpen * 0.92; // opens wide (~53 deg upper + ~32 deg lower!)
+
+            if (pass === 'back') {
+                // Wagging tail curling behind the surfacing croc
+                ctx.save();
+                const tailWave = Math.sin(croc.swimPhase) * 10;
+                ctx.fillStyle = '#2D6A4F';
+                ctx.strokeStyle = '#143324';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(-24, 10);
+                ctx.quadraticCurveTo(-56, 8 + tailWave, -74, -8 + tailWave * 1.2);
+                ctx.quadraticCurveTo(-50, 26 + tailWave * 0.5, -18, 22);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+
+                // Surfacing emerald chest & ribbed cream-yellow belly
+                const bodyGrad = ctx.createLinearGradient(-26, -10, 24, 22);
+                bodyGrad.addColorStop(0, '#52B788');
+                bodyGrad.addColorStop(0.55, '#2D6A4F');
+                bodyGrad.addColorStop(1, '#1B4332');
+                ctx.fillStyle = bodyGrad;
+                ctx.strokeStyle = '#143324';
+                ctx.lineWidth = 3.2;
+                ctx.beginPath();
+                ctx.ellipse(-6, 8, 34, 22, -0.12, Math.PI, 0, false);
+                ctx.quadraticCurveTo(26, 22, -4, 24);
+                ctx.quadraticCurveTo(-34, 24, -40, 10);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                // Warm cream segmented belly
+                ctx.fillStyle = '#E9F5DB';
+                ctx.beginPath();
+                ctx.ellipse(8, 12, 18, 12, 0.15, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Raised cartoon claws gripping the air / water
+                [-1, 1].forEach(side => {
+                    ctx.save();
+                    ctx.translate(side < 0 ? -18 : 14, 14);
+                    ctx.rotate(side * 0.4 + Math.sin(time * 10) * 0.12);
+                    ctx.fillStyle = '#40916C';
+                    ctx.strokeStyle = '#143324';
+                    ctx.lineWidth = 2.4;
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, 10, 6.5, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.restore();
+                });
+
+                // OPEN MOUTH INTERIOR (deep throat & wiggling pink tongue)
+                if (croc.jawOpen > 0.06) {
+                    ctx.save();
+                    ctx.translate(-8, -8);
+                    const throatGrad = ctx.createRadialGradient(18, -8, 4, 22, -4, 38);
+                    throatGrad.addColorStop(0, '#7F1D1D');
+                    throatGrad.addColorStop(0.65, '#B91C1C');
+                    throatGrad.addColorStop(1, '#DC2626');
+                    ctx.fillStyle = throatGrad;
+                    ctx.beginPath();
+                    ctx.moveTo(-4, 4);
+                    ctx.lineTo(Math.cos(-jawAngle - 0.18) * 52, Math.sin(-jawAngle - 0.18) * 52);
+                    ctx.quadraticCurveTo(38, -10, Math.cos(jawAngle * 0.55) * 48, Math.sin(jawAngle * 0.55) * 48);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Wiggling pink tongue inside open jaws
+                    const tongueWiggle = Math.sin(time * 16) * 3;
+                    ctx.fillStyle = '#FB7185';
+                    ctx.strokeStyle = '#881337';
+                    ctx.lineWidth = 1.8;
+                    ctx.beginPath();
+                    ctx.ellipse(20, 4 + tongueWiggle * 0.4, 16, 7.5, 0.12, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.restore();
+                }
+
+                // LOWER JAW (hinged down so falling hamster drops right onto it!)
+                ctx.save();
+                ctx.translate(-8, -4);
+                ctx.rotate(jawAngle * 0.52);
+
+                const lowerGrad = ctx.createLinearGradient(0, 0, 48, 18);
+                lowerGrad.addColorStop(0, '#52B788');
+                lowerGrad.addColorStop(0.6, '#40916C');
+                lowerGrad.addColorStop(1, '#2D6A4F');
+                ctx.fillStyle = lowerGrad;
+                ctx.strokeStyle = '#143324';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(-8, -2);
+                ctx.lineTo(48, 0);
+                ctx.quadraticCurveTo(54, 10, 42, 16);
+                ctx.quadraticCurveTo(14, 20, -10, 12);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                // Cream underside of lower jaw
+                ctx.fillStyle = '#E9F5DB';
+                ctx.beginPath();
+                ctx.ellipse(20, 11, 22, 4.5, 0.04, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Lower row of chunky cartoon white teeth
+                ctx.fillStyle = '#FFFFFF';
+                ctx.strokeStyle = '#143324';
+                ctx.lineWidth = 1.8;
+                [8, 18, 28, 38].forEach((tx, ti) => {
+                    const th = ti === 3 ? 9.5 : 8;
+                    ctx.beginPath();
+                    ctx.moveTo(tx - 4.2, 1);
+                    ctx.lineTo(tx, -th);
+                    ctx.lineTo(tx + 4.2, 1);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                });
+                ctx.restore();
+            }
+
+            if (pass === 'front') {
+                // UPPER JAW & EXPRESSIVE FACE (rendered IN FRONT of the falling hamster so it truly chomps over it!)
+                ctx.save();
+                ctx.translate(-8, -8);
+                ctx.rotate(-jawAngle * 0.92);
+
+                // Upper row of chunky rounded white cartoon teeth
+                ctx.fillStyle = '#FFFFFF';
+                ctx.strokeStyle = '#143324';
+                ctx.lineWidth = 1.8;
+                [10, 20, 30, 40].forEach((tx, ti) => {
+                    const th = ti === 2 ? 10 : 8.5;
+                    ctx.beginPath();
+                    ctx.moveTo(tx - 4.4, -1);
+                    ctx.lineTo(tx, th);
+                    ctx.lineTo(tx + 4.4, -1);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                });
+
+                // Upper snout & brow
+                const upperGrad = ctx.createLinearGradient(-10, -24, 52, 4);
+                upperGrad.addColorStop(0, '#95D5B2');
+                upperGrad.addColorStop(0.5, '#52B788');
+                upperGrad.addColorStop(1, '#2D6A4F');
+                ctx.fillStyle = upperGrad;
+                ctx.strokeStyle = '#143324';
+                ctx.lineWidth = 3.2;
+                ctx.beginPath();
+                ctx.moveTo(-14, 0);
+                ctx.quadraticCurveTo(-12, -22, 4, -22);
+                ctx.quadraticCurveTo(18, -22, 24, -14);
+                ctx.quadraticCurveTo(44, -15, 52, -6);
+                ctx.quadraticCurveTo(56, 1, 46, 2);
+                ctx.lineTo(-10, 2);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                // Cute rosy cheek blush when happily chewing!
+                if (croc.phase === 'HAPPY_CHEW' || croc.phase === 'CHOMP') {
+                    ctx.fillStyle = 'rgba(255, 117, 143, 0.55)';
+                    ctx.beginPath();
+                    ctx.ellipse(2, -4, 7.5, 4.5, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Raised nostril bump at snout tip
+                ctx.fillStyle = '#40916C';
+                ctx.strokeStyle = '#143324';
+                ctx.lineWidth = 2.2;
+                ctx.beginPath();
+                ctx.arc(44, -11, 5.5, Math.PI, 0);
+                ctx.fill();
+                ctx.stroke();
+                ctx.fillStyle = '#143324';
+                ctx.beginPath();
+                ctx.arc(45, -10.5, 2.2, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Cute pink lotus petal stuck comically on crocodile's snout after missing a bite!
+                if (croc.petalOnNose) {
+                    ctx.save();
+                    ctx.translate(46, -15);
+                    ctx.rotate(0.45);
+                    ctx.fillStyle = '#FF758F';
+                    ctx.strokeStyle = '#881337';
+                    ctx.lineWidth = 1.6;
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, 8, 4.5, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.restore();
+                }
+
+                // Expressive Cartoon Eyes
+                const drawEye = (ex: number, ey: number, er: number) => {
+                    ctx.fillStyle = '#52B788';
+                    ctx.strokeStyle = '#143324';
+                    ctx.lineWidth = 2.6;
+                    ctx.beginPath();
+                    ctx.arc(ex, ey, er + 2.5, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    if (croc.phase === 'HAPPY_CHEW') {
+                        ctx.fillStyle = '#FDE047';
+                        ctx.beginPath();
+                        ctx.arc(ex, ey, er, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.strokeStyle = '#143324';
+                        ctx.lineWidth = 2.8;
+                        ctx.lineCap = 'round';
+                        ctx.beginPath();
+                        ctx.arc(ex, ey + 2.5, er * 0.56, Math.PI * 1.15, Math.PI * 1.85);
+                        ctx.stroke();
+                    } else if (croc.phase === 'LILY_MISS_GRUMP') {
+                        // Grumpy annoyed squinted eyes after missing the student!
+                        ctx.fillStyle = '#FEF08A';
+                        ctx.beginPath();
+                        ctx.arc(ex, ey, er, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.stroke();
+
+                        ctx.fillStyle = '#143324';
+                        ctx.beginPath();
+                        ctx.arc(ex + 1, ey + 1, er * 0.35, 0, Math.PI * 2);
+                        ctx.fill();
+
+                        // Heavy slanted grumpy brow
+                        ctx.fillStyle = '#2D6A4F';
+                        ctx.strokeStyle = '#143324';
+                        ctx.lineWidth = 2.6;
+                        ctx.beginPath();
+                        ctx.moveTo(ex - er - 2, ey - er * 0.65);
+                        ctx.lineTo(ex + er + 3, ey + er * 0.1);
+                        ctx.lineTo(ex + er + 2, ey - er - 3);
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.stroke();
+                    } else {
+                        ctx.fillStyle = '#FEF08A';
+                        ctx.beginPath();
+                        ctx.arc(ex, ey, er, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.stroke();
+
+                        ctx.fillStyle = '#143324';
+                        ctx.beginPath();
+                        ctx.ellipse(ex + 2, ey - 2.2, er * 0.36, er * 0.56, -0.2, 0, Math.PI * 2);
+                        ctx.fill();
+
+                        ctx.fillStyle = '#FFFFFF';
+                        ctx.beginPath();
+                        ctx.arc(ex - 1.5, ey - 3.2, er * 0.28, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                };
+                drawEye(11, -21, 6.2);
+                drawEye(-1, -18, 7.6);
+
+                ctx.restore();
+
+                // Water splash lip across chest base so crocodile sits seamlessly IN the lagoon
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+                ctx.beginPath();
+                ctx.ellipse(0, 22, 34, 6.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            ctx.restore();
+
+            // Comic "CHOMP!!", "MISSED! GRRR!", & caught student playful badges (rendered upright in front pass)
+            if (pass === 'front') {
+                if (croc.phase === 'OPEN_JAWS' || croc.phase === 'SURFACING' || croc.phase === 'LILY_LUNGE') {
+                    ctx.save();
+                    const pulse = 1 + Math.sin(time * 16) * 0.08;
+                    ctx.translate(croc.x, croc.y + 42 * scale);
+                    ctx.scale(pulse, pulse);
+                    const lbl = croc.phase === 'LILY_LUNGE' ? '🐊 SNAPPING!!' : '🐊 OPEN WIDE!!';
+                    ctx.font = "900 13px 'Fredoka', sans-serif";
+                    const bw = ctx.measureText(lbl).width + 20;
+                    ctx.fillStyle = '#EF233C';
+                    ctx.strokeStyle = '#FFFFFF';
+                    ctx.lineWidth = 2.6;
+                    ctx.beginPath();
+                    ctx.roundRect(-bw / 2, -13, bw, 26, 13);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(lbl, 0, 1);
+                    ctx.restore();
+                }
+
+                if (croc.phase === 'LILY_MISS_GRUMP') {
+                    // Comical red cartoon anger vein mark 💢 + grumpy "GRRR!! MISSED!!" bubble
+                    ctx.save();
+                    const pulse = 1 + Math.sin(time * 22) * 0.08;
+                    ctx.translate(croc.x, croc.y - 54 * scale);
+                    ctx.scale(pulse, pulse);
+                    const grumpLbl = '😤 GRRR!! MISSED!! 💢';
+                    ctx.font = "900 13.5px 'Fredoka', sans-serif";
+                    const gw = ctx.measureText(grumpLbl).width + 22;
+                    ctx.fillStyle = '#FFF7ED';
+                    ctx.strokeStyle = '#EA580C';
+                    ctx.lineWidth = 2.8;
+                    ctx.beginPath();
+                    ctx.roundRect(-gw / 2, -14, gw, 28, 14);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.fillStyle = '#9A3412';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(grumpLbl, 0, 0.5);
+                    ctx.restore();
+                }
+
+                if (croc.chompTextTimer > 0) {
+                    const alpha = Math.min(1, croc.chompTextTimer * 1.4);
+                    const popScale = 1 + Math.sin(Math.min(1, (1.25 - croc.chompTextTimer) * 6) * Math.PI) * 0.35;
+                    ctx.save();
+                    ctx.globalAlpha = alpha;
+                    ctx.translate(croc.x, croc.y - 68 * scale);
+                    ctx.scale(popScale, popScale);
+                    ctx.rotate(-0.08);
+
+                    // Spiky comic starburst behind CHOMP!!
+                    ctx.fillStyle = '#FFD166';
+                    ctx.strokeStyle = '#DC2626';
+                    ctx.lineWidth = 3.2;
+                    ctx.beginPath();
+                    const spikes = 12;
+                    for (let i = 0; i < spikes * 2; i++) {
+                        const r = i % 2 === 0 ? 58 : 38;
+                        const a = (i / (spikes * 2)) * Math.PI * 2 + time * 1.2;
+                        const sx2 = Math.cos(a) * r;
+                        const sy2 = Math.sin(a) * r * 0.56;
+                        if (i === 0) ctx.moveTo(sx2, sy2);
+                        else ctx.lineTo(sx2, sy2);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+
+                    ctx.font = "900 22px 'Fredoka', sans-serif";
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.lineWidth = 5;
+                    ctx.strokeStyle = '#7F1D1D';
+                    ctx.strokeText('CHOMP!! 🐊', 0, 1);
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fillText('CHOMP!! 🐊', 0, 1);
+                    ctx.restore();
+                }
+
+                if (croc.caughtHamsters.length > 0 && (croc.phase === 'CHOMP' || croc.phase === 'HAPPY_CHEW')) {
+                    const latest = croc.caughtHamsters[croc.caughtHamsters.length - 1];
+                    ctx.save();
+                    for (let s = 0; s < 3; s++) {
+                        const sa = time * 5.2 + (s * Math.PI * 2) / 3;
+                        const stX = croc.x + Math.cos(sa) * 34 * scale;
+                        const stY = croc.y - 34 * scale + Math.sin(sa) * 10 * scale;
+                        ctx.fillStyle = s % 2 === 0 ? '#FFD166' : '#FFFFFF';
+                        ctx.strokeStyle = '#3A1F0D';
+                        ctx.lineWidth = 1.4;
+                        ctx.beginPath();
+                        ctx.arc(stX, stY, 4.5, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.stroke();
+                    }
+                    ctx.restore();
+
+                    const caughtLabel = croc.caughtHamsters.length === 1
+                        ? `🐊 GOT ${latest.name.toUpperCase()}!`
+                        : `🐊 GOT ${croc.caughtHamsters.length} STUDENTS!`;
+                    ctx.save();
+                    ctx.font = "900 13.5px 'Fredoka', sans-serif";
+                    const cw = ctx.measureText(caughtLabel).width + 24;
+                    const cyBadge = croc.y + 42 * scale;
+                    ctx.fillStyle = '#143324';
+                    ctx.strokeStyle = '#FFD166';
+                    ctx.lineWidth = 2.8;
+                    ctx.beginPath();
+                    ctx.roundRect(croc.x - cw / 2, cyBadge - 14, cw, 28, 14);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.fillStyle = '#FFD166';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(caughtLabel, croc.x, cyBadge + 0.5);
+                    ctx.restore();
+                }
+            }
+        };
+
         const renderScene = (time: number) => {
             const g = gameRef.current;
             const parent = canvas.parentElement;
             const w = parent ? parent.clientWidth : window.innerWidth;
             const h = parent ? parent.clientHeight : window.innerHeight;
+
+            ctx.save();
+            if (g.screenShake > 0.1) {
+                const sx = (Math.random() - 0.5) * g.screenShake * 1.4;
+                const sy = (Math.random() - 0.5) * g.screenShake * 1.4;
+                ctx.translate(sx, sy);
+            }
 
             drawTropicalLagoon(w, h, time);
 
@@ -2667,7 +4594,21 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 tagTier
             } = layout;
 
-            const eliminated = g.students.filter(s => s.eliminated);
+            const croc = g.crocodile;
+            const crocScale = Math.max(0.76, Math.min(1.18, Math.min(w, h) / 680));
+            const isCrocSwimming =
+                croc.phase === 'PATROL' ||
+                croc.phase === 'STALKING' ||
+                croc.phase === 'LILY_ROAM' ||
+                croc.phase === 'LILY_STALK';
+            const crocBehindBoat = isCrocSwimming && croc.y < cy + boatRadius * Math.sin(g.cameraPitch) * 0.15;
+
+            // Draw patrolling/stalking crocodile behind the boat when it orbits to the far side of the lagoon
+            if (crocBehindBoat) {
+                drawCrocodileSwimming(croc, time, crocScale * 0.94);
+            }
+
+            const eliminated = g.students.filter(s => s.eliminated && !s.chompedByCroc);
             const sinCam = Math.sin(g.cameraPitch);
             const nameTagQueue: NameTagItem[] = [];
 
@@ -2988,9 +4929,8 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
 
             // Depth-sorted hamsters & Captain Coconut inside the boat across all concentric rings
             const flyingIds = new Set(g.flyingHamsters.filter(f => f.delay <= 0).map(f => f.hamster.id));
-            if (g.fakeOutFlight) {
-                flyingIds.add(g.fakeOutFlight.hamster.id);
-            }
+            g.lilyFlights.forEach(lf => flyingIds.add(lf.hamster.id));
+            g.escapeJumps.forEach(ej => flyingIds.add(ej.hamster.id));
             const renderEntities: {
                 type: 'student' | 'captain';
                 ham?: HamsterStudent;
@@ -2999,7 +4939,7 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             }[] = [];
 
             active.forEach(ham => {
-                if (flyingIds.has(ham.id)) return;
+                if (flyingIds.has(ham.id) || ham.onLilyPadIndex !== null) return;
                 const lx = ham.curX * usableRadius;
                 const ly = ham.curY * usableRadius;
                 const rNorm = Math.min(1, Math.hypot(lx, ly) / Math.max(1, boatRadius));
@@ -3074,8 +5014,139 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 }
             });
 
-            // Foreground eliminated hamsters
+            // Foreground eliminated hamsters (if any legacy inner-tube floaters)
             drawEliminatedSet(true);
+
+            // Students perched on floating water lilies — react dynamically with funny scared/relieved emotions!
+            const speechBubbleQueue: { x: number; y: number; text: string; isScared: boolean }[] = [];
+            active.forEach(ham => {
+                if (ham.onLilyPadIndex === null) return;
+                const pad = g.lotusPads[ham.onLilyPadIndex];
+                if (!pad) return;
+                const pos = getLotusPadScreenPos(pad, ham.onLilyPadIndex, w, h, time, layout);
+                const isStalked = croc.huntTargetPadIndex === ham.onLilyPadIndex && (croc.phase === 'LILY_STALK' || croc.phase === 'LILY_LUNGE');
+                const isScared = ham.expression === 'terrified' || ham.expression === 'crying_funny' || ham.expression === 'hiding';
+                const isRelieved = ham.expression === 'relieved_smug';
+
+                // Pulsing red danger ring under the water lily currently being hunted by the crocodile!
+                if (isStalked) {
+                    ctx.save();
+                    const pulseR = pos.r * (1.32 + Math.sin(time * 18) * 0.14);
+                    ctx.strokeStyle = 'rgba(239, 35, 60, 0.9)';
+                    ctx.lineWidth = 3.4;
+                    ctx.setLineDash([7, 5]);
+                    ctx.beginPath();
+                    ctx.ellipse(pos.x, pos.y + 2, pulseR, pulseR * 0.58, 0, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+
+                // Tremble wildly when scared, hop cheerfully when safe/relieved!
+                const shiverX = isScared ? Math.sin(time * (isStalked ? 62 : 44) + ham.bobOffset) * (isStalked ? 3.5 : 2.1) : 0;
+                const happyHop = isScared
+                    ? Math.abs(Math.sin(time * 22 + ham.bobOffset)) * 2.5
+                    : Math.abs(Math.sin((time - ham.lilyLandTime) * 5.5)) * 5;
+                const sx = pos.x + shiverX;
+                const sy = pos.y + pad.bounce * 8 - 10 - happyHop;
+                const safeR = Math.max(15, Math.min(22, hamRadius * 0.95));
+
+                if (g.state !== 'LILY_HUNT') {
+                    ham.expression = ham.relievedUntil > time ? 'relieved_smug' : 'happy';
+                }
+                ham.wobbleAngle = isScared
+                    ? Math.sin(time * 36 + ham.bobOffset) * 0.16
+                    : Math.sin(time * 6 + ham.bobOffset) * 0.08;
+                drawHamsterCharacter(ctx, sx, sy, safeR, ham, time, false, g.captainPaddlePhase, false);
+
+                // Dynamic status badge below the lily pad
+                ctx.save();
+                const statusBadge = isStalked
+                    ? '😱 DANGER!!'
+                    : isScared
+                        ? '😰 UH-OH!!'
+                        : isRelieved
+                            ? '💨 ESCAPED!'
+                            : 'SAFE! 🪷';
+                const badgeFill = isStalked
+                    ? '#EF233C'
+                    : isScared
+                        ? '#F59E0B'
+                        : '#06D6A0';
+                const badgeTextCol = isStalked ? '#FFFFFF' : '#073B4C';
+                ctx.font = "800 10.5px 'Fredoka', sans-serif";
+                const sbw = ctx.measureText(statusBadge).width + 12;
+                const sbx = Math.max(safeLeft + sbw / 2, Math.min(safeRight - sbw / 2, sx));
+                const sby = Math.min(h - 14, pos.y + pos.r * 0.65 + 10);
+                ctx.fillStyle = badgeFill;
+                ctx.strokeStyle = isStalked ? '#FFFFFF' : '#143324';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.roundRect(sbx - sbw / 2, sby - 9, sbw, 18, 9);
+                ctx.fill();
+                ctx.stroke();
+                ctx.fillStyle = badgeTextCol;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(statusBadge, sbx, sby + 0.5);
+                ctx.restore();
+
+                const safeTagY = sy - safeR - 14;
+                nameTagQueue.push({
+                    x: sx,
+                    y: safeTagY,
+                    anchorX: sx,
+                    anchorY: safeTagY,
+                    name: ham.name,
+                    displayText: formatSmartTagName(ham.name, Math.max(11, tagTier.maxChars)),
+                    isCaptain: false,
+                    priority: isStalked ? 'spotlight' : 'normal',
+                    accentColor: isStalked ? '#EF233C' : '#06D6A0',
+                    fontSize: Math.max(10.5, tagTier.fontSize),
+                    boxH: Math.max(18, tagTier.boxH),
+                    paddingX: Math.max(7, tagTier.paddingX),
+                    maxWidth: tagTier.maxWidth
+                });
+
+                if (ham.speechBubble && time < ham.speechExpiry) {
+                    speechBubbleQueue.push({
+                        x: sx,
+                        y: safeTagY - 24,
+                        text: ham.speechBubble,
+                        isScared: isScared || isStalked
+                    });
+                }
+            });
+
+            // Foreground patrolling/stalking crocodile
+            if (isCrocSwimming && !crocBehindBoat) {
+                drawCrocodileSwimming(croc, time, crocScale * 1.05);
+            }
+
+            // Lunging crocodile BACK pass (water foam, body, tail, open throat, tongue, lower jaw)
+            if (!isCrocSwimming) {
+                drawCrocodileLunging(croc, time, crocScale * 1.15, 'back');
+            }
+
+            // Render funny panic / escape comic speech bubbles above lily-pad hamsters
+            speechBubbleQueue.forEach(sb => {
+                ctx.save();
+                ctx.font = "800 11.5px 'Fredoka', sans-serif";
+                const bw = ctx.measureText(sb.text).width + 18;
+                const bx = Math.max(safeLeft + bw / 2 + 4, Math.min(safeRight - bw / 2 - 4, sb.x));
+                const by = Math.max(safeTop + 14, sb.y);
+                ctx.fillStyle = sb.isScared ? '#FFFBEB' : '#ECFDF5';
+                ctx.strokeStyle = sb.isScared ? '#EA580C' : '#059669';
+                ctx.lineWidth = 2.2;
+                ctx.beginPath();
+                ctx.roundRect(bx - bw / 2, by - 11, bw, 22, 11);
+                ctx.fill();
+                ctx.stroke();
+                ctx.fillStyle = sb.isScared ? '#9A3412' : '#065F46';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(sb.text, bx, by + 0.5);
+                ctx.restore();
+            });
 
             // Resolve overlapping name tags cleanly within safe HUD bounds and render upright badges
             resolveNameTagCollisions(nameTagQueue, ctx, {
@@ -3090,67 +5161,25 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 .sort((a, b) => (a.isCaptain ? 1 : 0) - (b.isCaptain ? 1 : 0))
                 .forEach(tag => drawNameTag(tag));
 
-            // Fake-out airborne hamster (always spotlight-prominent on top of crowd)
-            if (g.fakeOutFlight) {
-                const fo = g.fakeOutFlight;
-                const t = Math.min(1, fo.t);
-                const split = 0.54;
-                let curX = 0;
-                let curY = 0;
-                let zoomScale = 1;
+            // Airborne hamsters flying safely toward floating water lilies
+            const arcScale = Math.max(0.68, cameraScale);
+            g.lilyFlights.forEach(lf => {
+                const t = Math.min(1, lf.t);
+                const curX = lf.startX + (lf.targetX - lf.startX) * t;
+                const arcHeight = Math.sin(t * Math.PI) * 185 * arcScale;
+                const curY = lf.startY + (lf.targetY - lf.startY) * t - arcHeight;
+                const zoomScale = 1 + Math.sin(t * Math.PI) * 0.72;
 
-                const lx = (g.state === 'CHAOS_SPIN' ? fo.hamster.curX : fo.hamster.seatX) * usableRadius;
-                const ly = (g.state === 'CHAOS_SPIN' ? fo.hamster.curY : fo.hamster.seatY) * usableRadius;
-                const rNorm = Math.min(1, Math.hypot(lx, ly) / Math.max(1, boatRadius));
-                const seatZ = -bowlDepth * 0.14 * (1 - rNorm * 0.65) + hamRadius * 0.42;
-                const liveSeatProj = projectBoatPoint(lx, ly, seatZ, boatX, boatY);
-                const arcScale = Math.max(0.68, cameraScale);
+                lf.trail.push({ x: curX, y: curY });
+                if (lf.trail.length > 16) lf.trail.shift();
 
-                if (t <= split) {
-                    const p1 = t / split;
-                    curX = fo.startX + (fo.peakOutX - fo.startX) * p1;
-                    const arcHeight = Math.sin(p1 * Math.PI) * 175 * arcScale;
-                    curY = fo.startY + (fo.peakOutY - fo.startY) * p1 - arcHeight;
-                    zoomScale = 1 + Math.sin(p1 * Math.PI * 0.85) * 0.85;
-                    fo.hamster.wobbleAngle = p1 * Math.PI * 5;
-                    fo.hamster.expression = 'shocked';
-                } else {
-                    const p2 = (t - split) / (1 - split);
-                    curX = fo.peakOutX + (liveSeatProj.x - fo.peakOutX) * p2;
-                    const returnArc = Math.sin(p2 * Math.PI) * 200 * arcScale;
-                    curY = fo.peakOutY + (liveSeatProj.y - fo.peakOutY) * p2 - returnArc;
-                    zoomScale = 1 + (1 - p2) * 0.65 + Math.sin(p2 * Math.PI) * 0.35;
-                    fo.hamster.wobbleAngle = -p2 * Math.PI * 4;
-                    fo.hamster.expression = 'excited';
-
-                    const ringAlpha = Math.max(0, 1 - p2 * 1.4);
-                    if (ringAlpha > 0) {
-                        ctx.save();
-                        ctx.strokeStyle = `rgba(6, 214, 160, ${ringAlpha})`;
-                        ctx.lineWidth = 4;
-                        ctx.beginPath();
-                        ctx.ellipse(fo.peakOutX, fo.peakOutY + 14, 24 + p2 * 55, 11 + p2 * 24, 0, 0, Math.PI * 2);
-                        ctx.stroke();
-
-                        ctx.strokeStyle = `rgba(255, 209, 102, ${ringAlpha})`;
-                        ctx.lineWidth = 2.5;
-                        ctx.beginPath();
-                        ctx.ellipse(fo.peakOutX, fo.peakOutY + 14, 14 + p2 * 35, 6 + p2 * 15, 0, 0, Math.PI * 2);
-                        ctx.stroke();
-                        ctx.restore();
-                    }
-                }
-
-                fo.trail.push({ x: curX, y: curY });
-                if (fo.trail.length > 16) fo.trail.shift();
-
-                if (fo.trail.length > 2) {
+                if (lf.trail.length > 2) {
                     ctx.save();
-                    ctx.strokeStyle = t <= split ? 'rgba(255, 255, 255, 0.75)' : 'rgba(6, 214, 160, 0.85)';
+                    ctx.strokeStyle = t < 0.55 ? 'rgba(255, 255, 255, 0.8)' : 'rgba(6, 214, 160, 0.9)';
                     ctx.lineWidth = 4;
                     ctx.setLineDash([8, 6]);
                     ctx.beginPath();
-                    fo.trail.forEach((pt, idx) => {
+                    lf.trail.forEach((pt, idx) => {
                         if (idx === 0) ctx.moveTo(pt.x, pt.y);
                         else ctx.lineTo(pt.x, pt.y);
                     });
@@ -3158,28 +5187,40 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                     ctx.restore();
                 }
 
-                const flyR = Math.max(20, hamRadius * zoomScale);
-                drawHamsterCharacter(ctx, curX, curY, flyR, fo.hamster, time, false, g.captainPaddlePhase, false);
+                // Target highlight ring on destination water lily
+                ctx.save();
+                ctx.strokeStyle = `rgba(6, 214, 160, ${0.45 + Math.sin(time * 16) * 0.35})`;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.ellipse(lf.targetX, lf.targetY + 4, 34, 19, 0, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+
+                lf.hamster.wobbleAngle = t * Math.PI * 4.5;
+                lf.hamster.expression = t < 0.65 ? 'shocked' : 'excited';
+                const flyR = Math.max(19, hamRadius * zoomScale);
+                drawHamsterCharacter(ctx, curX, curY, flyR, lf.hamster, time, false, g.captainPaddlePhase, false);
+
                 const clampedTagY = Math.max(safeTop + 34, curY - flyR - 18);
                 drawNameTag({
                     x: Math.max(safeLeft + 60, Math.min(safeRight - 60, curX)),
                     y: clampedTagY,
                     anchorX: curX,
                     anchorY: clampedTagY,
-                    name: fo.hamster.name,
-                    displayText: fo.hamster.name,
+                    name: lf.hamster.name,
+                    displayText: lf.hamster.name,
                     isCaptain: false,
                     priority: 'spotlight',
-                    accentColor: fo.hamster.vest?.main,
+                    accentColor: '#06D6A0',
                     fontSize: 13,
                     boxH: 24,
                     paddingX: 10,
                     maxWidth: 220
                 });
 
-                const badgeText = t <= split ? '😱 FLYING OUT!!' : '😅 BOUNCED BACK TO BOAT!! 🛶';
-                const badgeBg = t <= split ? '#EF233C' : '#06D6A0';
-                const badgeFg = t <= split ? '#FFFFFF' : '#073B4C';
+                const badgeText = t < 0.6 ? '😱 FLYING OUT!!' : '🪷 LANDING ON LILY PAD!!';
+                const badgeBg = t < 0.6 ? '#F59E0B' : '#06D6A0';
+                const badgeFg = t < 0.6 ? '#FFFFFF' : '#073B4C';
                 ctx.save();
                 ctx.font = "800 12px 'Fredoka', sans-serif";
                 const bWidth = ctx.measureText(badgeText).width + 18;
@@ -3197,38 +5238,151 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 ctx.textBaseline = 'middle';
                 ctx.fillText(badgeText, bx, by);
                 ctx.restore();
-            }
+            });
 
-            // Flying launched hamsters (true eliminations at the end of the round)
-            const launchArcScale = Math.max(0.68, cameraScale);
-            g.flyingHamsters.forEach(fh => {
-                if (fh.delay > 0 || fh.t > 1) return;
-                const t = Math.min(1, fh.t);
-                const curX = fh.startX + (fh.targetX - fh.startX) * t;
-                const curY = fh.startY + (fh.targetY - fh.startY) * t - Math.sin(t * Math.PI) * 195 * launchArcScale;
+            // Hilarious last-second escape jumps over the crocodile's snapping jaws!
+            g.escapeJumps.forEach(ej => {
+                const t = Math.min(1, ej.t);
+                const curX = ej.startX + (ej.targetX - ej.startX) * t;
+                const arcH = Math.sin(t * Math.PI) * 210 * arcScale;
+                const curY = ej.startY + (ej.targetY - ej.startY) * t - arcH;
                 const zoomScale = 1 + Math.sin(t * Math.PI) * 0.78;
-                const flyR = Math.max(20, hamRadius * zoomScale);
 
-                fh.hamster.wobbleAngle = t * Math.PI * 6;
-                fh.hamster.expression = 'shocked';
-                drawHamsterCharacter(ctx, curX, curY, flyR, fh.hamster, time, false, g.captainPaddlePhase, false);
-                const clampedTagY = Math.max(safeTop + 18, curY - flyR - 18);
+                ej.trail.push({ x: curX, y: curY });
+                if (ej.trail.length > 18) ej.trail.shift();
+                if (ej.trail.length > 2) {
+                    ctx.save();
+                    ctx.strokeStyle = 'rgba(255, 209, 102, 0.92)';
+                    ctx.lineWidth = 4.5;
+                    ctx.setLineDash([7, 5]);
+                    ctx.beginPath();
+                    ej.trail.forEach((pt, idx) => {
+                        if (idx === 0) ctx.moveTo(pt.x, pt.y);
+                        else ctx.lineTo(pt.x, pt.y);
+                    });
+                    ctx.stroke();
+                    ctx.restore();
+                }
+
+                ej.hamster.wobbleAngle = -t * Math.PI * 4;
+                ej.hamster.expression = t < 0.45 ? 'terrified' : 'relieved_smug';
+                const flyR = Math.max(20, hamRadius * zoomScale);
+                drawHamsterCharacter(ctx, curX, curY, flyR, ej.hamster, time, false, g.captainPaddlePhase, false);
+
+                const clampedTagY = Math.max(safeTop + 34, curY - flyR - 18);
                 drawNameTag({
                     x: Math.max(safeLeft + 60, Math.min(safeRight - 60, curX)),
                     y: clampedTagY,
                     anchorX: curX,
                     anchorY: clampedTagY,
-                    name: fh.hamster.name,
-                    displayText: fh.hamster.name,
+                    name: ej.hamster.name,
+                    displayText: ej.hamster.name,
                     isCaptain: false,
                     priority: 'spotlight',
-                    accentColor: fh.hamster.vest?.main,
+                    accentColor: '#FFD166',
                     fontSize: 13,
                     boxH: 24,
                     paddingX: 10,
                     maxWidth: 220
                 });
+
+                const escBadge = `💨 ESCAPED!! ${ej.escapeQuote}`;
+                ctx.save();
+                ctx.font = "900 12px 'Fredoka', sans-serif";
+                const ew = ctx.measureText(escBadge).width + 18;
+                const ex = Math.max(safeLeft + ew / 2, Math.min(safeRight - ew / 2, curX));
+                const ey = Math.max(safeTop + 12, clampedTagY - 26);
+                ctx.fillStyle = '#06D6A0';
+                ctx.strokeStyle = '#143324';
+                ctx.lineWidth = 2.4;
+                ctx.beginPath();
+                ctx.roundRect(ex - ew / 2, ey - 11, ew, 22, 11);
+                ctx.fill();
+                ctx.stroke();
+                ctx.fillStyle = '#073B4C';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(escBadge, ex, ey);
+                ctx.restore();
             });
+
+            // Chosen target hamster(s) arcing straight down into the crocodile's wide-open jaws!
+            const launchArcScale = Math.max(0.72, cameraScale);
+            g.flyingHamsters.forEach(fh => {
+                if (fh.delay > 0 || fh.splashed) return;
+                const t = Math.min(1, fh.t);
+                const curX = fh.startX + (fh.targetX - fh.startX) * t;
+                const arcPeak = fh.fromLilyPad ? 185 : 215;
+                const curY = fh.startY + (fh.targetY - fh.startY) * t - Math.sin(t * Math.PI) * arcPeak * launchArcScale;
+                // Shrink slightly right as the hamster drops inside the open mouth (t = 0.85..1.0)
+                const mouthDropScale = t > 0.84 ? Math.max(0.45, 1 - ((t - 0.84) / 0.16) * 0.55) : 1;
+                const zoomScale = (1 + Math.sin(t * Math.PI) * 0.82) * mouthDropScale;
+                const flyR = Math.max(16, hamRadius * zoomScale);
+
+                fh.trail.push({ x: curX, y: curY });
+                if (fh.trail.length > 18) fh.trail.shift();
+                if (fh.trail.length > 2) {
+                    ctx.save();
+                    ctx.strokeStyle = 'rgba(239, 35, 60, 0.88)';
+                    ctx.lineWidth = 4.5;
+                    ctx.setLineDash([8, 6]);
+                    ctx.beginPath();
+                    fh.trail.forEach((pt, idx) => {
+                        if (idx === 0) ctx.moveTo(pt.x, pt.y);
+                        else ctx.lineTo(pt.x, pt.y);
+                    });
+                    ctx.stroke();
+                    ctx.restore();
+                }
+
+                fh.hamster.wobbleAngle = t * Math.PI * 6;
+                fh.hamster.expression = 'scream';
+                drawHamsterCharacter(ctx, curX, curY, flyR, fh.hamster, time, false, g.captainPaddlePhase, false);
+
+                if (t < 0.92) {
+                    const clampedTagY = Math.max(safeTop + 34, curY - flyR - 18);
+                    drawNameTag({
+                        x: Math.max(safeLeft + 60, Math.min(safeRight - 60, curX)),
+                        y: clampedTagY,
+                        anchorX: curX,
+                        anchorY: clampedTagY,
+                        name: fh.hamster.name,
+                        displayText: fh.hamster.name,
+                        isCaptain: false,
+                        priority: 'spotlight',
+                        accentColor: '#EF233C',
+                        fontSize: 13.5,
+                        boxH: 25,
+                        paddingX: 10,
+                        maxWidth: 230
+                    });
+
+                    const dangerBadge = '🐊 FALLING TO THE CROC!!';
+                    ctx.save();
+                    ctx.font = "900 12px 'Fredoka', sans-serif";
+                    const dw = ctx.measureText(dangerBadge).width + 18;
+                    const dx = Math.max(safeLeft + dw / 2, Math.min(safeRight - dw / 2, curX));
+                    const dy = Math.max(safeTop + 12, clampedTagY - 26);
+                    ctx.fillStyle = '#EF233C';
+                    ctx.strokeStyle = '#FFFFFF';
+                    ctx.lineWidth = 2.4;
+                    ctx.beginPath();
+                    ctx.roundRect(dx - dw / 2, dy - 11, dw, 22, 11);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(dangerBadge, dx, dy);
+                    ctx.restore();
+                }
+            });
+
+            // Lunging crocodile FRONT pass (upper jaw, teeth, brow, eyes, CHOMP!! sunburst & happy-chew badge)
+            // Drawn AFTER falling hamsters so the upper jaw truly chomps OVER the falling student!
+            if (!isCrocSwimming) {
+                drawCrocodileLunging(croc, time, crocScale * 1.15, 'front');
+            }
 
             // Splash & sparkle particles
             g.particles.forEach(p => {
@@ -3240,6 +5394,8 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 ctx.fill();
                 ctx.restore();
             });
+
+            ctx.restore();
         };
 
         const loop = (now: number) => {
@@ -3272,7 +5428,12 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
     return (
         <canvas
             ref={canvasRef}
-            className="w-full h-full block select-none"
+            onClick={() => {
+                if (canClickToSpin && onStageClick) {
+                    onStageClick();
+                }
+            }}
+            className={`w-full h-full block select-none ${canClickToSpin ? 'cursor-pointer' : ''}`}
         />
     );
 });

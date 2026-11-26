@@ -497,19 +497,21 @@ export const pauseSquidGameYouTubeAudio = () => {
 
 export const stopSquidGameYouTubeAudio = () => {
     try {
-        const iframe = document.getElementById('squid-yt-audio-player') as HTMLIFrameElement | null;
-        if (iframe && iframe.contentWindow) {
-            iframe.contentWindow.postMessage(JSON.stringify({
-                event: 'command',
-                func: 'pauseVideo',
-                args: []
-            }), '*');
-            iframe.contentWindow.postMessage(JSON.stringify({
-                event: 'command',
-                func: 'seekTo',
-                args: [0, true]
-            }), '*');
-        }
+        ['squid-yt-audio-player', 'coconut-yt-audio-player'].forEach((id) => {
+            const iframe = document.getElementById(id) as HTMLIFrameElement | null;
+            if (iframe && iframe.contentWindow) {
+                iframe.contentWindow.postMessage(JSON.stringify({
+                    event: 'command',
+                    func: 'pauseVideo',
+                    args: []
+                }), '*');
+                iframe.contentWindow.postMessage(JSON.stringify({
+                    event: 'command',
+                    func: 'seekTo',
+                    args: [0, true]
+                }), '*');
+            }
+        });
     } catch (e) {
         console.warn('YouTube audio stop error:', e);
     }
@@ -8120,6 +8122,118 @@ const RedLightMusicPlayer = ({ isPlaying, isMuted, volume = 80 }: { isPlaying: b
     );
 };
 
+// Coconut Boat YouTube Music Player (plays while spinning, pauses when someone is chosen, and continues from paused position on next spin)
+const CoconutMusicPlayer = ({ isPlaying, isMuted, volume = 80 }: { isPlaying: boolean; isMuted: boolean; volume?: number }) => {
+    const iframeRef = useRef<HTMLIFrameElement>(null);
+    const [mounted, setMounted] = useState(false);
+    const stateRef = useRef({ isPlaying, isMuted, volume });
+    stateRef.current = { isPlaying, isMuted, volume };
+
+    const sendCommand = (func: string, args: any[] = []) => {
+        const win = iframeRef.current?.contentWindow;
+        if (!win) return;
+        try {
+            win.postMessage(JSON.stringify({ event: 'command', func, args }), '*');
+        } catch {
+            // Ignore cross-origin warnings
+        }
+    };
+
+    const syncPlayback = () => {
+        const { isPlaying: playing, isMuted: muted, volume: vol } = stateRef.current;
+        if (!iframeRef.current?.contentWindow) return;
+        if (playing) {
+            if (muted || vol <= 0) {
+                sendCommand('mute');
+            } else {
+                sendCommand('unMute');
+                sendCommand('setVolume', [vol]);
+            }
+            sendCommand('playVideo');
+        } else {
+            sendCommand('pauseVideo');
+        }
+    };
+
+    useEffect(() => {
+        if (isPlaying) {
+            setMounted(true);
+        }
+    }, [isPlaying]);
+
+    useEffect(() => {
+        if (!mounted) return;
+        const onMessage = (ev: MessageEvent) => {
+            if (!ev.origin.includes('youtube.com')) return;
+            try {
+                const data = typeof ev.data === 'string' ? JSON.parse(ev.data) : ev.data;
+                if (data?.event === 'onReady' || data?.event === 'initialDelivery') {
+                    syncPlayback();
+                }
+            } catch {
+                // Ignore non-JSON messages
+            }
+        };
+        window.addEventListener('message', onMessage);
+        return () => window.removeEventListener('message', onMessage);
+    }, [mounted]);
+
+    const handleIframeLoad = () => {
+        const win = iframeRef.current?.contentWindow;
+        if (win) {
+            try {
+                win.postMessage(JSON.stringify({ event: 'listening', id: 'coconut-yt-audio-player' }), '*');
+            } catch {
+                // Ignore cross-origin warnings
+            }
+        }
+        syncPlayback();
+        window.setTimeout(syncPlayback, 350);
+        window.setTimeout(syncPlayback, 900);
+    };
+
+    useEffect(() => {
+        if (!mounted) return;
+        syncPlayback();
+        const t = window.setTimeout(syncPlayback, 250);
+        return () => window.clearTimeout(t);
+    }, [isPlaying, isMuted, volume, mounted]);
+
+    if (!mounted) return null;
+
+    const originParam = typeof window !== 'undefined' && window.location.origin
+        ? `&origin=${encodeURIComponent(window.location.origin)}`
+        : '';
+
+    return (
+        <div
+            style={{
+                position: 'fixed',
+                bottom: 0,
+                right: 0,
+                width: '240px',
+                height: '140px',
+                pointerEvents: 'none',
+                opacity: 0.001,
+                zIndex: -1
+            }}
+            aria-hidden="true"
+        >
+            <iframe
+                id="coconut-yt-audio-player"
+                ref={iframeRef}
+                width="240"
+                height="140"
+                src={`https://www.youtube.com/embed/W16EsK4JCKM?enablejsapi=1&autoplay=1&loop=1&playlist=W16EsK4JCKM&controls=0&disablekb=1&fs=0&playsinline=1${originParam}`}
+                title="Coconut Boat Spin Music"
+                allow="autoplay; encrypted-media"
+                style={{ border: 0 }}
+                onLoad={handleIframeLoad}
+            />
+        </div>
+    );
+};
+
 interface SquidGamePickerProps {
     onViewChange?: (view: ViewState) => void;
 }
@@ -8619,6 +8733,15 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                                 <span>20s</span>
                                 <span>30s</span>
                             </div>
+                            <div className={`mt-1 text-[11px] font-bold px-2.5 py-1.5 rounded-lg border text-center ${
+                                coconutDuration >= 20
+                                    ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300'
+                                    : 'bg-amber-950/50 border-amber-500/40 text-amber-200'
+                            }`}>
+                                {coconutDuration >= 20
+                                    ? '🐊 Crocodile Lily Hunt: Scared reactions, chases & escapes!'
+                                    : '🐊 Quick Chomp: Fast spin into the crocodile’s mouth'}
+                            </div>
                         </div>
                     ) : activeGame === 'tag' ? (
                         <div className="flex flex-col gap-2 bg-slate-900 p-3 rounded-xl border border-slate-700/50">
@@ -8670,7 +8793,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
     const renderGameUI = () => (
         <div className="absolute inset-0 pointer-events-none z-20 flex flex-col justify-between">
             <div className="flex justify-between items-start p-2.5 sm:p-6 gap-2">
-                <div className="flex gap-2 sm:gap-4 pointer-events-auto flex-wrap sm:flex-nowrap">
+                <div className={`flex gap-2 sm:gap-4 flex-wrap sm:flex-nowrap ${activeGame === 'coconut' && gameState.phase === 'COCONUT_READY' ? 'pointer-events-none' : 'pointer-events-auto'}`}>
                     <div className="bg-slate-900/90 backdrop-blur text-white px-3 sm:px-6 py-1.5 sm:py-3 rounded-xl sm:rounded-2xl border-2 border-slate-700 shadow-lg flex items-center gap-2 sm:gap-4">
                         <div className="text-center">
                             <div className="text-emerald-400 text-[10px] sm:text-xs font-bold tracking-widest mb-0.5 sm:mb-1 uppercase">Players Alive</div>
@@ -8707,11 +8830,12 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                     )}
                     {activeGame === 'coconut' && (
                         <button
-                            onClick={() => {
+                            onClick={(e) => {
+                                e.stopPropagation();
                                 const next = coconutStageRef.current?.cycleCameraMode();
                                 if (next) setCoconutCameraMode(next);
                             }}
-                            className="bg-slate-900/90 hover:bg-slate-800 backdrop-blur text-white px-3 sm:px-4 py-1.5 sm:py-3 rounded-xl sm:rounded-2xl border-2 border-emerald-500/70 shadow-lg flex items-center gap-2 cursor-pointer transition"
+                            className="pointer-events-auto bg-slate-900/90 hover:bg-slate-800 backdrop-blur text-white px-3 sm:px-4 py-1.5 sm:py-3 rounded-xl sm:rounded-2xl border-2 border-emerald-500/70 shadow-lg flex items-center gap-2 cursor-pointer transition"
                             title="Switch Camera Perspective"
                         >
                             <Camera className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" />
@@ -8953,16 +9077,19 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                 </div>
             )}
 
-            {/* Coconut Boat in-game manual spin button: waits for click before starting boat spin & tropical music */}
+            {/* Coconut Boat in-game manual spin button: clicking button or anywhere on screen starts spin */}
             {activeGame === 'coconut' && gameState.phase === 'COCONUT_READY' && (
                 <div className="absolute bottom-12 left-1/2 transform -translate-x-1/2 pointer-events-auto z-30 flex flex-col items-center">
                     <button
-                        onClick={() => coconutStageRef.current?.beginSpin()}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            coconutStageRef.current?.beginSpin();
+                        }}
                         className="px-10 py-4 bg-gradient-to-r from-amber-500 via-emerald-500 to-cyan-500 hover:from-amber-400 hover:to-cyan-400 text-white rounded-2xl font-black text-2xl tracking-wider shadow-[0_0_50px_rgba(16,185,129,0.75)] border-4 border-amber-200/90 flex items-center gap-3 active:scale-95 hover:scale-105 transition-all cursor-pointer animate-pulse"
                         style={{ fontFamily: "'Fredoka', sans-serif" }}
                     >
                         <Play className="w-8 h-8 fill-white text-white" />
-                        CLICK TO SPIN
+                        CLICK ANYWHERE TO SPIN
                     </button>
                 </div>
             )}
@@ -9089,13 +9216,20 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                         students={students}
                         isMuted={muteUI || volume === 0}
                         volume={volume}
+                        canClickToSpin={view === 'game' && activeGame === 'coconut' && gameState.phase === 'COCONUT_READY' && !showVolumeSlider}
+                        onStageClick={() => {
+                            if (view === 'game' && activeGame === 'coconut' && gameState.phase === 'COCONUT_READY' && !showVolumeSlider) {
+                                coconutStageRef.current?.beginSpin();
+                            }
+                        }}
                         onStateChange={(st) => {
                             setGameState((prev: any) => ({
                                 ...prev,
                                 phase: st.phase,
                                 msg: st.msg,
                                 activeCount: st.activeCount,
-                                chaseSecondsLeft: st.chaseSecondsLeft
+                                chaseSecondsLeft: st.chaseSecondsLeft,
+                                isMusicPlaying: st.isMusicPlaying !== undefined ? st.isMusicPlaying : prev.isMusicPlaying
                             }));
                         }}
                         onRoundComplete={(eliminatedNames) => {
@@ -9152,6 +9286,15 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
             {activeGame === 'redlight' && view === 'game' && (
                 <RedLightMusicPlayer
                     isPlaying={!muteUI && volume > 0 && Boolean(gameState.isMusicPlaying) && view === 'game'}
+                    isMuted={muteUI || volume === 0}
+                    volume={volume}
+                />
+            )}
+
+            {/* YouTube Audio Player for Coconut Boat (W16EsK4JCKM) — plays while spinning, pauses when chosen, resumes on next spin */}
+            {activeGame === 'coconut' && view === 'game' && (
+                <CoconutMusicPlayer
+                    isPlaying={Boolean(gameState.isMusicPlaying) && view === 'game'}
                     isMuted={muteUI || volume === 0}
                     volume={volume}
                 />

@@ -202,13 +202,57 @@ export function TransparentCutoutImage({
           const b = data[p + 2];
           const maxC = Math.max(r, g, b);
           const minC = Math.min(r, g, b);
-          if (minC > 234 && maxC - minC < 24) {
+          // Strict studio-white threshold prevents bleeding into bright white hamster fur & outfits
+          if (minC >= 250 && maxC - minC <= 6) {
             isBg[idx] = 1;
             push(x + 1, y);
             push(x - 1, y);
             push(x, y + 1);
             push(x, y - 1);
           }
+        }
+
+        // Secondary pass strictly in the bottom floor-shadow strip (y >= 88%) to clear neutral gray cast shadows
+        // without touching warm pink paws/toes (which have maxC - minC >= 25)
+        const shadowStartY = Math.floor(h * 0.88);
+        const shadowVisited = new Uint8Array(w * h);
+        let sHead = 0;
+        let sTail = 0;
+        const pushShadow = (x: number, y: number) => {
+          if (x < 0 || x >= w || y < shadowStartY || y >= h) return;
+          const idx = y * w + x;
+          if (isBg[idx] || shadowVisited[idx]) return;
+          const p = idx * 4;
+          const r = data[p];
+          const g = data[p + 1];
+          const b = data[p + 2];
+          const maxC = Math.max(r, g, b);
+          const minC = Math.min(r, g, b);
+          if (minC >= 195 && maxC - minC <= 14) {
+            shadowVisited[idx] = 1;
+            isBg[idx] = 1;
+            queue[sTail++] = x;
+            queue[sTail++] = y;
+          }
+        };
+
+        for (let y = shadowStartY; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const idx = y * w + x;
+            if (!isBg[idx]) continue;
+            if (x > 0) pushShadow(x - 1, y);
+            if (x < w - 1) pushShadow(x + 1, y);
+            if (y > shadowStartY) pushShadow(x, y - 1);
+            if (y < h - 1) pushShadow(x, y + 1);
+          }
+        }
+        while (sHead < sTail) {
+          const x = queue[sHead++];
+          const y = queue[sHead++];
+          pushShadow(x + 1, y);
+          pushShadow(x - 1, y);
+          pushShadow(x, y + 1);
+          pushShadow(x, y - 1);
         }
 
         let minX = w;
@@ -232,9 +276,11 @@ export function TransparentCutoutImage({
                 const r = data[p];
                 const g = data[p + 1];
                 const b = data[p + 2];
+                const maxC = Math.max(r, g, b);
+                const minC = Math.min(r, g, b);
                 const brightness = (r + g + b) / 3;
-                if (brightness > 224) {
-                  data[p + 3] = Math.max(45, Math.round(255 * (1 - (brightness - 224) / 36)));
+                if (brightness > 244 && maxC - minC <= 8) {
+                  data[p + 3] = Math.max(85, Math.round(255 * (1 - (brightness - 244) / 14)));
                 }
               }
               if (x < minX) minX = x;
