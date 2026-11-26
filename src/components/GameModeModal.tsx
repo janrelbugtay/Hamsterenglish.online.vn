@@ -263,7 +263,7 @@ export const PLAYABLE_GAME_OPTIONS: GameOptionConfig[] = [
     players: '1–2 Players · WASD vs Arrows / AI',
     category: 'board-trivia',
     emoji: '🦈',
-    image: '/images/shark-attack-card.jpg?v=3',
+    image: '/images/shark-attack-card.jpg?v=4',
     gradient: 'from-cyan-500 via-blue-600 to-slate-900',
     cardBg: 'bg-cyan-50/70 dark:bg-cyan-950/25 hover:bg-cyan-100/80 dark:hover:bg-cyan-900/35',
     cardBorder: 'border-cyan-200 dark:border-cyan-800/70',

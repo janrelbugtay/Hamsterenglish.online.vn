@@ -506,7 +506,7 @@ export function PublicDashboard({
     { id: "roller-coaster-quiz", title: "Roller Coaster Quiz", color: "text-amber-600", icon: "/images/roller-coaster-quiz-card.jpg?v=3" },
     { id: "hamster-paintball", title: "Hamster Paintball", color: "text-orange-600", icon: "/images/hamster-paintball-card.jpg?v=3" },
     { id: "slap-and-chop", title: "Mosquito Slap", color: "text-purple-600", icon: mosquitoSlapCardImg },
-    { id: "shark-attack", title: "Shark Attack", color: "text-cyan-600", icon: "/images/shark-attack-card.jpg?v=3" },
+    { id: "shark-attack", title: "Shark Attack", color: "text-cyan-600", icon: "/images/shark-attack-card.jpg?v=4" },
     { id: "flashcards-match", title: "Flashcard", color: "text-indigo-600", icon: "/images/flashcards-card-v3.jpg?v=3" },
     { id: "bubble-sentence-pro", title: "Bubble Island", color: "text-sky-600", icon: "/images/bubble-island-card.jpg?v=3" },
     { id: "yoga-quiz", title: "Yoga Quiz", color: "text-emerald-600", icon: "/images/yoga-quiz-card.jpg?v=3" },

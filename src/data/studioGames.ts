@@ -244,7 +244,7 @@ export const STUDIO_GAMES: Game[] = [
     time: "10m",
     subject: "Trivia & ESL",
     grade: "All",
-    imageUrl: "/images/shark-attack-card.jpg?v=3",
+    imageUrl: "/images/shark-attack-card.jpg?v=4",
     isAI: false,
     color: "from-cyan-500 to-blue-900",
     icon: "🦈",

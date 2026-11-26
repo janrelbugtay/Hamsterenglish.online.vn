@@ -250,7 +250,7 @@ export const GamesLibrary = ({
     { id: "mystery-box", title: "Mystery Box", icon: "/images/mystery-box-card.jpg?v=3", color: "bg-orange-100 text-orange-600", category: "board-trivia" },
     { id: "neon-chain", title: "Neon Chain", icon: "/images/neon-chain-card.jpg?v=3", color: "bg-cyan-100 text-cyan-600", category: "board-trivia" },
     { id: "bubble-sentence-pro", title: "Bubble Island", icon: "/images/bubble-island-card.jpg?v=3", color: "bg-sky-100 text-sky-600", category: "board-trivia" },
-    { id: "shark-attack", title: "Shark Attack", icon: "/images/shark-attack-card.jpg?v=3", color: "bg-cyan-100 text-cyan-600", category: "board-trivia" },
+    { id: "shark-attack", title: "Shark Attack", icon: "/images/shark-attack-card.jpg?v=4", color: "bg-cyan-100 text-cyan-600", category: "board-trivia" },
     { id: "family-feud", title: "Family Feud", icon: "/images/family-feud-card.jpg?v=3", color: "bg-yellow-100 text-yellow-600", category: "board-trivia" },
     { id: "sumo", title: "Sumo Tags", icon: "/images/sumo-tags-card.jpg?v=3", color: "bg-red-100 text-red-600", category: "board-trivia" },
     // Multiplayer Games

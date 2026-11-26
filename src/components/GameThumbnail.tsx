@@ -426,7 +426,7 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
     'neon-chain': '/images/neon-chain-card.jpg?v=3',
     'bubble-sentence-pro': '/images/bubble-island-card.jpg?v=3',
     'bubble-island': '/images/bubble-island-card.jpg?v=3',
-    'shark-attack': '/images/shark-attack-card.jpg?v=3',
+    'shark-attack': '/images/shark-attack-card.jpg?v=4',
     'family-feud': '/images/family-feud-card.jpg?v=3',
     'sumo': '/images/sumo-tags-card.jpg?v=3',
     'sumo-tags': '/images/sumo-tags-card.jpg?v=3',

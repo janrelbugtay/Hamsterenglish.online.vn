@@ -283,6 +283,7 @@ interface HamsterStudent {
     seatX: number;
     seatY: number;
     seatType: 'bench' | 'rim' | 'floor';
+    ringIndex: number;
     curX: number;
     curY: number;
     boardDelay: number;
@@ -339,9 +340,59 @@ interface NameTagItem {
     anchorX: number;
     anchorY: number;
     name: string;
+    displayText?: string;
     isCaptain: boolean;
     accentColor?: string;
+    priority?: 'normal' | 'captain' | 'spotlight';
+    fontSize?: number;
+    boxH?: number;
+    paddingX?: number;
+    maxWidth?: number;
 }
+
+interface BoatLayoutMetrics {
+    cx: number;
+    cy: number;
+    baseRadius: number;
+    boatScale: number;
+    cameraScale: number;
+    boatRadius: number;
+    bowlDepth: number;
+    usableRadius: number;
+    hamRadius: number;
+    captainRadius: number;
+    hullSegments: number;
+    radialRibs: number;
+    weaveRings: number[];
+    benchOffsets: number[];
+    floatBaseRatio: number;
+    floatStepPx: number;
+    safeTop: number;
+    safeBottom: number;
+    safeLeft: number;
+    safeRight: number;
+    tagTier: {
+        fontSize: number;
+        boxH: number;
+        paddingX: number;
+        maxChars: number;
+        maxWidth: number;
+    };
+}
+
+const formatSmartTagName = (rawName: string, maxChars: number): string => {
+    const clean = rawName.trim();
+    if (clean.length <= maxChars) return clean;
+    const parts = clean.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+        const first = parts[0];
+        const lastInitial = parts[parts.length - 1][0]?.toUpperCase() || '';
+        const compact = `${first} ${lastInitial}.`;
+        if (compact.length <= maxChars + 1) return compact;
+        if (first.length <= maxChars) return first;
+    }
+    return clean.slice(0, Math.max(3, maxChars - 1)).trimEnd() + '…';
+};
 
 const hashString = (str: string): number => {
     let h = 0;
@@ -879,6 +930,10 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
         boatTiltPitch: 0,
         cameraMode: 'side' as 'side' | 'dynamic' | 'high',
         cameraPitch: 0.62,
+        currentBoatScale: 1.0,
+        currentCameraScale: 1.0,
+        currentEliminatedMargin: 0,
+        hasInitializedFraming: false,
         captainPaddlePhase: 0,
         phaseTimer: 0,
         roundDuration: 10.0,
@@ -949,6 +1004,7 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             seatX: 0,
             seatY: 0,
             seatType: 'floor',
+            ringIndex: 0,
             curX: 0,
             curY: 0,
             boardDelay: index * 0.05,
@@ -963,9 +1019,9 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
         };
     };
 
-    // Spread student seats across the entire basket boat interior in clean concentric rings
-    // while keeping Captain Coconut's helm spot at (0, -0.82) clear
-    const arrangeHamstersInBoat = () => {
+    // Spread student seats across the entire basket boat interior in adaptive concentric rings
+    // scaled to class size while keeping Captain Coconut's bow helm spot at (0, -0.84) clear
+    const arrangeHamstersInBoat = (snapPositions = true) => {
         const g = gameRef.current;
         const active = g.students.filter(s => !s.eliminated);
         const count = active.length;
@@ -973,54 +1029,139 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
 
         if (count === 1) {
             active[0].seatX = 0;
-            active[0].seatY = 0.05;
+            active[0].seatY = 0.06;
             active[0].seatType = 'bench';
-            active[0].curX = 0;
-            active[0].curY = 0.05;
-        } else if (count <= 7) {
+            active[0].ringIndex = 0;
+            if (snapPositions) {
+                active[0].curX = active[0].seatX;
+                active[0].curY = active[0].seatY;
+            }
+        } else if (count <= 6) {
             active.forEach((h, i) => {
-                // Spread around a generous middle-outer ring avoiding the very top helm angle (-PI/2)
                 const t = (i + 0.5) / count;
-                const ang = -Math.PI * 0.32 + t * Math.PI * 1.64;
-                const r = i % 2 === 0 ? 0.56 : 0.36;
+                const ang = -Math.PI * 0.34 + t * Math.PI * 1.68;
+                const r = count <= 3 ? 0.44 : (i % 2 === 0 ? 0.56 : 0.38);
                 h.seatX = Math.cos(ang) * r;
                 h.seatY = Math.sin(ang) * r;
                 h.seatType = r > 0.45 ? 'rim' : 'bench';
-                h.curX = h.seatX;
-                h.curY = h.seatY;
+                h.ringIndex = 0;
+                if (snapPositions) {
+                    h.curX = h.seatX;
+                    h.curY = h.seatY;
+                }
             });
         } else {
-            // Multi-ring full-boat distribution so hamsters occupy top, center, left, right, and front
-            const innerCount = Math.min(5, Math.max(3, Math.round(count * 0.22)));
-            const midCount = Math.min(9, Math.max(4, Math.round((count - innerCount) * 0.46)));
-            const outerCount = Math.max(1, count - innerCount - midCount);
+            // Adaptive multi-ring generator (2 to 7 rings) based on class size
+            const numRings =
+                count <= 12 ? 2 :
+                count <= 22 ? 3 :
+                count <= 36 ? 4 :
+                count <= 54 ? 5 :
+                Math.min(7, 5 + Math.ceil((count - 54) / 22));
 
-            active.forEach((h, i) => {
-                if (i < innerCount) {
-                    const ang = (i / innerCount) * Math.PI * 2 + 0.35;
-                    const r = 0.27;
-                    h.seatX = Math.cos(ang) * r;
-                    h.seatY = Math.sin(ang) * r;
-                    h.seatType = 'bench';
-                } else if (i < innerCount + midCount) {
-                    const j = i - innerCount;
-                    const ang = (j / midCount) * Math.PI * 2 + 0.18;
-                    const r = 0.53;
-                    h.seatX = Math.cos(ang) * r;
-                    h.seatY = Math.sin(ang) * r;
-                    h.seatType = 'floor';
-                } else {
-                    const k = i - innerCount - midCount;
-                    // Leave a small gap around angle = -PI/2 where Captain Coconut stands
-                    const frac = (k + 0.5) / outerCount;
-                    const ang = -Math.PI * 0.36 + frac * Math.PI * 1.72;
-                    const r = 0.78;
-                    h.seatX = Math.cos(ang) * r;
-                    h.seatY = Math.sin(ang) * r;
-                    h.seatType = 'rim';
+            const useCenterSeat = count >= 26 && numRings >= 4;
+            const ringSeatsTotal = useCenterSeat ? count - 1 : count;
+
+            const innerR =
+                numRings === 2 ? 0.33 :
+                numRings === 3 ? 0.24 :
+                numRings === 4 ? 0.20 :
+                numRings === 5 ? 0.17 :
+                0.15;
+            const outerR =
+                numRings <= 2 ? 0.74 :
+                numRings === 3 ? 0.81 :
+                numRings === 4 ? 0.85 :
+                0.88;
+
+            const rings: { radius: number; gapHalfRad: number; span: number; weight: number; seats: number }[] = [];
+            for (let ri = 0; ri < numRings; ri++) {
+                const frac = numRings === 1 ? 1 : ri / (numRings - 1);
+                const radius = innerR + (outerR - innerR) * frac;
+                // Reserve a clean bow helm arc around -PI/2 on outer rings so nobody hides behind Captain Coconut
+                let gapHalfRad = 0;
+                if (radius >= 0.72) {
+                    gapHalfRad = Math.PI * 0.16;
+                } else if (radius >= 0.56) {
+                    gapHalfRad = Math.PI * 0.10;
                 }
-                h.curX = h.seatX;
-                h.curY = h.seatY;
+                const span = Math.PI * 2 - gapHalfRad * 2;
+                const weight = radius * span;
+                rings.push({ radius, gapHalfRad, span, weight, seats: 0 });
+            }
+
+            // Allocate seats across rings proportional to available circumference
+            const totalWeight = rings.reduce((acc, r) => acc + r.weight, 0);
+            let assigned = 0;
+            const remainders: { idx: number; frac: number }[] = [];
+
+            rings.forEach((ring, idx) => {
+                const exact = (ring.weight / totalWeight) * ringSeatsTotal;
+                const floorVal = Math.max(idx === 0 ? 3 : 4, Math.floor(exact));
+                ring.seats = floorVal;
+                assigned += floorVal;
+                remainders.push({ idx, frac: exact - Math.floor(exact) });
+            });
+
+            // Trim if minimum floors slightly exceeded ringSeatsTotal
+            while (assigned > ringSeatsTotal) {
+                let bestIdx = 0;
+                for (let ri = 1; ri < rings.length; ri++) {
+                    if (rings[ri].seats > rings[bestIdx].seats) bestIdx = ri;
+                }
+                rings[bestIdx].seats--;
+                assigned--;
+            }
+
+            // Distribute remaining seats to highest fractional remainders (outer-biased on ties)
+            remainders.sort((a, b) => b.frac - a.frac || b.idx - a.idx);
+            let remCursor = 0;
+            while (assigned < ringSeatsTotal) {
+                rings[remainders[remCursor % remainders.length].idx].seats++;
+                assigned++;
+                remCursor++;
+            }
+
+            let studentIdx = 0;
+            if (useCenterSeat && studentIdx < count) {
+                const centerHam = active[studentIdx++];
+                centerHam.seatX = 0;
+                centerHam.seatY = 0.03;
+                centerHam.seatType = 'bench';
+                centerHam.ringIndex = 0;
+                if (snapPositions) {
+                    centerHam.curX = centerHam.seatX;
+                    centerHam.curY = centerHam.seatY;
+                }
+            }
+
+            rings.forEach((ring, ri) => {
+                const n = ring.seats;
+                if (n <= 0) return;
+                const isFullCircle = ring.gapHalfRad === 0;
+                const step = ring.span / n;
+                // Stagger alternating rings by half a step so back-row hamsters peek between front-row neighbors
+                const stagger = (ri % 2 === 1) ? step * 0.5 : 0;
+
+                for (let k = 0; k < n && studentIdx < count; k++) {
+                    const h = active[studentIdx++];
+                    let ang: number;
+                    if (isFullCircle) {
+                        ang = -Math.PI * 0.5 + (k + 0.5) * step + stagger;
+                    } else {
+                        const startAng = -Math.PI * 0.5 + ring.gapHalfRad;
+                        const jitter = (ri % 2 === 1 && n > 2) ? step * 0.12 : 0;
+                        ang = startAng + (k + 0.5) * step + (k % 2 === 0 ? jitter : -jitter);
+                    }
+                    h.seatX = Math.cos(ang) * ring.radius;
+                    h.seatY = Math.sin(ang) * ring.radius;
+                    h.seatType = ri === rings.length - 1 ? 'rim' : ri === 0 ? 'bench' : 'floor';
+                    h.ringIndex = ri + (useCenterSeat ? 1 : 0);
+                    if (snapPositions) {
+                        h.curX = h.seatX;
+                        h.curY = h.seatY;
+                    }
+                }
             });
         }
 
@@ -1033,7 +1174,7 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
     const syncRoster = (names: string[]) => {
         const g = gameRef.current;
         g.students = names.map((n, i) => createHamsterFromName(n, i));
-        arrangeHamstersInBoat();
+        arrangeHamstersInBoat(true);
     };
 
     useEffect(() => {
@@ -1301,6 +1442,160 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             }
         };
 
+        // Unified boat scaling & smooth camera auto-framing engine
+        const computeTargetBoatScale = (activeCount: number): number => {
+            const extra = Math.max(0, activeCount - 10);
+            return 1 + Math.min(0.92, Math.sqrt(extra) * 0.12 + extra * 0.0045);
+        };
+
+        const computeAutoFramingTargets = (
+            w: number,
+            h: number,
+            activeCount: number,
+            eliminatedCount: number,
+            cameraPitch: number
+        ) => {
+            const isNarrow = w < 640;
+            const baseRadius = Math.min(w, h) * (isNarrow ? 0.35 : 0.32);
+            const targetBoatScale = computeTargetBoatScale(activeCount);
+            const targetElimMargin = eliminatedCount > 0 ? 1 : 0;
+
+            const safeTop = Math.max(76, h * (isNarrow ? 0.12 : 0.115));
+            const safeBottom = h - Math.max(84, h * (isNarrow ? 0.125 : 0.12));
+            const safeLeft = Math.max(20, w * 0.03);
+            const safeRight = w - safeLeft;
+            const safeW = Math.max(180, safeRight - safeLeft);
+            const safeH = Math.max(180, safeBottom - safeTop);
+
+            const scaleProgress = Math.max(0, Math.min(1, (targetBoatScale - 1) / 0.92));
+            const rawBoatRadius = baseRadius * targetBoatScale;
+            const rawBowlDepth = rawBoatRadius * (0.48 - 0.10 * scaleProgress);
+            const sinCam = Math.sin(cameraPitch);
+
+            const floatBaseRatio = activeCount > 28 ? 1.26 : activeCount > 16 ? 1.35 : 1.46;
+            const boatHalfX = rawBoatRadius * 1.15 + 22;
+            const elimHalfX = rawBoatRadius * (floatBaseRatio + 0.06) + 32;
+            const reqHalfX = boatHalfX + (elimHalfX - boatHalfX) * targetElimMargin;
+
+            const baseTopHalfY = rawBoatRadius * sinCam * 0.96 + 52;
+            const baseBotHalfY = rawBoatRadius * sinCam * 1.0 + rawBowlDepth * 0.45 + 22;
+            const elimVertHalfY = rawBoatRadius * (floatBaseRatio + 0.03) * sinCam + 38;
+
+            const topHalfY = baseTopHalfY + Math.max(0, elimVertHalfY - baseTopHalfY) * targetElimMargin;
+            const botHalfY = baseBotHalfY + Math.max(0, elimVertHalfY - baseBotHalfY) * targetElimMargin;
+
+            const fitX = (safeW * 0.5) / Math.max(1, reqHalfX);
+            const fitY = safeH / Math.max(1, topHalfY + botHalfY);
+            const targetCameraScale = Math.max(0.46, Math.min(1.0, fitX, fitY));
+
+            return {
+                baseRadius,
+                targetBoatScale,
+                targetCameraScale,
+                targetElimMargin,
+                safeTop,
+                safeBottom,
+                safeLeft,
+                safeRight
+            };
+        };
+
+        const getBoatLayoutMetrics = (w: number, h: number): BoatLayoutMetrics => {
+            const g = gameRef.current;
+            const activeCount = g.students.filter(s => !s.eliminated).length;
+            const isNarrow = w < 640;
+            const baseRadius = Math.min(w, h) * (isNarrow ? 0.35 : 0.32);
+
+            const safeTop = Math.max(76, h * (isNarrow ? 0.12 : 0.115));
+            const safeBottom = h - Math.max(84, h * (isNarrow ? 0.125 : 0.12));
+            const safeLeft = Math.max(20, w * 0.03);
+            const safeRight = w - safeLeft;
+            const safeH = Math.max(180, safeBottom - safeTop);
+
+            const boatScale = g.currentBoatScale;
+            const cameraScale = g.currentCameraScale;
+            const scaleProgress = Math.max(0, Math.min(1, (boatScale - 1) / 0.92));
+
+            const boatRadius = baseRadius * boatScale * cameraScale;
+            const bowlDepth = boatRadius * (0.48 - 0.10 * scaleProgress);
+            const usableRadius = boatRadius * (0.86 + 0.03 * scaleProgress);
+
+            const sinCam = Math.sin(g.cameraPitch);
+            const floatBaseRatio = activeCount > 28 ? 1.26 : activeCount > 16 ? 1.35 : 1.46;
+            const elimFactor = g.currentEliminatedMargin;
+            const baseTopHalfY = boatRadius * sinCam * 0.96 + 50;
+            const baseBotHalfY = boatRadius * sinCam * 1.0 + bowlDepth * 0.45 + 22;
+            const elimVertHalfY = boatRadius * (floatBaseRatio + 0.03) * sinCam + 36;
+            const topHalfY = baseTopHalfY + Math.max(0, elimVertHalfY - baseTopHalfY) * elimFactor;
+            const botHalfY = baseBotHalfY + Math.max(0, elimVertHalfY - baseBotHalfY) * elimFactor;
+
+            const cx = w / 2;
+            const cy = safeTop + safeH * (topHalfY / Math.max(1, topHalfY + botHalfY));
+
+            // Smooth continuous hamster radius: stays chunky for small classes and crisp/legible for 40–70+ students
+            const viewportScale = Math.max(0.68, Math.min(1.18, Math.min(w, h) / 720));
+            const smoothDensity = 1 / (1 + Math.pow(Math.max(0, activeCount - 6) / 20, 0.88));
+            const rawHam = (11.2 + 16.8 * smoothDensity) * viewportScale;
+            const hamRadius = Math.max(11.5, Math.min(28, rawHam));
+            const captainRadius = Math.max(19, Math.min(34, Math.max(hamRadius * 1.26 + 3.5, boatRadius * 0.115)));
+
+            // Structural hull richness scales up smoothly with boat size (multiples of 4 keep RIM_COLORS symmetrical)
+            const hullSegments =
+                boatScale >= 1.62 ? 36 :
+                boatScale >= 1.36 ? 32 :
+                boatScale >= 1.16 ? 28 :
+                24;
+            const radialRibs =
+                boatScale >= 1.56 ? 24 :
+                boatScale >= 1.24 ? 20 :
+                16;
+            const weaveRings =
+                boatScale >= 1.52
+                    ? [0.18, 0.34, 0.50, 0.66, 0.80, 0.91]
+                    : boatScale >= 1.22
+                        ? [0.21, 0.40, 0.58, 0.74, 0.88]
+                        : [0.25, 0.46, 0.66, 0.85];
+            const benchOffsets =
+                boatScale >= 1.58
+                    ? [-0.54, -0.18, 0.18, 0.52]
+                    : boatScale >= 1.26
+                        ? [-0.43, 0.0, 0.41]
+                        : [-0.28, 0.26];
+
+            const tagTier =
+                activeCount <= 16
+                    ? { fontSize: 12, boxH: 20, paddingX: 9, maxChars: 18, maxWidth: 185 }
+                    : activeCount <= 30
+                        ? { fontSize: 11, boxH: 18.5, paddingX: 7.5, maxChars: 14, maxWidth: 145 }
+                        : activeCount <= 48
+                            ? { fontSize: 10, boxH: 17, paddingX: 6.5, maxChars: 11, maxWidth: 116 }
+                            : { fontSize: 9.5, boxH: 15.5, paddingX: 5.5, maxChars: 9, maxWidth: 96 };
+
+            return {
+                cx,
+                cy,
+                baseRadius,
+                boatScale,
+                cameraScale,
+                boatRadius,
+                bowlDepth,
+                usableRadius,
+                hamRadius,
+                captainRadius,
+                hullSegments,
+                radialRibs,
+                weaveRings,
+                benchOffsets,
+                floatBaseRatio,
+                floatStepPx: Math.max(18, 30 * cameraScale),
+                safeTop,
+                safeBottom,
+                safeLeft,
+                safeRight,
+                tagTier
+            };
+        };
+
         const startFakeOutFlight = (w: number, h: number, isClimaxFakeOut = false) => {
             const g = gameRef.current;
             const active = g.students.filter(s => !s.eliminated);
@@ -1318,19 +1613,17 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             const chosen = candidates[Math.floor(Math.random() * candidates.length)];
             g.lastFakeOutId = chosen.id;
 
-            const cx = w / 2;
-            const cy = h * 0.57;
-            const boatRadius = Math.min(w, h) * (w < 640 ? 0.35 : 0.32);
-            const usableRadius = boatRadius * 0.86;
+            const layout = getBoatLayoutMetrics(w, h);
+            const { cx, cy, boatRadius, usableRadius, floatBaseRatio, safeLeft, safeRight, safeTop, safeBottom } = layout;
 
             const lx = (g.state === 'CHAOS_SPIN' ? chosen.curX : chosen.seatX) * usableRadius;
             const ly = (g.state === 'CHAOS_SPIN' ? chosen.curY : chosen.seatY) * usableRadius;
             const startProj = projectBoatPoint(lx, ly, -boatRadius * 0.06, cx, cy);
 
             const baseAngle = Math.atan2(startProj.y - cy, startProj.x - cx);
-            const outDist = boatRadius * 1.46;
-            const peakOutX = cx + Math.cos(baseAngle) * outDist;
-            const peakOutY = cy + Math.sin(baseAngle) * outDist * Math.sin(g.cameraPitch) - 18;
+            const outDist = boatRadius * Math.min(1.42, floatBaseRatio);
+            const peakOutX = Math.max(safeLeft + 36, Math.min(safeRight - 36, cx + Math.cos(baseAngle) * outDist));
+            const peakOutY = Math.max(safeTop + 56, Math.min(safeBottom - 36, cy + Math.sin(baseAngle) * outDist * Math.sin(g.cameraPitch) - 18));
 
             g.fakeOutFlight = {
                 hamster: chosen,
@@ -1373,10 +1666,8 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 victims = [active[Math.floor(Math.random() * active.length)]];
             }
 
-            const cx = w / 2;
-            const cy = h * 0.57;
-            const boatRadius = Math.min(w, h) * (w < 640 ? 0.35 : 0.32);
-            const usableRadius = boatRadius * 0.86;
+            const layout = getBoatLayoutMetrics(w, h);
+            const { cx, cy, boatRadius, usableRadius, floatBaseRatio, safeLeft, safeRight, safeTop, safeBottom } = layout;
 
             g.flyingHamsters = victims.map((victim, idx) => {
                 const lx = victim.seatX * usableRadius;
@@ -1384,9 +1675,9 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 const startProj = projectBoatPoint(lx, ly, -boatRadius * 0.06, cx, cy);
 
                 const splashAngle = (idx / Math.max(1, victims.length)) * Math.PI * 2 + Math.atan2(startProj.y - cy, startProj.x - cx);
-                const targetDist = boatRadius * 1.48;
-                const targetX = cx + Math.cos(splashAngle) * targetDist;
-                const targetY = cy + Math.sin(splashAngle) * targetDist * Math.sin(g.cameraPitch);
+                const targetDist = boatRadius * floatBaseRatio;
+                const targetX = Math.max(safeLeft + 34, Math.min(safeRight - 34, cx + Math.cos(splashAngle) * targetDist));
+                const targetY = Math.max(safeTop + 44, Math.min(safeBottom - 34, cy + Math.sin(splashAngle) * targetDist * Math.sin(g.cameraPitch)));
 
                 victim.floatAngle = splashAngle;
 
@@ -1454,10 +1745,11 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             }
 
             if (fo.t >= 1.0) {
-                const cx = w / 2 + Math.sin(g.boatRockPhase * 0.5) * 7;
-                const cy = h * 0.57 + Math.cos(g.boatRockPhase * 0.8) * 5;
-                const boatRadius = Math.min(w, h) * (w < 640 ? 0.35 : 0.32);
-                const usableRadius = boatRadius * 0.86;
+                const layout = getBoatLayoutMetrics(w, h);
+                const rockScale = Math.max(0.55, layout.cameraScale);
+                const cx = layout.cx + Math.sin(g.boatRockPhase * 0.5) * 7 * rockScale;
+                const cy = layout.cy + Math.cos(g.boatRockPhase * 0.8) * 5 * rockScale;
+                const { boatRadius, usableRadius } = layout;
                 const lx = (g.state === 'CHAOS_SPIN' ? fo.hamster.curX : fo.hamster.seatX) * usableRadius;
                 const ly = (g.state === 'CHAOS_SPIN' ? fo.hamster.curY : fo.hamster.seatY) * usableRadius;
                 const landProj = projectBoatPoint(lx, ly, -boatRadius * 0.06, cx, cy);
@@ -1478,22 +1770,53 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
 
         const updateGameLogic = (dt: number, time: number, w: number, h: number) => {
             const g = gameRef.current;
+            const activeList = g.students.filter(s => !s.eliminated);
+            const activeCount = activeList.length;
+            const eliminatedCount = g.students.length - activeCount;
 
-            if (g.cameraMode === 'side') {
-                g.cameraPitch += (0.62 - g.cameraPitch) * 5 * dt;
-            } else if (g.cameraMode === 'high') {
-                g.cameraPitch += (0.96 - g.cameraPitch) * 5 * dt;
+            // Gentle pitch elevation for larger classes so concentric seating rings read clearly from above
+            const largeClassPitchBoost = Math.min(0.08, Math.max(0, (activeCount - 14) / 38) * 0.08);
+            let targetPitch = 0.62 + largeClassPitchBoost;
+            if (g.cameraMode === 'high') {
+                targetPitch = 0.96;
             } else if (g.cameraMode === 'dynamic') {
-                const targetPitch = 0.58 + Math.sin(time * 0.85) * 0.16;
-                g.cameraPitch += (targetPitch - g.cameraPitch) * 4 * dt;
+                targetPitch = 0.60 + largeClassPitchBoost * 0.75 + Math.sin(time * 0.85) * 0.14;
+            }
+
+            const framingTargets = computeAutoFramingTargets(w, h, activeCount, eliminatedCount, targetPitch);
+            if (!g.hasInitializedFraming) {
+                g.cameraPitch = targetPitch;
+                g.currentBoatScale = framingTargets.targetBoatScale;
+                g.currentCameraScale = framingTargets.targetCameraScale;
+                g.currentEliminatedMargin = framingTargets.targetElimMargin;
+                g.hasInitializedFraming = true;
+            } else {
+                const pitchRate = Math.min(1, (g.cameraMode === 'dynamic' ? 4 : 5) * dt);
+                const frameRate = Math.min(1, 4.5 * dt);
+                g.cameraPitch += (targetPitch - g.cameraPitch) * pitchRate;
+                g.currentBoatScale += (framingTargets.targetBoatScale - g.currentBoatScale) * frameRate;
+                g.currentCameraScale += (framingTargets.targetCameraScale - g.currentCameraScale) * frameRate;
+                g.currentEliminatedMargin += (framingTargets.targetElimMargin - g.currentEliminatedMargin) * frameRate;
+            }
+
+            // Smoothly ease seated hamsters into updated ring coordinates between rounds
+            if (g.state !== 'CHAOS_SPIN') {
+                const seatEase = Math.min(1, 6.5 * dt);
+                activeList.forEach(ham => {
+                    ham.curX += (ham.seatX - ham.curX) * seatEase;
+                    ham.curY += (ham.seatY - ham.curY) * seatEase;
+                });
             }
 
             g.boatRockPhase += dt * (2.5 + g.boatSpeed * 10);
 
             let tiltIntensity = 0.08;
             if (g.state === 'SLOW_SPIN') tiltIntensity = 0.20;
-            else if (g.state === 'CHAOS_SPIN') tiltIntensity = 0.38;
-            else if (g.state === 'LAUNCHING') tiltIntensity = 0.30;
+            else if (g.state === 'CHAOS_SPIN') tiltIntensity = 0.34;
+            else if (g.state === 'LAUNCHING') tiltIntensity = 0.28;
+            // Slightly steadier tilt amplitude on mega-boats so outer-ring hamsters stay poised
+            const stabilityFactor = 1 / (1 + Math.max(0, g.currentBoatScale - 1) * 0.35);
+            tiltIntensity *= stabilityFactor;
 
             g.boatTiltRoll = Math.sin(g.boatRockPhase) * tiltIntensity;
             g.boatTiltPitch = Math.cos(g.boatRockPhase * 0.85) * (tiltIntensity * 0.65);
@@ -1526,7 +1849,7 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                             phase: 'SLOW_SPIN',
                             msg: '🚣 NICE AND EASY… EVERYONE IS SAFE! 🐹',
                             eliminatedThisRound: [],
-                            activeCount: g.students.filter(s => !s.eliminated).length,
+                            activeCount,
                             chaseSecondsLeft: remSec,
                             cameraMode: g.cameraMode
                         });
@@ -1542,7 +1865,7 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                             phase: 'CHAOS_SPIN',
                             msg: '🌪️ ACROBATIC COCONUT CHAOS!! 🌪️',
                             eliminatedThisRound: [],
-                            activeCount: g.students.filter(s => !s.eliminated).length,
+                            activeCount,
                             chaseSecondsLeft: remSec,
                             cameraMode: g.cameraMode
                         });
@@ -1577,14 +1900,23 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                     g.quoteTimer = 1.45;
                 }
 
-                const active = g.students.filter(s => !s.eliminated);
-                active.forEach((ham, idx) => {
+                // Keep outer-ring riders neatly inside the woven rim even under centrifugal push
+                const maxPushOut = activeCount > 24 ? 0.08 : 0.14;
+                activeList.forEach((ham, idx) => {
                     if (g.fakeOutFlight?.hamster.id === ham.id) return;
-                    ham.wobbleAngle = Math.sin(time * 18 + idx) * 0.35 - g.boatTiltRoll * 0.5;
-                    const pushOut = 1 + Math.min(0.16, chaosProgress * 0.15);
-                    const slideGravityX = Math.sin(g.boatTiltRoll) * 0.08;
-                    ham.curX = ham.seatX * pushOut + slideGravityX + Math.cos(time * 12 + idx) * 0.03;
-                    ham.curY = ham.seatY * pushOut + Math.sin(time * 12 + idx) * 0.03;
+                    ham.wobbleAngle = Math.sin(time * 18 + idx) * 0.32 - g.boatTiltRoll * 0.45;
+                    const pushOut = 1 + Math.min(maxPushOut, chaosProgress * maxPushOut);
+                    const slideGravityX = Math.sin(g.boatTiltRoll) * 0.06;
+                    const rawX = ham.seatX * pushOut + slideGravityX + Math.cos(time * 12 + idx) * 0.025;
+                    const rawY = ham.seatY * pushOut + Math.sin(time * 12 + idx) * 0.025;
+                    const dist = Math.hypot(rawX, rawY);
+                    if (dist > 0.93) {
+                        ham.curX = (rawX / dist) * 0.93;
+                        ham.curY = (rawY / dist) * 0.93;
+                    } else {
+                        ham.curX = rawX;
+                        ham.curY = rawY;
+                    }
                     ham.expression = idx % 2 === 0 ? 'dizzy' : 'scream';
                 });
 
@@ -1596,7 +1928,7 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                             phase: 'CHAOS_SPIN',
                             msg: g.activeBanner || '🌪️ ACROBATIC COCONUT CHAOS!! 🌪️',
                             eliminatedThisRound: [],
-                            activeCount: active.length,
+                            activeCount,
                             chaseSecondsLeft: remSec,
                             cameraMode: g.cameraMode
                         });
@@ -1604,7 +1936,7 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 }
 
                 if (g.phaseTimer >= totalDur && !g.fakeOutFlight) {
-                    if (!g.didClimaxFakeOut && active.length > 1) {
+                    if (!g.didClimaxFakeOut && activeCount > 1) {
                         g.didClimaxFakeOut = true;
                         startFakeOutFlight(w, h, true);
                     } else {
@@ -1645,7 +1977,7 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                     g.slowMoFactor = 1.0;
                     const eliminatedNames = g.flyingHamsters.map(f => f.hamster.name);
                     g.flyingHamsters = [];
-                    arrangeHamstersInBoat();
+                    arrangeHamstersInBoat(false);
                     g.students.filter(s => !s.eliminated).forEach(ham => {
                         ham.expression = 'happy';
                         ham.wobbleAngle = 0;
@@ -2136,104 +2468,171 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             });
         };
 
-        // De-overlap name tags so every hamster face & student name is legible
-        const resolveNameTagCollisions = (tags: NameTagItem[], fontCtx: CanvasRenderingContext2D) => {
+        // Smart multi-pass collision solver with safe viewport clamping so every student name stays readable
+        const resolveNameTagCollisions = (
+            tags: NameTagItem[],
+            fontCtx: CanvasRenderingContext2D,
+            bounds: { left: number; right: number; top: number; bottom: number }
+        ) => {
             const boxes = tags.map(t => {
-                fontCtx.font = t.isCaptain ? "800 12px 'Fredoka', sans-serif" : "700 12px 'Quicksand', sans-serif";
-                const textW = fontCtx.measureText(t.name).width;
+                const fontSize = t.fontSize || (t.isCaptain ? 12 : 11.5);
+                const paddingX = t.paddingX ?? 8;
+                const boxH = t.boxH ?? (t.isCaptain ? 22 : 19);
+                const label = t.displayText ?? t.name;
+                fontCtx.font = t.isCaptain || t.priority === 'spotlight'
+                    ? `800 ${fontSize}px 'Fredoka', sans-serif`
+                    : `700 ${fontSize}px 'Quicksand', sans-serif`;
+                const textW = fontCtx.measureText(label).width;
+                const dotSpace = !t.isCaptain && t.accentColor ? 6 : 0;
+                const maxW = t.maxWidth ?? 185;
                 return {
                     tag: t,
-                    w: Math.min(185, textW + 18),
-                    h: t.isCaptain ? 23 : 20
+                    w: Math.min(maxW, textW + paddingX * 2 + dotSpace),
+                    h: boxH + 1
                 };
             });
 
-            // Iterative vertical/horizontal repulsion solver
-            for (let pass = 0; pass < 4; pass++) {
+            const passes = tags.length > 32 ? 10 : tags.length > 18 ? 8 : 6;
+            for (let pass = 0; pass < passes; pass++) {
                 for (let i = 0; i < boxes.length; i++) {
                     for (let j = i + 1; j < boxes.length; j++) {
                         const a = boxes[i];
                         const b = boxes[j];
                         const dx = b.tag.x - a.tag.x;
                         const dy = b.tag.y - a.tag.y;
-                        const minW = (a.w + b.w) * 0.52;
-                        const minH = (a.h + b.h) * 0.56;
+                        const minW = (a.w + b.w) * 0.51;
+                        const minH = (a.h + b.h) * 0.54;
 
                         if (Math.abs(dx) < minW && Math.abs(dy) < minH) {
                             const overlapY = minH - Math.abs(dy);
                             const overlapX = minW - Math.abs(dx);
-                            if (overlapY <= overlapX * 1.2) {
-                                const pushY = (overlapY * 0.52) * (dy >= 0 ? 1 : -1);
-                                a.tag.y -= pushY;
-                                b.tag.y += pushY;
+                            const aWeight = a.tag.isCaptain || a.tag.priority === 'spotlight' ? 0.22 : 0.5;
+                            const bWeight = b.tag.isCaptain || b.tag.priority === 'spotlight' ? 0.22 : 0.5;
+                            const wSum = aWeight + bWeight;
+                            const aRatio = aWeight / wSum;
+                            const bRatio = bWeight / wSum;
+
+                            if (overlapY <= overlapX * 1.15) {
+                                const dirY = dy === 0 ? (i % 2 === 0 ? 1 : -1) : (dy > 0 ? 1 : -1);
+                                const push = overlapY * 0.96;
+                                a.tag.y -= push * aRatio * dirY;
+                                b.tag.y += push * bRatio * dirY;
                             } else {
-                                const pushX = (overlapX * 0.45) * (dx >= 0 ? 1 : -1);
-                                a.tag.x -= pushX;
-                                b.tag.x += pushX;
+                                const dirX = dx === 0 ? (i % 2 === 0 ? 1 : -1) : (dx > 0 ? 1 : -1);
+                                const push = overlapX * 0.85;
+                                a.tag.x -= push * aRatio * dirX;
+                                b.tag.x += push * bRatio * dirX;
                             }
                         }
                     }
+                }
+
+                // Gentle spring toward original hamster anchor + strict safe-viewport clamping
+                for (let i = 0; i < boxes.length; i++) {
+                    const box = boxes[i];
+                    box.tag.x += (box.tag.anchorX - box.tag.x) * 0.08;
+                    box.tag.y += (box.tag.anchorY - box.tag.y) * 0.08;
+
+                    const halfW = box.w * 0.5;
+                    const halfH = box.h * 0.5;
+                    const minX = bounds.left + halfW;
+                    const maxX = Math.max(minX, bounds.right - halfW);
+                    const minY = bounds.top + halfH;
+                    const maxY = Math.max(minY, bounds.bottom - halfH);
+
+                    box.tag.x = Math.max(minX, Math.min(maxX, box.tag.x));
+                    box.tag.y = Math.max(minY, Math.min(maxY, box.tag.y));
                 }
             }
         };
 
         const drawNameTag = (item: NameTagItem) => {
             ctx.save();
-            ctx.font = item.isCaptain ? "800 12px 'Fredoka', sans-serif" : "700 12px 'Quicksand', sans-serif";
-            const paddingX = 9;
-            const metrics = ctx.measureText(item.name);
-            const boxW = metrics.width + paddingX * 2;
-            const boxH = item.isCaptain ? 22 : 20;
+            const isSpotlight = item.priority === 'spotlight';
+            const fontSize = item.fontSize ?? (isSpotlight ? 13 : item.isCaptain ? 12 : 11.5);
+            const paddingX = item.paddingX ?? (isSpotlight ? 10 : 8.5);
+            const boxH = item.boxH ?? (isSpotlight ? 24 : item.isCaptain ? 22 : 19);
+            const label = item.displayText ?? item.name;
 
-            // Subtle tether line if the anti-overlap solver nudged the tag away from its anchor
+            ctx.font = item.isCaptain || isSpotlight
+                ? `800 ${fontSize}px 'Fredoka', sans-serif`
+                : `700 ${fontSize}px 'Quicksand', sans-serif`;
+
+            const hasDot = !item.isCaptain && Boolean(item.accentColor);
+            const dotSpace = hasDot ? 6 : 0;
+            const metrics = ctx.measureText(label);
+            const boxW = Math.min(item.maxWidth ?? 210, metrics.width + paddingX * 2 + dotSpace);
+            const radius = Math.min(9, boxH * 0.45);
+
+            // Subtle tether line + tiny anchor pip if anti-overlap nudged the tag away from its hamster
             const distMoved = Math.hypot(item.x - item.anchorX, item.y - item.anchorY);
-            if (distMoved > 8) {
-                ctx.strokeStyle = 'rgba(58, 31, 13, 0.45)';
-                ctx.lineWidth = 1.5;
+            if (distMoved > 7 && !isSpotlight) {
+                ctx.strokeStyle = 'rgba(58, 31, 13, 0.48)';
+                ctx.lineWidth = 1.3;
                 ctx.beginPath();
-                ctx.moveTo(item.x, item.y + boxH * 0.4);
-                ctx.lineTo(item.anchorX, item.anchorY + 6);
+                ctx.moveTo(item.x, item.y + (item.anchorY >= item.y ? boxH * 0.42 : -boxH * 0.42));
+                ctx.lineTo(item.anchorX, item.anchorY + 5);
                 ctx.stroke();
+
+                ctx.fillStyle = item.accentColor || '#3A1F0D';
+                ctx.beginPath();
+                ctx.arc(item.anchorX, item.anchorY + 5, 2.2, 0, Math.PI * 2);
+                ctx.fill();
             }
 
             ctx.translate(item.x, item.y);
 
             // Soft drop shadow
-            ctx.fillStyle = 'rgba(28, 16, 8, 0.30)';
+            ctx.fillStyle = isSpotlight ? 'rgba(239, 35, 60, 0.32)' : 'rgba(28, 16, 8, 0.28)';
             ctx.beginPath();
-            ctx.roundRect(-boxW / 2, -boxH / 2 + 2.5, boxW, boxH, 9);
+            ctx.roundRect(-boxW / 2, -boxH / 2 + 2.2, boxW, boxH, radius);
             ctx.fill();
 
-            ctx.fillStyle = item.isCaptain ? '#3A1F0D' : 'rgba(255, 253, 247, 0.96)';
-            ctx.strokeStyle = item.isCaptain ? '#FFD166' : '#3A1F0D';
-            ctx.lineWidth = 2.0;
+            ctx.fillStyle = item.isCaptain
+                ? '#3A1F0D'
+                : isSpotlight
+                    ? '#FFFBEB'
+                    : 'rgba(255, 253, 247, 0.96)';
+            ctx.strokeStyle = item.isCaptain
+                ? '#FFD166'
+                : isSpotlight
+                    ? '#F59E0B'
+                    : '#3A1F0D';
+            ctx.lineWidth = isSpotlight ? 2.6 : (boxH < 17 ? 1.5 : 1.9);
 
             ctx.beginPath();
-            ctx.roundRect(-boxW / 2, -boxH / 2, boxW, boxH, 9);
+            ctx.roundRect(-boxW / 2, -boxH / 2, boxW, boxH, radius);
             ctx.fill();
             ctx.stroke();
 
             // Left color accent dot for student life vest color
-            if (!item.isCaptain && item.accentColor) {
+            if (hasDot && item.accentColor) {
+                const dotR = boxH < 17 ? 2.4 : 3;
                 ctx.fillStyle = item.accentColor;
                 ctx.beginPath();
-                ctx.arc(-boxW / 2 + 6, 0, 3, 0, Math.PI * 2);
+                ctx.arc(-boxW / 2 + paddingX * 0.72, 0, dotR, 0, Math.PI * 2);
                 ctx.fill();
             }
 
-            // Pointer triangle
-            ctx.fillStyle = item.isCaptain ? '#3A1F0D' : 'rgba(255, 253, 247, 0.96)';
-            ctx.beginPath();
-            ctx.moveTo(-3.5, boxH / 2);
-            ctx.lineTo(3.5, boxH / 2);
-            ctx.lineTo(0, boxH / 2 + 3.5);
-            ctx.closePath();
-            ctx.fill();
+            // Pointer triangle only when tag sits right above its hamster
+            if (distMoved <= 12) {
+                ctx.fillStyle = item.isCaptain
+                    ? '#3A1F0D'
+                    : isSpotlight
+                        ? '#FFFBEB'
+                        : 'rgba(255, 253, 247, 0.96)';
+                ctx.beginPath();
+                ctx.moveTo(-3, boxH / 2);
+                ctx.lineTo(3, boxH / 2);
+                ctx.lineTo(0, boxH / 2 + 3.2);
+                ctx.closePath();
+                ctx.fill();
+            }
 
             ctx.fillStyle = item.isCaptain ? '#FFD166' : '#2B180A';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(item.name, !item.isCaptain && item.accentColor ? 2 : 0, 0.5);
+            ctx.fillText(label, hasDot ? 2.5 : 0, 0.5, boxW - paddingX * 1.4 - dotSpace);
             ctx.restore();
         };
 
@@ -2242,71 +2641,97 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             const parent = canvas.parentElement;
             const w = parent ? parent.clientWidth : window.innerWidth;
             const h = parent ? parent.clientHeight : window.innerHeight;
-            const cx = w / 2;
-            const cy = h * 0.57;
 
             drawTropicalLagoon(w, h, time);
 
-            const boatRadius = Math.min(w, h) * (w < 640 ? 0.35 : 0.32);
-            const bowlDepth = boatRadius * 0.52;
+            const layout = getBoatLayoutMetrics(w, h);
+            const {
+                cx,
+                cy,
+                boatRadius,
+                bowlDepth,
+                usableRadius,
+                hamRadius,
+                captainRadius,
+                hullSegments,
+                radialRibs,
+                weaveRings,
+                benchOffsets,
+                floatBaseRatio,
+                floatStepPx,
+                cameraScale,
+                safeTop,
+                safeBottom,
+                safeLeft,
+                safeRight,
+                tagTier
+            } = layout;
+
             const eliminated = g.students.filter(s => s.eliminated);
             const sinCam = Math.sin(g.cameraPitch);
+            const nameTagQueue: NameTagItem[] = [];
 
             const drawEliminatedSet = (isForeground: boolean) => {
+                const elimScale = Math.max(0.72, Math.min(1.0, cameraScale + 0.14));
                 eliminated.forEach((ham, idx) => {
-                    const floatR = boatRadius * 1.48 + (idx % 2) * 34;
+                    const floatR = boatRadius * floatBaseRatio + (idx % 2) * floatStepPx;
                     const ang = ham.floatAngle + Math.sin(time * 0.45 + idx) * 0.08;
                     const sinA = Math.sin(ang);
                     if (isForeground ? (sinA < 0) : (sinA >= 0)) return;
 
-                    const fx = cx + Math.cos(ang) * floatR;
-                    const fy = cy + sinA * floatR * sinCam + Math.sin(time * 3 + idx) * 4;
-                    const depthScale = 0.85 + (sinA + 1) * 0.12;
+                    const rawFx = cx + Math.cos(ang) * floatR;
+                    const rawFy = cy + sinA * floatR * sinCam + Math.sin(time * 3 + idx) * 4;
+                    const fx = Math.max(safeLeft + 26, Math.min(safeRight - 26, rawFx));
+                    const fy = Math.max(safeTop + 28, Math.min(safeBottom - 22, rawFy));
+                    const depthScale = (0.85 + (sinA + 1) * 0.12) * elimScale;
 
                     ctx.strokeStyle = 'rgba(255,255,255,0.55)';
                     ctx.lineWidth = 2;
                     ctx.beginPath();
-                    ctx.ellipse(fx, fy + 6, 30 * depthScale, 15 * depthScale, 0, 0, Math.PI * 2);
+                    ctx.ellipse(fx, fy + 6 * depthScale, 30 * depthScale, 15 * depthScale, 0, 0, Math.PI * 2);
                     ctx.stroke();
 
-                    const tubeGrad = ctx.createRadialGradient(fx - 6 * depthScale, fy - 2 * depthScale, 3 * depthScale, fx, fy + 4, 26 * depthScale);
+                    const tubeGrad = ctx.createRadialGradient(fx - 6 * depthScale, fy - 2 * depthScale, 3 * depthScale, fx, fy + 4 * depthScale, 26 * depthScale);
                     tubeGrad.addColorStop(0, '#FFFFFF');
                     tubeGrad.addColorStop(0.25, ham.tubeColor);
                     tubeGrad.addColorStop(1, ham.tubeColor);
                     ctx.fillStyle = tubeGrad;
                     ctx.strokeStyle = '#3A1F0D';
-                    ctx.lineWidth = 2.8;
+                    ctx.lineWidth = Math.max(2, 2.8 * depthScale);
                     ctx.beginPath();
-                    ctx.ellipse(fx, fy + 4, 25 * depthScale, 14.5 * depthScale, 0, 0, Math.PI * 2);
+                    ctx.ellipse(fx, fy + 4 * depthScale, 25 * depthScale, 14.5 * depthScale, 0, 0, Math.PI * 2);
                     ctx.fill();
                     ctx.stroke();
 
                     drawHamsterCharacter(ctx, fx, fy - 4 * depthScale, 16 * depthScale, ham, time, false, g.captainPaddlePhase, g.state === 'IDLE' || g.state === 'READY');
-                    drawNameTag({
+                    const elimTagY = fy - 28 * depthScale;
+                    nameTagQueue.push({
                         x: fx,
-                        y: fy - 30 * depthScale,
+                        y: elimTagY,
                         anchorX: fx,
-                        anchorY: fy - 30 * depthScale,
+                        anchorY: elimTagY,
                         name: ham.name,
+                        displayText: formatSmartTagName(ham.name, Math.max(10, tagTier.maxChars)),
                         isCaptain: false,
-                        accentColor: ham.vest?.main
+                        accentColor: ham.vest?.main,
+                        fontSize: Math.max(10, tagTier.fontSize),
+                        boxH: Math.max(17, tagTier.boxH),
+                        paddingX: Math.max(6.5, tagTier.paddingX),
+                        maxWidth: tagTier.maxWidth
                     });
                 });
             };
 
             drawEliminatedSet(false);
 
-            const rockX = Math.sin(g.boatRockPhase * 0.5) * 7;
-            const rockY = Math.cos(g.boatRockPhase * 0.8) * 5;
+            const rockScale = Math.max(0.55, cameraScale);
+            const rockX = Math.sin(g.boatRockPhase * 0.5) * 7 * rockScale;
+            const rockY = Math.cos(g.boatRockPhase * 0.8) * 5 * rockScale;
             const boatX = cx + rockX;
             const boatY = cy + rockY;
 
             const active = g.students.filter(s => !s.eliminated);
-            const hamRadius = Math.max(16, Math.min(28, boatRadius * (active.length > 18 ? 0.125 : active.length > 10 ? 0.15 : 0.19)));
-            const usableRadius = boatRadius * 0.86;
-            const nameTagQueue: NameTagItem[] = [];
-
-            const SEGMENTS = 24;
+            const SEGMENTS = hullSegments;
             const rimPoints: {
                 i: number;
                 pRim0: ReturnType<typeof projectBoatPoint>;
@@ -2343,10 +2768,10 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 });
             }
 
-            // Smooth organic concentric foam wake rings around the boat (replaces harsh dashed circle)
+            // Smooth organic concentric foam wake rings around the boat
             ctx.save();
-            const wakeRx = boatRadius * 1.15;
-            const wakeRy = boatRadius * Math.sin(g.cameraPitch) * 1.02;
+            const wakeRx = boatRadius * 1.13;
+            const wakeRy = boatRadius * sinCam * 1.01;
             ctx.translate(boatX, boatY + bowlDepth * 0.34);
 
             // Deep water shadow under boat hull
@@ -2355,20 +2780,38 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             ctx.ellipse(0, 8, wakeRx * 0.94, wakeRy * 0.90, 0, 0, Math.PI * 2);
             ctx.fill();
 
-            // Two smooth pulsing water ripple rings
-            [1.0, 1.14].forEach((ringScale, rIdx) => {
-                const pulse = Math.sin(time * 3.2 - rIdx * 1.4) * 0.03;
+            // Smooth pulsing water ripple rings (adds an extra grand ripple on large boats)
+            const wakeRingScales = layout.boatScale >= 1.35 ? [1.0, 1.11, 1.22] : [1.0, 1.14];
+            wakeRingScales.forEach((ringScale, rIdx) => {
+                const pulse = Math.sin(time * 3.2 - rIdx * 1.3) * 0.028;
                 const rx = wakeRx * (ringScale + pulse);
                 const ry = wakeRy * (ringScale + pulse);
                 ctx.strokeStyle = rIdx === 0
                     ? 'rgba(224, 242, 254, 0.62)'
-                    : 'rgba(165, 243, 252, 0.32)';
-                ctx.lineWidth = rIdx === 0 ? (3.5 + Math.min(4, g.boatSpeed * 0.8)) : 2.0;
+                    : rIdx === 1
+                        ? 'rgba(165, 243, 252, 0.36)'
+                        : 'rgba(165, 243, 252, 0.18)';
+                ctx.lineWidth = rIdx === 0 ? (3.5 + Math.min(4, g.boatSpeed * 0.8)) : rIdx === 1 ? 2.0 : 1.4;
                 ctx.beginPath();
                 ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
                 ctx.stroke();
             });
             ctx.restore();
+
+            // Dynamically place painted hull letters so they stay centered regardless of hullSegments count
+            const cocoStart = Math.round(SEGMENTS * 0.08);
+            const chaosStart = Math.round(SEGMENTS * 0.58);
+            const hullLetters: Record<number, string> = {
+                [cocoStart]: 'C',
+                [cocoStart + 1]: 'O',
+                [cocoStart + 2]: 'C',
+                [cocoStart + 3]: 'O',
+                [chaosStart]: 'C',
+                [chaosStart + 1]: 'H',
+                [chaosStart + 2]: 'A',
+                [chaosStart + 3]: 'O',
+                [chaosStart + 4]: 'S'
+            };
 
             // Exterior hull wall segments drawn BEFORE interior bowl so the basket interior is never occluded
             const drawHullWallSegment = (seg: typeof rimPoints[number]) => {
@@ -2394,27 +2837,27 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 ctx.fill();
                 ctx.stroke();
 
-                const letters: Record<number, string> = { 2: 'C', 3: 'O', 4: 'C', 5: 'O', 14: 'C', 15: 'H', 16: 'A', 17: 'O', 18: 'S' };
-                if (letters[i] && pMid0.y > pRim0.y + 8) {
+                const letter = hullLetters[i];
+                if (letter && pMid0.y > pRim0.y + 8) {
                     const lx = (pRim0.x + pRim1.x + pMid0.x + pMid1.x) * 0.25;
                     const ly = (pRim0.y + pRim1.y + pMid0.y + pMid1.y) * 0.25;
                     ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-                    ctx.font = "900 12px 'Fredoka', sans-serif";
+                    ctx.font = `900 ${Math.max(10, Math.round(12 * Math.max(0.85, cameraScale)))}px 'Fredoka', sans-serif`;
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
-                    ctx.fillText(letters[i], lx, ly);
+                    ctx.fillText(letter, lx, ly);
                 }
                 ctx.restore();
             };
 
+            const rimThickness = Math.max(11, Math.min(16, 13.5 * (0.85 + cameraScale * 0.22)));
             const drawColorfulRimSegment = (seg: typeof rimPoints[number]) => {
                 const { pRim0, pRim1, i } = seg;
                 const color = RIM_COLORS[i % RIM_COLORS.length];
-                const rimThickness = 14;
 
                 ctx.save();
                 ctx.strokeStyle = '#3A2210';
-                ctx.lineWidth = rimThickness + 5;
+                ctx.lineWidth = rimThickness + 4.8;
                 ctx.lineCap = 'round';
                 ctx.beginPath();
                 ctx.moveTo(pRim0.x, pRim0.y);
@@ -2430,7 +2873,7 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
 
                 // Gloss highlight along painted bamboo rim
                 ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
-                ctx.lineWidth = 3;
+                ctx.lineWidth = 2.8;
                 ctx.beginPath();
                 ctx.moveTo(pRim0.x, pRim0.y - 2);
                 ctx.lineTo(pRim1.x, pRim1.y - 2);
@@ -2439,7 +2882,7 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 // Rattan lashing band at segment joint
                 ctx.fillStyle = '#3A2210';
                 ctx.beginPath();
-                ctx.arc(pRim0.x, pRim0.y, rimThickness * 0.48, 0, Math.PI * 2);
+                ctx.arc(pRim0.x, pRim0.y, rimThickness * 0.46, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.restore();
             };
@@ -2467,11 +2910,11 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             ctx.fill();
             ctx.clip();
 
-            // Woven bamboo concentric rings
-            [0.25, 0.46, 0.66, 0.85].forEach(rRatio => {
+            // Woven bamboo concentric rings (scales up with boat size)
+            weaveRings.forEach(rRatio => {
                 const zLevel = -bowlDepth * 0.35 * (1 - rRatio * rRatio * 0.75);
-                ctx.strokeStyle = 'rgba(92, 58, 33, 0.42)';
-                ctx.lineWidth = 3.0;
+                ctx.strokeStyle = 'rgba(92, 58, 33, 0.40)';
+                ctx.lineWidth = 2.8;
                 ctx.beginPath();
                 for (let i = 0; i <= SEGMENTS; i++) {
                     const a = (i / SEGMENTS) * Math.PI * 2;
@@ -2482,15 +2925,15 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 ctx.stroke();
             });
 
-            // Radial bamboo ribs
-            for (let i = 0; i < 16; i++) {
-                const a = (i / 16) * Math.PI * 2;
+            // Radial bamboo ribs (scales from 16 up to 24 ribs on larger boats)
+            for (let i = 0; i < radialRibs; i++) {
+                const a = (i / radialRibs) * Math.PI * 2;
                 const pTop = projectBoatPoint(Math.cos(a) * boatRadius * 0.96, Math.sin(a) * boatRadius * 0.96, -2, boatX, boatY);
                 const pMid = projectBoatPoint(Math.cos(a) * boatRadius * 0.62, Math.sin(a) * boatRadius * 0.62, -bowlDepth * 0.25, boatX, boatY);
-                const pBot = projectBoatPoint(Math.cos(a) * boatRadius * 0.18, Math.sin(a) * boatRadius * 0.18, -bowlDepth * 0.42, boatX, boatY);
+                const pBot = projectBoatPoint(Math.cos(a) * boatRadius * 0.16, Math.sin(a) * boatRadius * 0.16, -bowlDepth * 0.42, boatX, boatY);
 
                 ctx.strokeStyle = '#6C4325';
-                ctx.lineWidth = 5.5;
+                ctx.lineWidth = radialRibs > 20 ? 4.6 : 5.4;
                 ctx.lineCap = 'round';
                 ctx.beginPath();
                 ctx.moveTo(pTop.x, pTop.y);
@@ -2498,18 +2941,19 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 ctx.stroke();
 
                 ctx.strokeStyle = '#F3D5B5';
-                ctx.lineWidth = 2.6;
+                ctx.lineWidth = radialRibs > 20 ? 2.1 : 2.5;
                 ctx.beginPath();
                 ctx.moveTo(pTop.x, pTop.y);
                 ctx.quadraticCurveTo(pMid.x, pMid.y, pBot.x, pBot.y);
                 ctx.stroke();
             }
 
-            // Two crossed wooden seating benches inside the basket boat
-            [-0.28, 0.26].forEach(yOffsetRatio => {
+            // Wooden seating benches inside the basket boat (2 to 4 benches depending on boat size)
+            const benchHalfWidthRatio = benchOffsets.length >= 4 ? 0.085 : benchOffsets.length === 3 ? 0.105 : 0.13;
+            benchOffsets.forEach(yOffsetRatio => {
                 const benchZ = -bowlDepth * 0.14;
-                const halfLen = boatRadius * Math.sqrt(Math.max(0.2, 0.88 - yOffsetRatio * yOffsetRatio));
-                const halfWid = boatRadius * 0.13;
+                const halfLen = boatRadius * Math.sqrt(Math.max(0.18, 0.90 - yOffsetRatio * yOffsetRatio));
+                const halfWid = boatRadius * benchHalfWidthRatio;
                 const cyOff = boatRadius * yOffsetRatio;
                 const corners = [
                     projectBoatPoint(-halfLen, cyOff - halfWid, benchZ, boatX, boatY),
@@ -2519,7 +2963,7 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 ];
                 ctx.fillStyle = '#E6CCB2';
                 ctx.strokeStyle = '#5C3A21';
-                ctx.lineWidth = 2.6;
+                ctx.lineWidth = 2.4;
                 ctx.beginPath();
                 ctx.moveTo(corners[0].x, corners[0].y);
                 ctx.lineTo(corners[1].x, corners[1].y);
@@ -2542,7 +2986,7 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             const frontSegments = rimPoints.filter(seg => seg.avgDepth >= 0).sort((a, b) => a.avgDepth - b.avgDepth);
             frontSegments.forEach(seg => drawColorfulRimSegment(seg));
 
-            // Depth-sorted hamsters & Captain Coconut inside the boat across the entire interior
+            // Depth-sorted hamsters & Captain Coconut inside the boat across all concentric rings
             const flyingIds = new Set(g.flyingHamsters.filter(f => f.delay <= 0).map(f => f.hamster.id));
             if (g.fakeOutFlight) {
                 flyingIds.add(g.fakeOutFlight.hamster.id);
@@ -2556,17 +3000,16 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
 
             active.forEach(ham => {
                 if (flyingIds.has(ham.id)) return;
-                const lx = (g.state === 'CHAOS_SPIN' ? ham.curX : ham.seatX) * usableRadius;
-                const ly = (g.state === 'CHAOS_SPIN' ? ham.curY : ham.seatY) * usableRadius;
-                const rNorm = Math.min(1, Math.hypot(lx, ly) / boatRadius);
-                // Keep seatZ near the upper-middle deck plane so hamsters spread evenly across the whole boat
+                const lx = ham.curX * usableRadius;
+                const ly = ham.curY * usableRadius;
+                const rNorm = Math.min(1, Math.hypot(lx, ly) / Math.max(1, boatRadius));
                 const seatZ = -bowlDepth * 0.14 * (1 - rNorm * 0.65) + hamRadius * 0.42;
                 const proj = projectBoatPoint(lx, ly, seatZ, boatX, boatY);
                 renderEntities.push({ type: 'student', ham, proj, depth: proj.depth });
             });
 
-            const capBounce = Math.abs(Math.sin(g.captainPaddlePhase)) * 7;
-            const capProj = projectBoatPoint(0, -boatRadius * 0.82, hamRadius * 0.65 + capBounce, boatX, boatY);
+            const capBounce = Math.abs(Math.sin(g.captainPaddlePhase)) * 7 * Math.max(0.7, cameraScale);
+            const capProj = projectBoatPoint(0, -boatRadius * 0.84, hamRadius * 0.65 + capBounce, boatX, boatY);
             renderEntities.push({ type: 'captain', proj: capProj, depth: capProj.depth });
 
             renderEntities.sort((a, b) => a.depth - b.depth);
@@ -2575,7 +3018,7 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
 
             renderEntities.forEach(ent => {
                 if (ent.type === 'captain') {
-                    const capR = Math.max(24, boatRadius * 0.19);
+                    const capR = captainRadius;
                     drawHamsterCharacter(
                         ctx,
                         ent.proj.x,
@@ -2587,32 +3030,46 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                         g.captainPaddlePhase,
                         isIdleLike
                     );
-                    const tagY = ent.proj.y - capR - 22;
+                    const tagY = ent.proj.y - capR - 20;
                     nameTagQueue.push({
                         x: ent.proj.x,
                         y: tagY,
                         anchorX: ent.proj.x,
                         anchorY: tagY,
                         name: 'CAPTAIN COCONUT 🥥',
-                        isCaptain: true
+                        displayText: active.length > 36 ? 'CAPTAIN 🥥' : 'CAPTAIN COCONUT 🥥',
+                        isCaptain: true,
+                        priority: 'captain',
+                        fontSize: active.length > 36 ? 11 : 12,
+                        boxH: active.length > 36 ? 20 : 22,
+                        paddingX: 8.5,
+                        maxWidth: 190
                     });
                 } else if (ent.ham) {
                     const ham = ent.ham;
                     const screenX = ent.proj.x;
-                    const screenY = ent.proj.y + Math.sin(time * 5 + ham.bobOffset) * 2.2;
-                    const scale = 0.90 + ((ent.proj.depth + boatRadius) / (boatRadius * 2)) * 0.20;
+                    const screenY = ent.proj.y + Math.sin(time * 5 + ham.bobOffset) * 2.0;
+                    const depthFactor = Math.max(-1, Math.min(1, ent.proj.depth / Math.max(1, boatRadius)));
+                    const scale = 0.90 + (depthFactor + 1) * 0.10;
                     const drawnR = hamRadius * scale;
 
                     drawHamsterCharacter(ctx, screenX, screenY, drawnR, ham, time, false, g.captainPaddlePhase, isIdleLike);
-                    const tagY = screenY - drawnR - 14;
+                    const tagOffset = Math.max(10, drawnR + (tagTier.boxH * 0.68));
+                    const tagY = screenY - tagOffset;
                     nameTagQueue.push({
                         x: screenX,
                         y: tagY,
                         anchorX: screenX,
                         anchorY: tagY,
                         name: ham.name,
+                        displayText: formatSmartTagName(ham.name, tagTier.maxChars),
                         isCaptain: false,
-                        accentColor: ham.vest?.main
+                        priority: 'normal',
+                        accentColor: ham.vest?.main,
+                        fontSize: tagTier.fontSize,
+                        boxH: tagTier.boxH,
+                        paddingX: tagTier.paddingX,
+                        maxWidth: tagTier.maxWidth
                     });
                 }
             });
@@ -2620,11 +3077,20 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             // Foreground eliminated hamsters
             drawEliminatedSet(true);
 
-            // Resolve any overlapping name tags and render upright badges
-            resolveNameTagCollisions(nameTagQueue, ctx);
-            nameTagQueue.forEach(tag => drawNameTag(tag));
+            // Resolve overlapping name tags cleanly within safe HUD bounds and render upright badges
+            resolveNameTagCollisions(nameTagQueue, ctx, {
+                left: safeLeft,
+                right: safeRight,
+                top: safeTop - 16,
+                bottom: safeBottom + 12
+            });
+            // Draw normal tags first, Captain on top
+            nameTagQueue
+                .slice()
+                .sort((a, b) => (a.isCaptain ? 1 : 0) - (b.isCaptain ? 1 : 0))
+                .forEach(tag => drawNameTag(tag));
 
-            // Fake-out airborne hamster
+            // Fake-out airborne hamster (always spotlight-prominent on top of crowd)
             if (g.fakeOutFlight) {
                 const fo = g.fakeOutFlight;
                 const t = Math.min(1, fo.t);
@@ -2635,22 +3101,23 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
 
                 const lx = (g.state === 'CHAOS_SPIN' ? fo.hamster.curX : fo.hamster.seatX) * usableRadius;
                 const ly = (g.state === 'CHAOS_SPIN' ? fo.hamster.curY : fo.hamster.seatY) * usableRadius;
-                const rNorm = Math.min(1, Math.hypot(lx, ly) / boatRadius);
+                const rNorm = Math.min(1, Math.hypot(lx, ly) / Math.max(1, boatRadius));
                 const seatZ = -bowlDepth * 0.14 * (1 - rNorm * 0.65) + hamRadius * 0.42;
                 const liveSeatProj = projectBoatPoint(lx, ly, seatZ, boatX, boatY);
+                const arcScale = Math.max(0.68, cameraScale);
 
                 if (t <= split) {
                     const p1 = t / split;
                     curX = fo.startX + (fo.peakOutX - fo.startX) * p1;
-                    const arcHeight = Math.sin(p1 * Math.PI) * 185;
+                    const arcHeight = Math.sin(p1 * Math.PI) * 175 * arcScale;
                     curY = fo.startY + (fo.peakOutY - fo.startY) * p1 - arcHeight;
-                    zoomScale = 1 + Math.sin(p1 * Math.PI * 0.85) * 0.78;
+                    zoomScale = 1 + Math.sin(p1 * Math.PI * 0.85) * 0.85;
                     fo.hamster.wobbleAngle = p1 * Math.PI * 5;
                     fo.hamster.expression = 'shocked';
                 } else {
                     const p2 = (t - split) / (1 - split);
                     curX = fo.peakOutX + (liveSeatProj.x - fo.peakOutX) * p2;
-                    const returnArc = Math.sin(p2 * Math.PI) * 215;
+                    const returnArc = Math.sin(p2 * Math.PI) * 200 * arcScale;
                     curY = fo.peakOutY + (liveSeatProj.y - fo.peakOutY) * p2 - returnArc;
                     zoomScale = 1 + (1 - p2) * 0.65 + Math.sin(p2 * Math.PI) * 0.35;
                     fo.hamster.wobbleAngle = -p2 * Math.PI * 4;
@@ -2691,15 +3158,23 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                     ctx.restore();
                 }
 
-                drawHamsterCharacter(ctx, curX, curY, hamRadius * zoomScale, fo.hamster, time, false, g.captainPaddlePhase, false);
+                const flyR = Math.max(20, hamRadius * zoomScale);
+                drawHamsterCharacter(ctx, curX, curY, flyR, fo.hamster, time, false, g.captainPaddlePhase, false);
+                const clampedTagY = Math.max(safeTop + 34, curY - flyR - 18);
                 drawNameTag({
-                    x: curX,
-                    y: curY - hamRadius * zoomScale - 18,
+                    x: Math.max(safeLeft + 60, Math.min(safeRight - 60, curX)),
+                    y: clampedTagY,
                     anchorX: curX,
-                    anchorY: curY - hamRadius * zoomScale - 18,
+                    anchorY: clampedTagY,
                     name: fo.hamster.name,
+                    displayText: fo.hamster.name,
                     isCaptain: false,
-                    accentColor: fo.hamster.vest?.main
+                    priority: 'spotlight',
+                    accentColor: fo.hamster.vest?.main,
+                    fontSize: 13,
+                    boxH: 24,
+                    paddingX: 10,
+                    maxWidth: 220
                 });
 
                 const badgeText = t <= split ? '😱 FLYING OUT!!' : '😅 BOUNCED BACK TO BOAT!! 🛶';
@@ -2708,8 +3183,8 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 ctx.save();
                 ctx.font = "800 12px 'Fredoka', sans-serif";
                 const bWidth = ctx.measureText(badgeText).width + 18;
-                const bx = curX;
-                const by = curY - hamRadius * zoomScale - 45;
+                const bx = Math.max(safeLeft + bWidth / 2, Math.min(safeRight - bWidth / 2, curX));
+                const by = Math.max(safeTop + 12, clampedTagY - 26);
                 ctx.fillStyle = badgeBg;
                 ctx.strokeStyle = '#3A2210';
                 ctx.lineWidth = 2.2;
@@ -2725,24 +3200,33 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             }
 
             // Flying launched hamsters (true eliminations at the end of the round)
+            const launchArcScale = Math.max(0.68, cameraScale);
             g.flyingHamsters.forEach(fh => {
                 if (fh.delay > 0 || fh.t > 1) return;
                 const t = Math.min(1, fh.t);
                 const curX = fh.startX + (fh.targetX - fh.startX) * t;
-                const curY = fh.startY + (fh.targetY - fh.startY) * t - Math.sin(t * Math.PI) * 210;
-                const zoomScale = 1 + Math.sin(t * Math.PI) * 0.72;
+                const curY = fh.startY + (fh.targetY - fh.startY) * t - Math.sin(t * Math.PI) * 195 * launchArcScale;
+                const zoomScale = 1 + Math.sin(t * Math.PI) * 0.78;
+                const flyR = Math.max(20, hamRadius * zoomScale);
 
                 fh.hamster.wobbleAngle = t * Math.PI * 6;
                 fh.hamster.expression = 'shocked';
-                drawHamsterCharacter(ctx, curX, curY, hamRadius * zoomScale, fh.hamster, time, false, g.captainPaddlePhase, false);
+                drawHamsterCharacter(ctx, curX, curY, flyR, fh.hamster, time, false, g.captainPaddlePhase, false);
+                const clampedTagY = Math.max(safeTop + 18, curY - flyR - 18);
                 drawNameTag({
-                    x: curX,
-                    y: curY - hamRadius * zoomScale - 18,
+                    x: Math.max(safeLeft + 60, Math.min(safeRight - 60, curX)),
+                    y: clampedTagY,
                     anchorX: curX,
-                    anchorY: curY - hamRadius * zoomScale - 18,
+                    anchorY: clampedTagY,
                     name: fh.hamster.name,
+                    displayText: fh.hamster.name,
                     isCaptain: false,
-                    accentColor: fh.hamster.vest?.main
+                    priority: 'spotlight',
+                    accentColor: fh.hamster.vest?.main,
+                    fontSize: 13,
+                    boxH: 24,
+                    paddingX: 10,
+                    maxWidth: 220
                 });
             });
 

@@ -62,6 +62,7 @@ export interface MysteryBox3DLobbyProps {
   headerBannerSrc?: string;
   headerBannerAlt?: string;
   modeHeaderTitle?: string;
+  optionsSubtitle?: string;
   startButtonText?: string;
   showModeAndTheme?: boolean;
   fixedTeamCount?: number;
@@ -1215,6 +1216,8 @@ export function MysteryBox3DLobby({
   headerBannerSrc = '/images/mb3d/header-banner-cutout.png',
   headerBannerAlt = 'Mystery Box 3D - Explorer Hamster and Golden Question Chest',
   modeHeaderTitle = 'BOX MODE',
+  optionsSubtitle = 'Choose your Mystery Box mode, bonus rules, and sound settings',
+  showModeAndTheme = true,
   fixedTeamCount,
 }: MysteryBox3DLobbyProps) {
   const [lobbyStep, setLobbyStep] = useState<'sliders' | 'teams' | 'picker'>('sliders');
@@ -1341,7 +1344,7 @@ export function MysteryBox3DLobby({
            * ================================================================ */}
           {lobbyStep === 'sliders' && (
             <div className="w-full max-w-3xl mx-auto flex flex-col gap-3 sm:gap-4 py-2 sm:py-3">
-              {/* ROW 1: TEAMS SLIDER */}
+              {/* ROW 1: TEAMS (FIXED BADGE WHEN fixedTeamCount IS SET, SLIDER OTHERWISE) */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6">
                 <div className="w-48 sm:w-56 flex items-center gap-3.5 shrink-0">
                   <div className="w-11 h-11 rounded-2xl bg-gradient-to-b from-[#38bdf8] to-[#0284c7] border-2 border-white shadow-[0_4px_0_#0369a1,0_6px_10px_rgba(2,132,199,0.22)] flex items-center justify-center text-white shrink-0">
@@ -1353,13 +1356,27 @@ export function MysteryBox3DLobby({
                 </div>
 
                 <div className="flex-1 flex items-center gap-3">
-                  <BaamboozleSlider
-                    min={1}
-                    max={8}
-                    value={effectiveNumPlayers}
-                    displayValue={effectiveNumPlayers}
-                    onChange={(val) => onSelectNumPlayers(fixedTeamCount ?? val)}
-                  />
+                  {fixedTeamCount !== undefined ? (
+                    <div className="flex-1 px-5 sm:px-6 flex items-center">
+                      <div className="inline-flex items-center gap-3 px-5 py-2.5 rounded-2xl bg-gradient-to-b from-[#1e3a8a] to-[#0c2d57] border-[3px] border-white shadow-[0_5px_0_rgba(12,45,87,0.32),0_8px_16px_rgba(12,45,87,0.2)]">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-3.5 h-3.5 rounded-full bg-[#38bdf8] border-2 border-white shadow-xs" />
+                          <span className="w-3.5 h-3.5 rounded-full bg-[#ef4444] border-2 border-white shadow-xs" />
+                        </span>
+                        <span className="text-xl sm:text-2xl font-black text-white tracking-wide uppercase tabular-nums">
+                          {effectiveNumPlayers} TEAMS
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <BaamboozleSlider
+                      min={1}
+                      max={8}
+                      value={effectiveNumPlayers}
+                      displayValue={effectiveNumPlayers}
+                      onChange={(val) => onSelectNumPlayers(val)}
+                    />
+                  )}
                   <div className="hidden sm:block w-[112px] shrink-0" />
                 </div>
               </div>
@@ -1703,7 +1720,7 @@ export function MysteryBox3DLobby({
                     GAME OPTIONS
                   </h2>
                   <p className="text-xs sm:text-sm font-bold text-[#0369a1] mt-1">
-                    Choose your Mystery Box mode, bonus rules, and sound settings
+                    {optionsSubtitle}
                   </p>
                 </div>
               </div>
@@ -1718,21 +1735,120 @@ export function MysteryBox3DLobby({
               </button>
             </div>
 
-            {/* Single-Column Box Mode Selector (Arena Theme removed) */}
+            {/* Game Mode + Sound Controls (or dedicated Sound Panel when showModeAndTheme is false) */}
             <div className="w-full">
-              <BoxModeSelector
-                difficulty={difficulty}
-                onSelectDifficulty={onSelectDifficulty}
-                answerBonusPoints={answerBonusPoints}
-                onToggleBonus={onToggleBonus}
-                wrongAnswerPenalty={wrongAnswerPenalty}
-                onTogglePenalty={onTogglePenalty}
-                isMuted={isMuted}
-                onToggleMute={onToggleMute}
-                soundVolume={soundVolume}
-                onChangeSoundVolume={onChangeSoundVolume}
-                headerTitle={modeHeaderTitle}
-              />
+              {showModeAndTheme ? (
+                <BoxModeSelector
+                  difficulty={difficulty}
+                  onSelectDifficulty={onSelectDifficulty}
+                  answerBonusPoints={answerBonusPoints}
+                  onToggleBonus={onToggleBonus}
+                  wrongAnswerPenalty={wrongAnswerPenalty}
+                  onTogglePenalty={onTogglePenalty}
+                  isMuted={isMuted}
+                  onToggleMute={onToggleMute}
+                  soundVolume={soundVolume}
+                  onChangeSoundVolume={onChangeSoundVolume}
+                  headerTitle={modeHeaderTitle}
+                />
+              ) : (
+                <div
+                  className="relative rounded-[28px] p-4 sm:p-5 border-[3.5px] border-white ring-3 ring-[#38bdf8]/75 shadow-[0_10px_24px_rgba(2,132,199,0.16),0_6px_0_#0284c7,inset_0_2px_6px_rgba(255,255,255,0.95)] flex flex-col gap-3.5"
+                  style={{
+                    background: 'linear-gradient(180deg, #ffffff 0%, #f0f9ff 55%, #e0f2fe 100%)',
+                  }}
+                >
+                  <div
+                    className="flex items-center justify-between gap-2.5 px-4 py-2.5 rounded-2xl border border-[#bae6fd] shadow-[0_4px_0_#0369a1,inset_0_2px_4px_rgba(255,255,255,0.35)]"
+                    style={{
+                      background: 'linear-gradient(90deg, #0284c7 0%, #0ea5e9 55%, #38bdf8 100%)',
+                    }}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      {!isMuted && (soundVolume ?? 75) > 0 ? (
+                        <Volume2 className="w-6 h-6 text-white shrink-0" />
+                      ) : (
+                        <VolumeX className="w-6 h-6 text-white shrink-0" />
+                      )}
+                      <span
+                        className="text-white font-black text-base sm:text-lg tracking-wide uppercase"
+                        style={{ textShadow: '0 2px 2px rgba(7,89,133,0.55)' }}
+                      >
+                        SOUND &amp; MUSIC
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={onToggleMute}
+                      className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider cursor-pointer transition-all ${
+                        !isMuted && (soundVolume ?? 75) > 0
+                          ? 'bg-white text-[#0369a1]'
+                          : 'bg-slate-200 text-slate-600'
+                      }`}
+                    >
+                      {!isMuted && (soundVolume ?? 75) > 0 ? 'ON' : 'MUTED'}
+                    </button>
+                  </div>
+
+                  {onChangeSoundVolume && (
+                    <div className="rounded-2xl px-4 py-3 bg-white border-2 border-[#7dd3fc] shadow-[inset_0_2px_4px_rgba(255,255,255,0.9),0_3px_0_#38bdf8] flex items-center gap-3.5">
+                      <button
+                        type="button"
+                        onClick={onToggleMute}
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-all cursor-pointer border-2 active:scale-95 ${
+                          !isMuted && (soundVolume ?? 75) > 0
+                            ? 'bg-gradient-to-b from-[#38bdf8] to-[#0284c7] border-[#bae6fd] text-white shadow-[0_2px_0_#075985]'
+                            : 'bg-slate-200 border-slate-300 text-slate-500 shadow-[0_2px_0_#94a3b8]'
+                        }`}
+                        title={!isMuted && (soundVolume ?? 75) > 0 ? 'Mute Sound' : 'Unmute Sound'}
+                      >
+                        {!isMuted && (soundVolume ?? 75) > 0 ? (
+                          <Volume2 className="w-5 h-5 stroke-[2.6]" />
+                        ) : (
+                          <VolumeX className="w-5 h-5 stroke-[2.6]" />
+                        )}
+                      </button>
+
+                      <div className="flex-1 flex flex-col gap-1.5 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs sm:text-sm font-black uppercase tracking-wider text-[#0c4a6e]">
+                            Sound Volume
+                          </span>
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-xs font-black tabular-nums ${
+                              !isMuted && (soundVolume ?? 75) > 0
+                                ? 'bg-[#0284c7] text-white'
+                                : 'bg-slate-300 text-slate-600'
+                            }`}
+                          >
+                            {isMuted || (soundVolume ?? 75) === 0
+                              ? 'MUTED'
+                              : `${Math.max(0, Math.min(100, soundVolume ?? 75))}%`}
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={isMuted ? 0 : Math.max(0, Math.min(100, soundVolume ?? 75))}
+                          onChange={(e) => onChangeSoundVolume(Number(e.target.value))}
+                          aria-label="Sound Volume"
+                          className="w-full h-2.5 rounded-full appearance-none cursor-pointer accent-[#0284c7]"
+                          style={{
+                            background: `linear-gradient(to right, #0284c7 0%, #38bdf8 ${
+                              isMuted ? 0 : Math.max(0, Math.min(100, soundVolume ?? 75))
+                            }%, #cbd5e1 ${
+                              isMuted ? 0 : Math.max(0, Math.min(100, soundVolume ?? 75))
+                            }%, #cbd5e1 100%)`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Footer Action Bar: Study Questions & Done */}

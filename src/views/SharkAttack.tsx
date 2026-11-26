@@ -41,6 +41,7 @@ import {
   TransparentCutoutImage,
   BoxDifficultyMode,
 } from '../components/MysteryBox3DLobby';
+import sharkAttackBannerImg from '../assets/images/shark_attack_banner_1795638231567.jpg';
 
 // ============================================================================
 // HELPER: STRIP CONFUSING A. / B. / C. / D. PREFIXES FROM OPTION TEXT
@@ -57,6 +58,7 @@ const stripOptionPrefix = (text: string): string => {
 // ============================================================================
 let sharedAudioCtx: AudioContext | null = null;
 let soundMutedGlobal = false;
+let soundVolumeGlobal = 75;
 
 const playSFX = (
   type:
@@ -70,7 +72,8 @@ const playSFX = (
     | 'win'
     | 'clack'
 ) => {
-  if (soundMutedGlobal) return;
+  const volScale = Math.max(0, Math.min(1, soundVolumeGlobal / 100));
+  if (soundMutedGlobal || volScale <= 0) return;
   try {
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextClass) return;
@@ -83,6 +86,9 @@ const playSFX = (
     }
 
     const now = ctx.currentTime;
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(volScale, now);
+    masterGain.connect(ctx.destination);
 
     if (type === 'roundWin') {
       // Bright celebratory 4-note arcade chime + harmonic sparkle
@@ -100,7 +106,7 @@ const playSFX = (
         gain.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
         osc.connect(gain);
         sub.connect(gain);
-        gain.connect(ctx.destination);
+        gain.connect(masterGain);
         osc.start(t);
         sub.start(t);
         osc.stop(t + 0.24);
@@ -116,7 +122,7 @@ const playSFX = (
       gain.gain.setValueAtTime(0.26, now + 0.06);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
       osc.connect(gain);
-      gain.connect(ctx.destination);
+      gain.connect(masterGain);
       osc.start(now + 0.06);
       osc.stop(now + 0.36);
 
@@ -129,7 +135,7 @@ const playSFX = (
       tGain.gain.setValueAtTime(0.32, now);
       tGain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
       thud.connect(tGain);
-      tGain.connect(ctx.destination);
+      tGain.connect(masterGain);
       thud.start(now);
       thud.stop(now + 0.14);
     } else if (type === 'splash') {
@@ -150,7 +156,7 @@ const playSFX = (
       nGain.gain.exponentialRampToValueAtTime(0.01, now + 0.32);
       noise.connect(filter);
       filter.connect(nGain);
-      nGain.connect(ctx.destination);
+      nGain.connect(masterGain);
       noise.start(now);
     } else if (type === 'clack') {
       const osc = ctx.createOscillator();
@@ -161,7 +167,7 @@ const playSFX = (
       gain.gain.setValueAtTime(0.25, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
       osc.connect(gain);
-      gain.connect(ctx.destination);
+      gain.connect(masterGain);
       osc.start(now);
       osc.stop(now + 0.08);
     } else if (type === 'stun') {
@@ -175,7 +181,7 @@ const playSFX = (
         gain.gain.setValueAtTime(0.18, now);
         gain.gain.exponentialRampToValueAtTime(0.008, now + 0.28);
         osc.connect(gain);
-        gain.connect(ctx.destination);
+        gain.connect(masterGain);
         osc.start(now);
         osc.stop(now + 0.28);
       });
@@ -189,7 +195,7 @@ const playSFX = (
         gain.gain.setValueAtTime(0.16, now + i * 0.05);
         gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.05 + 0.22);
         osc.connect(gain);
-        gain.connect(ctx.destination);
+        gain.connect(masterGain);
         osc.start(now + i * 0.05);
         osc.stop(now + i * 0.05 + 0.22);
       });
@@ -203,7 +209,7 @@ const playSFX = (
       gain.gain.setValueAtTime(0.28, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.56);
       osc.connect(gain);
-      gain.connect(ctx.destination);
+      gain.connect(masterGain);
       osc.start(now);
       osc.stop(now + 0.56);
     } else if (type === 'chomp') {
@@ -216,7 +222,7 @@ const playSFX = (
       gain.gain.setValueAtTime(0.45, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.42);
       osc.connect(gain);
-      gain.connect(ctx.destination);
+      gain.connect(masterGain);
       osc.start(now);
       osc.stop(now + 0.42);
 
@@ -237,7 +243,7 @@ const playSFX = (
       nGain.gain.exponentialRampToValueAtTime(0.01, now + 0.45);
       noise.connect(filter);
       filter.connect(nGain);
-      nGain.connect(ctx.destination);
+      nGain.connect(masterGain);
       noise.start(now);
     } else if (type === 'win') {
       // Full championship victory fanfare
@@ -261,7 +267,7 @@ const playSFX = (
         gain.gain.exponentialRampToValueAtTime(0.008, now + n.t + n.d);
         osc.connect(gain);
         harm.connect(gain);
-        gain.connect(ctx.destination);
+        gain.connect(masterGain);
         osc.start(now + n.t);
         harm.start(now + n.t);
         osc.stop(now + n.t + n.d);
@@ -1698,6 +1704,8 @@ export function SharkAttack({
   const [isRumbling, setIsRumbling] = useState(false);
   const [sharkLungeSide, setSharkLungeSide] = useState<'left' | 'right' | 'center' | null>(null);
   const [soundMuted, setSoundMuted] = useState(false);
+  const [soundVolume, setSoundVolume] = useState<number>(75);
+  const [showQuickVolume, setShowQuickVolume] = useState(false);
 
   // Match Timer Slider & Countdown State (0 = OFF in Lobby, or 1..20 Minutes)
   const [timerMinutes, setTimerMinutes] = useState<number>(0);
@@ -1719,11 +1727,331 @@ export function SharkAttack({
     return `${String(m).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
   };
 
+  // ============================================================================
+  // YOUTUBE SOUNDTRACK ENGINE (MATCHES MYSTERY BOX 3D)
+  // In-game BGM: https://www.youtube.com/watch?v=ldjZKkcu5_k
+  // End-game sound: https://www.youtube.com/watch?v=BVQ_JHmvhCM
+  // ============================================================================
+  const SHARK_BGM_VIDEO_ID = 'ldjZKkcu5_k';
+  const SHARK_END_VIDEO_ID = 'BVQ_JHmvhCM';
+
+  const ytPlayerRef = useRef<any>(null);
+  const ytReadyRef = useRef<boolean>(false);
+  const ytInitializingRef = useRef<boolean>(false);
+  const ytTrackRef = useRef<'bgm' | 'end' | null>(null);
+  const ytLoadedVideoIdRef = useRef<string | null>(null);
+  const ytFailedRef = useRef<boolean>(false);
+  const soundPopoverRef = useRef<HTMLDivElement | null>(null);
+
+  const soundMutedRef = useRef<boolean>(soundMuted);
+  const soundVolumeRef = useRef<number>(soundVolume);
+  const screenRef = useRef(screen);
+  const matchOverRef = useRef(false);
+
+  soundMutedRef.current = soundMuted;
+  soundVolumeRef.current = soundVolume;
+  screenRef.current = screen;
+
   useEffect(() => {
     soundMutedGlobal = soundMuted;
-  }, [soundMuted]);
+    soundVolumeGlobal = soundVolume;
+  }, [soundMuted, soundVolume]);
 
-  const matchOverRef = useRef(false);
+  const pauseSharkYouTube = useCallback(() => {
+    try {
+      if (ytReadyRef.current && ytPlayerRef.current && typeof ytPlayerRef.current.pauseVideo === 'function') {
+        ytPlayerRef.current.pauseVideo();
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const syncSharkYouTubeVolume = useCallback((nextVol: number, forceResume = false) => {
+    try {
+      const player = ytPlayerRef.current;
+      if (!ytReadyRef.current || !player) return;
+      const clamped = Math.max(0, Math.min(100, Math.round(nextVol)));
+      if (soundMutedRef.current || clamped <= 0) {
+        if (typeof player.pauseVideo === 'function') player.pauseVideo();
+        return;
+      }
+      if (typeof player.unMute === 'function') player.unMute();
+      if (typeof player.setVolume === 'function') player.setVolume(clamped);
+      if (
+        forceResume &&
+        (screenRef.current === 'playing' || screenRef.current === 'end') &&
+        ytTrackRef.current &&
+        typeof player.playVideo === 'function'
+      ) {
+        player.playVideo();
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const ensureSharkYouTubePlayer = useCallback(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (ytPlayerRef.current || ytInitializingRef.current) return;
+    ytInitializingRef.current = true;
+
+    const mountPlayer = () => {
+      const win = window as any;
+      if (!win.YT || !win.YT.Player) {
+        ytInitializingRef.current = false;
+        return;
+      }
+
+      let hostEl = document.getElementById('shark-yt-audio-host');
+      if (!hostEl) {
+        hostEl = document.createElement('div');
+        hostEl.id = 'shark-yt-audio-host';
+        hostEl.style.position = 'fixed';
+        hostEl.style.width = '1px';
+        hostEl.style.height = '1px';
+        hostEl.style.bottom = '0px';
+        hostEl.style.left = '0px';
+        hostEl.style.opacity = '0.001';
+        hostEl.style.pointerEvents = 'none';
+        hostEl.style.zIndex = '-1';
+        const innerEl = document.createElement('div');
+        innerEl.id = 'shark-yt-audio-iframe';
+        hostEl.appendChild(innerEl);
+        document.body.appendChild(hostEl);
+      }
+
+      const initialVideoId =
+        ytTrackRef.current === 'end' ? SHARK_END_VIDEO_ID : SHARK_BGM_VIDEO_ID;
+      ytLoadedVideoIdRef.current = initialVideoId;
+
+      try {
+        ytPlayerRef.current = new win.YT.Player('shark-yt-audio-iframe', {
+          width: '64',
+          height: '64',
+          videoId: initialVideoId,
+          playerVars: {
+            autoplay: 0,
+            controls: 0,
+            disablekb: 1,
+            fs: 0,
+            modestbranding: 1,
+            playsinline: 1,
+            rel: 0,
+            origin: window.location.origin,
+          },
+          events: {
+            onReady: (ev: any) => {
+              ytReadyRef.current = true;
+              ytInitializingRef.current = false;
+              ytFailedRef.current = false;
+              try {
+                const desiredTrack = ytTrackRef.current;
+                const shouldPlay =
+                  (screenRef.current === 'playing' || screenRef.current === 'end') &&
+                  desiredTrack !== null &&
+                  !soundMutedRef.current &&
+                  soundVolumeRef.current > 0;
+                const targetVideoId =
+                  desiredTrack === 'end' ? SHARK_END_VIDEO_ID : SHARK_BGM_VIDEO_ID;
+                ev.target.setVolume(Math.max(0, Math.min(100, Math.round(soundVolumeRef.current))));
+                if (shouldPlay) {
+                  ev.target.unMute();
+                  if (ytLoadedVideoIdRef.current !== targetVideoId) {
+                    ytLoadedVideoIdRef.current = targetVideoId;
+                    ev.target.loadVideoById({ videoId: targetVideoId, startSeconds: 0 });
+                  } else {
+                    ev.target.playVideo();
+                  }
+                } else {
+                  ev.target.pauseVideo();
+                }
+              } catch {
+                // ignore
+              }
+            },
+            onStateChange: (ev: any) => {
+              // Loop in-game BGM seamlessly when it ends (YT.PlayerState.ENDED === 0)
+              if (ev.data === 0) {
+                if (
+                  ytTrackRef.current === 'bgm' &&
+                  screenRef.current === 'playing' &&
+                  !matchOverRef.current &&
+                  !soundMutedRef.current &&
+                  soundVolumeRef.current > 0
+                ) {
+                  try {
+                    ev.target.seekTo(0);
+                    ev.target.playVideo();
+                  } catch {
+                    // ignore
+                  }
+                }
+              }
+            },
+            onError: () => {
+              ytFailedRef.current = true;
+              ytInitializingRef.current = false;
+              if (ytTrackRef.current === 'end') {
+                playSFX('win');
+              }
+            },
+          },
+        });
+      } catch {
+        ytInitializingRef.current = false;
+        ytFailedRef.current = true;
+      }
+    };
+
+    const win = window as any;
+    if (win.YT && win.YT.Player) {
+      mountPlayer();
+    } else {
+      const existingScript = document.querySelector('script[src*="youtube.com/iframe_api"]');
+      const prevCallback = win.onYouTubeIframeAPIReady;
+      win.onYouTubeIframeAPIReady = () => {
+        if (typeof prevCallback === 'function') {
+          try {
+            prevCallback();
+          } catch {
+            // ignore
+          }
+        }
+        mountPlayer();
+      };
+      if (!existingScript) {
+        const tag = document.createElement('script');
+        tag.src = 'https://www.youtube.com/iframe_api';
+        tag.async = true;
+        document.head.appendChild(tag);
+      } else {
+        let attempts = 0;
+        const poll = setInterval(() => {
+          attempts += 1;
+          if (win.YT && win.YT.Player) {
+            clearInterval(poll);
+            mountPlayer();
+          } else if (attempts > 40) {
+            clearInterval(poll);
+            ytInitializingRef.current = false;
+          }
+        }, 150);
+      }
+    }
+  }, []);
+
+  const playSharkYouTubeTrack = useCallback(
+    (track: 'bgm' | 'end', forceRestart = false) => {
+      ytTrackRef.current = track;
+      ytFailedRef.current = false;
+      const videoId = track === 'end' ? SHARK_END_VIDEO_ID : SHARK_BGM_VIDEO_ID;
+
+      if (!ytPlayerRef.current) {
+        ensureSharkYouTubePlayer();
+        return;
+      }
+      if (!ytReadyRef.current) return;
+
+      try {
+        const player = ytPlayerRef.current;
+        if (soundMutedRef.current || soundVolumeRef.current <= 0) {
+          if (typeof player.pauseVideo === 'function') player.pauseVideo();
+          return;
+        }
+        const targetVol = Math.max(0, Math.min(100, Math.round(soundVolumeRef.current)));
+        if (typeof player.unMute === 'function') player.unMute();
+        if (typeof player.setVolume === 'function') player.setVolume(targetVol);
+
+        if (forceRestart || ytLoadedVideoIdRef.current !== videoId) {
+          ytLoadedVideoIdRef.current = videoId;
+          if (typeof player.loadVideoById === 'function') {
+            player.loadVideoById({ videoId, startSeconds: 0 });
+          }
+        } else if (typeof player.playVideo === 'function') {
+          player.playVideo();
+        }
+      } catch {
+        ytFailedRef.current = true;
+        if (track === 'end') playSFX('win');
+      }
+    },
+    [ensureSharkYouTubePlayer]
+  );
+
+  // Pre-warm YouTube player on mount & destroy on unmount
+  useEffect(() => {
+    ensureSharkYouTubePlayer();
+    return () => {
+      try {
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
+          ytPlayerRef.current.destroy();
+        }
+      } catch {
+        // ignore
+      }
+      ytPlayerRef.current = null;
+      ytReadyRef.current = false;
+      ytInitializingRef.current = false;
+      const hostEl = document.getElementById('shark-yt-audio-host');
+      if (hostEl && hostEl.parentNode) {
+        hostEl.parentNode.removeChild(hostEl);
+      }
+    };
+  }, [ensureSharkYouTubePlayer]);
+
+  // Pause YouTube audio whenever leaving active gameplay / end celebration
+  useEffect(() => {
+    if (screen !== 'playing' && screen !== 'end') {
+      ytTrackRef.current = null;
+      pauseSharkYouTube();
+    }
+  }, [screen, pauseSharkYouTube]);
+
+  // Close quick sound popover when clicking outside
+  useEffect(() => {
+    if (!showQuickVolume) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (soundPopoverRef.current && !soundPopoverRef.current.contains(e.target as Node)) {
+        setShowQuickVolume(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [showQuickVolume]);
+
+  const handleChangeSoundVolume = useCallback(
+    (nextVol: number) => {
+      const clamped = Math.max(0, Math.min(100, Math.round(nextVol)));
+      setSoundVolume(clamped);
+      soundVolumeRef.current = clamped;
+      soundVolumeGlobal = clamped;
+      const shouldMute = clamped <= 0;
+      setSoundMuted(shouldMute);
+      soundMutedRef.current = shouldMute;
+      soundMutedGlobal = shouldMute;
+      syncSharkYouTubeVolume(clamped, !shouldMute);
+    },
+    [syncSharkYouTubeVolume]
+  );
+
+  const handleToggleSoundMute = useCallback(() => {
+    const nextMuted = !soundMutedRef.current;
+    setSoundMuted(nextMuted);
+    soundMutedRef.current = nextMuted;
+    soundMutedGlobal = nextMuted;
+    if (!nextMuted && soundVolumeRef.current <= 0) {
+      setSoundVolume(75);
+      soundVolumeRef.current = 75;
+      soundVolumeGlobal = 75;
+      syncSharkYouTubeVolume(75, true);
+    } else if (nextMuted) {
+      pauseSharkYouTube();
+    } else {
+      syncSharkYouTubeVolume(soundVolumeRef.current, true);
+    }
+  }, [pauseSharkYouTube, syncSharkYouTubeVolume]);
+
   const lastTouchTimeRef = useRef<number>(0);
   const stateRef = useRef({ screen, leftTeam, rightTeam });
   useEffect(() => {
@@ -1785,39 +2113,48 @@ export function SharkAttack({
     setTimerPaused(false);
     matchOverRef.current = false;
     setShowStartBattleModal(false);
+    screenRef.current = 'playing';
     setScreen('playing');
+    playSharkYouTubeTrack('bgm', true);
     playSFX('splash');
     setTimeout(() => playSFX('clack'), 200);
   };
 
-  const triggerSharkVictory = useCallback((winningTeam: 'Blue Team' | 'Red Team') => {
-    if (matchOverRef.current) return;
-    matchOverRef.current = true;
-    setWinner(winningTeam);
-    setFallingPhase('diving');
-    if (winningTeam === 'Blue Team') {
-      setLeftTeam((prev: any) => ({ ...prev, wins: prev.wins + 1 }));
-    } else {
-      setRightTeam((prev: any) => ({ ...prev, wins: prev.wins + 1 }));
-    }
-    // Stage 1: Hamster plunges off the top edge with cartoon falling whistle
-    playSFX('fallWhistle');
-    // Stage 2: Hamster lands in shark jaws -> CHOMP + big splash!
-    setTimeout(() => {
-      setFallingPhase('chomped');
-      setIsRumbling(true);
-      playSFX('chomp');
-      setTimeout(() => setIsRumbling(false), 500);
-    }, 520);
-    // Stage 3: Championship fanfare
-    setTimeout(() => {
-      playSFX('win');
-    }, 950);
-    // Transition to celebration screen
-    setTimeout(() => {
-      setScreen('end');
-    }, 2600);
-  }, []);
+  const triggerSharkVictory = useCallback(
+    (winningTeam: 'Blue Team' | 'Red Team') => {
+      if (matchOverRef.current) return;
+      matchOverRef.current = true;
+      setWinner(winningTeam);
+      setFallingPhase('diving');
+      if (winningTeam === 'Blue Team') {
+        setLeftTeam((prev: any) => ({ ...prev, wins: prev.wins + 1 }));
+      } else {
+        setRightTeam((prev: any) => ({ ...prev, wins: prev.wins + 1 }));
+      }
+      // Switch immediately from in-game BGM to the End-Game victory track (same as Mystery Box)
+      playSharkYouTubeTrack('end', true);
+      // Stage 1: Hamster plunges off the top edge with cartoon falling whistle
+      playSFX('fallWhistle');
+      // Stage 2: Hamster lands in shark jaws -> CHOMP + big splash!
+      setTimeout(() => {
+        setFallingPhase('chomped');
+        setIsRumbling(true);
+        playSFX('chomp');
+        setTimeout(() => setIsRumbling(false), 500);
+      }, 520);
+      // Stage 3: Fallback Web Audio fanfare only if YouTube failed to load
+      setTimeout(() => {
+        if (ytFailedRef.current) {
+          playSFX('win');
+        }
+      }, 950);
+      // Transition to celebration screen
+      setTimeout(() => {
+        setScreen('end');
+      }, 2600);
+    },
+    [playSharkYouTubeTrack]
+  );
 
   // When the match timer ends, the character with the highest steps (closest to the edge) is eaten by the shark!
   const handleTimeExpired = useCallback(() => {
@@ -2518,6 +2855,10 @@ export function SharkAttack({
         className="w-full min-h-full flex-1 relative select-none"
       >
         <MysteryBox3DLobby
+          headerBannerSrc={sharkAttackBannerImg}
+          headerBannerAlt="Shark Attack - Explorer Hamster and Tropical Shark"
+          showModeAndTheme={false}
+          optionsSubtitle="Adjust Shark Attack sound volume, audio effects, and study options"
           fixedTeamCount={2}
           numPlayers={2}
           onSelectNumPlayers={() => {}}
@@ -2560,7 +2901,9 @@ export function SharkAttack({
           wrongAnswerPenalty={wrongAnswerPenalty}
           onTogglePenalty={() => setWrongAnswerPenalty((v) => !v)}
           isMuted={soundMuted}
-          onToggleMute={() => setSoundMuted((v) => !v)}
+          onToggleMute={handleToggleSoundMute}
+          soundVolume={soundVolume}
+          onChangeSoundVolume={handleChangeSoundVolume}
           selectedTheme={selectedTheme}
           onSelectTheme={(themeId) => setSelectedTheme(themeId)}
           onStartGame={() => setShowStartBattleModal(true)}
@@ -2895,17 +3238,72 @@ export function SharkAttack({
             targetId="game-container"
             className="!p-1.5 sm:!p-2 !rounded-full !bg-blue-100 hover:!bg-blue-200 !text-blue-700 !border-0 !shadow-none cursor-pointer"
           />
-          <button
-            onClick={() => setSoundMuted(!soundMuted)}
-            className="p-1.5 sm:p-2 rounded-full hover:bg-slate-100 text-slate-700 transition-all cursor-pointer"
-            title={soundMuted ? 'Unmute Sound' : 'Mute Sound'}
-          >
-            {soundMuted ? (
-              <VolumeX size={20} className="text-red-500" />
-            ) : (
-              <Volume2 size={20} className="text-emerald-600" />
+          <div className="relative" ref={soundPopoverRef}>
+            <button
+              type="button"
+              onClick={() => setShowQuickVolume((prev) => !prev)}
+              className={`p-1.5 sm:p-2 rounded-full transition-all cursor-pointer ${
+                showQuickVolume ? 'bg-sky-100 ring-2 ring-sky-400' : 'hover:bg-slate-100'
+              }`}
+              title={
+                soundMuted || soundVolume === 0
+                  ? 'Sound Muted — Click to adjust volume'
+                  : `Sound Volume: ${soundVolume}% — Click to adjust`
+              }
+            >
+              {soundMuted || soundVolume === 0 ? (
+                <VolumeX size={20} className="text-red-500" />
+              ) : (
+                <Volume2 size={20} className="text-emerald-600" />
+              )}
+            </button>
+
+            {showQuickVolume && (
+              <div className="absolute right-0 mt-2.5 w-60 rounded-2xl p-3.5 bg-white border-2 border-sky-300 shadow-2xl z-[80] flex flex-col gap-2.5 animate-in fade-in zoom-in-95 duration-150">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-700">
+                    Sound Volume
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 text-[11px] font-black tabular-nums">
+                    {soundMuted || soundVolume === 0 ? 'MUTED' : `${soundVolume}%`}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={handleToggleSoundMute}
+                    className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 cursor-pointer transition-all ${
+                      soundMuted || soundVolume === 0
+                        ? 'bg-rose-100 text-rose-600 hover:bg-rose-200'
+                        : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                    }`}
+                    title={soundMuted || soundVolume === 0 ? 'Unmute Sound' : 'Mute Sound'}
+                  >
+                    {soundMuted || soundVolume === 0 ? (
+                      <VolumeX size={16} />
+                    ) : (
+                      <Volume2 size={16} />
+                    )}
+                  </button>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={soundMuted ? 0 : soundVolume}
+                    onChange={(e) => handleChangeSoundVolume(Number(e.target.value))}
+                    aria-label="Sound Volume"
+                    className="w-full h-2 rounded-full appearance-none cursor-pointer accent-sky-500"
+                    style={{
+                      background: `linear-gradient(to right, #0284c7 0%, #38bdf8 ${
+                        soundMuted ? 0 : soundVolume
+                      }%, #cbd5e1 ${soundMuted ? 0 : soundVolume}%, #cbd5e1 100%)`,
+                    }}
+                  />
+                </div>
+              </div>
             )}
-          </button>
+          </div>
           <button
             onClick={() => setShowModeModal(true)}
             className="p-1.5 sm:p-2 rounded-full hover:bg-slate-100 text-slate-700 transition-all cursor-pointer"

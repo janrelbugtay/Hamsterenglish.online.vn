@@ -213,7 +213,7 @@ const APP_GAMES = [
   { id: "mystery-box", title: "Mystery Box", category: "Board Trivia & Team Games", imageUrl: "/images/mystery-box-card.jpg?v=3", icon: "🎁" },
   { id: "neon-chain", title: "Neon Chain", category: "Board Trivia & Team Games", imageUrl: "/images/neon-chain-card.jpg?v=3", icon: "⚡" },
   { id: "bubble-sentence-pro", title: "Bubble Island", category: "Board Trivia & Team Games", imageUrl: "/images/bubble-island-card.jpg?v=3", icon: "🏝️" },
-  { id: "shark-attack", title: "Shark Attack", category: "Board Trivia & Team Games", imageUrl: "/images/shark-attack-card.jpg?v=3", icon: "🦈" },
+  { id: "shark-attack", title: "Shark Attack", category: "Board Trivia & Team Games", imageUrl: "/images/shark-attack-card.jpg?v=4", icon: "🦈" },
   { id: "family-feud", title: "Family Feud", category: "Board Trivia & Team Games", imageUrl: "/images/family-feud-card.jpg?v=3", icon: "👨‍👩‍👧‍👦" },
   { id: "sumo", title: "Sumo Tags", category: "Board Trivia & Team Games", imageUrl: "/images/sumo-tags-card.jpg?v=3", icon: "🤼" },
   // Multiplayer Games
