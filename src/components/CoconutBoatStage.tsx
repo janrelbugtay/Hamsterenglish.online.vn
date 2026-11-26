@@ -492,7 +492,7 @@ interface EscapeJump {
     hamster: HamsterStudent;
     startX: number;
     startY: number;
-    targetPadIndex: number | null; // null = leaps all the way back to the boat!
+    targetPadIndex: number; // Always jumps to another water lily pad (never back to the boat!)
     targetX: number;
     targetY: number;
     t: number;
@@ -618,93 +618,226 @@ function drawCaptainHatAndPaddle(targetCtx: CanvasRenderingContext2D, r: number,
     targetCtx.save();
     targetCtx.translate(0, -r * 0.72);
 
-    // Red & Gold Captain Neckerchief
-    targetCtx.fillStyle = '#EF233C';
+    // Billowing Red & Gold Captain Neckerchief with knotted ribbon tails
+    const scarfWave = Math.sin(captainPaddlePhase * 0.9) * r * 0.08;
+    targetCtx.fillStyle = '#D90429';
     targetCtx.strokeStyle = '#3A1F0D';
-    targetCtx.lineWidth = 2;
+    targetCtx.lineWidth = Math.max(1.8, r * 0.075);
+    // Flowing scarf tails on left side
     targetCtx.beginPath();
-    targetCtx.ellipse(0, r * 1.02, r * 0.68, r * 0.2, 0, 0, Math.PI * 2);
-    targetCtx.fill();
-    targetCtx.stroke();
-
-    // Golden Captain Whistle on cord
-    targetCtx.fillStyle = '#FFD166';
-    targetCtx.beginPath();
-    targetCtx.arc(0, r * 1.18, r * 0.13, 0, Math.PI * 2);
-    targetCtx.fill();
-    targetCtx.stroke();
-
-    // Detailed Vietnamese Conical Nón Lá Straw Hat
-    const hatGrad = targetCtx.createLinearGradient(-r * 1.35, -r * 0.85, r * 1.35, r * 0.15);
-    hatGrad.addColorStop(0, '#FFFDF5');
-    hatGrad.addColorStop(0.45, '#F5DEB3');
-    hatGrad.addColorStop(0.85, '#DEB887');
-    hatGrad.addColorStop(1, '#B8860B');
-    targetCtx.fillStyle = hatGrad;
-    targetCtx.strokeStyle = '#3A1F0D';
-    targetCtx.lineWidth = 2.4;
-    targetCtx.beginPath();
-    targetCtx.moveTo(-r * 1.38, r * 0.08);
-    targetCtx.lineTo(0, -r * 0.88);
-    targetCtx.lineTo(r * 1.38, r * 0.08);
-    targetCtx.quadraticCurveTo(0, r * 0.34, -r * 1.38, r * 0.08);
+    targetCtx.moveTo(-r * 0.25, r * 1.06);
+    targetCtx.quadraticCurveTo(-r * 0.56, r * 1.24 + scarfWave, -r * 0.78, r * 1.38 + scarfWave);
+    targetCtx.lineTo(-r * 0.56, r * 1.46 + scarfWave);
+    targetCtx.quadraticCurveTo(-r * 0.34, r * 1.26, -r * 0.12, r * 1.12);
     targetCtx.closePath();
     targetCtx.fill();
     targetCtx.stroke();
 
-    // Woven bamboo concentric rings on conical hat
-    targetCtx.strokeStyle = 'rgba(92, 58, 33, 0.38)';
-    targetCtx.lineWidth = 1.4;
-    [0.25, 0.5, 0.75].forEach(t => {
-        const hw = r * 1.38 * t;
-        const hy = -r * 0.88 + (r * 0.96) * t;
-        targetCtx.beginPath();
-        targetCtx.moveTo(-hw, hy);
-        targetCtx.quadraticCurveTo(0, hy + r * 0.18 * t, hw, hy);
-        targetCtx.stroke();
-    });
-
-    targetCtx.restore();
-
-    // Long Bamboo Oar / Paddle dipping into the lagoon water
-    const strokeAngle = Math.sin(captainPaddlePhase) * 0.46;
-    targetCtx.save();
-    targetCtx.translate(r * 0.48, r * 0.25);
-    targetCtx.rotate(0.52 + strokeAngle);
-
-    // Bamboo shaft with nodes
-    targetCtx.strokeStyle = '#3A1F0D';
-    targetCtx.lineWidth = Math.max(7, r * 0.28);
-    targetCtx.lineCap = 'round';
+    // Scarf collar band with golden hem trim
     targetCtx.beginPath();
-    targetCtx.moveTo(-r * 0.95, -r * 0.42);
-    targetCtx.lineTo(r * 2.15, r * 0.92);
+    targetCtx.ellipse(0, r * 1.04, r * 0.72, r * 0.22, 0, 0, Math.PI * 2);
+    targetCtx.fill();
+    targetCtx.stroke();
+    targetCtx.strokeStyle = '#FFD166';
+    targetCtx.lineWidth = Math.max(1.3, r * 0.05);
+    targetCtx.beginPath();
+    targetCtx.ellipse(0, r * 1.04, r * 0.62, r * 0.13, 0, 0.15, Math.PI - 0.15);
     targetCtx.stroke();
 
-    targetCtx.strokeStyle = '#E6C280';
-    targetCtx.lineWidth = Math.max(4.5, r * 0.18);
+    // Golden Captain Whistle on braided lanyard
+    targetCtx.strokeStyle = '#F59E0B';
+    targetCtx.lineWidth = Math.max(1.4, r * 0.055);
     targetCtx.beginPath();
-    targetCtx.moveTo(-r * 0.95, -r * 0.42);
-    targetCtx.lineTo(r * 2.15, r * 0.92);
+    targetCtx.moveTo(-r * 0.16, r * 1.12);
+    targetCtx.quadraticCurveTo(0, r * 1.32, r * 0.16, r * 1.12);
     targetCtx.stroke();
 
-    // Paddle blade
-    const bladeGrad = targetCtx.createLinearGradient(r * 1.8, r * 0.7, r * 2.7, r * 1.2);
-    bladeGrad.addColorStop(0, '#D4A373');
-    bladeGrad.addColorStop(1, '#8D5B4C');
-    targetCtx.fillStyle = bladeGrad;
+    const whistleGrad = targetCtx.createRadialGradient(-r * 0.03, r * 1.22, r * 0.02, 0, r * 1.25, r * 0.15);
+    whistleGrad.addColorStop(0, '#FFFBEB');
+    whistleGrad.addColorStop(0.5, '#FFD166');
+    whistleGrad.addColorStop(1, '#D97706');
+    targetCtx.fillStyle = whistleGrad;
     targetCtx.strokeStyle = '#3A1F0D';
-    targetCtx.lineWidth = 2.2;
+    targetCtx.lineWidth = Math.max(1.6, r * 0.065);
     targetCtx.beginPath();
-    targetCtx.ellipse(r * 2.32, r * 1.0, r * 0.54, r * 0.24, 0.4, 0, Math.PI * 2);
+    targetCtx.roundRect(-r * 0.14, r * 1.16, r * 0.28, r * 0.17, r * 0.07);
     targetCtx.fill();
     targetCtx.stroke();
 
-    // Water foam splash on paddle blade
-    targetCtx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+    // Red silk chin strap looping under Captain's chubby cheeks
+    targetCtx.strokeStyle = '#EF233C';
+    targetCtx.lineWidth = Math.max(1.8, r * 0.07);
     targetCtx.beginPath();
-    targetCtx.arc(r * 2.52, r * 1.08, r * 0.22, 0, Math.PI * 2);
-    targetCtx.arc(r * 2.12, r * 1.15, r * 0.16, 0, Math.PI * 2);
+    targetCtx.moveTo(-r * 0.72, r * 0.16);
+    targetCtx.quadraticCurveTo(-r * 0.56, r * 0.88, 0, r * 0.98);
+    targetCtx.quadraticCurveTo(r * 0.56, r * 0.88, r * 0.72, r * 0.16);
+    targetCtx.stroke();
+
+    // Underside shadow of Vietnamese Conical Nón Lá Hat
+    targetCtx.fillStyle = 'rgba(74, 44, 17, 0.55)';
+    targetCtx.beginPath();
+    targetCtx.ellipse(0, r * 0.12, r * 1.34, r * 0.26, 0, 0, Math.PI * 2);
+    targetCtx.fill();
+
+    // Sculpted 3D Vietnamese Conical Nón Lá Straw Hat with sunlit gradient
+    const hatGrad = targetCtx.createLinearGradient(-r * 1.4, -r * 0.96, r * 1.4, r * 0.22);
+    hatGrad.addColorStop(0, '#FFFDF5');
+    hatGrad.addColorStop(0.32, '#FAE5B8');
+    hatGrad.addColorStop(0.72, '#E5B976');
+    hatGrad.addColorStop(1, '#B67B35');
+    targetCtx.fillStyle = hatGrad;
+    targetCtx.strokeStyle = '#3A1F0D';
+    targetCtx.lineWidth = Math.max(2.2, r * 0.09);
+    targetCtx.lineJoin = 'round';
+    targetCtx.beginPath();
+    targetCtx.moveTo(-r * 1.44, r * 0.10);
+    targetCtx.quadraticCurveTo(-r * 0.52, -r * 0.56, 0, -r * 0.96);
+    targetCtx.quadraticCurveTo(r * 0.52, -r * 0.56, r * 1.44, r * 0.10);
+    targetCtx.quadraticCurveTo(0, r * 0.36, -r * 1.44, r * 0.10);
+    targetCtx.closePath();
+    targetCtx.fill();
+    targetCtx.stroke();
+
+    // Radial palm-leaf ribs from peak to brim
+    targetCtx.strokeStyle = 'rgba(120, 72, 32, 0.28)';
+    targetCtx.lineWidth = Math.max(1.1, r * 0.045);
+    [-0.92, -0.58, -0.26, 0, 0.26, 0.58, 0.92].forEach(rx => {
+        targetCtx.beginPath();
+        targetCtx.moveTo(0, -r * 0.92);
+        targetCtx.lineTo(rx * r * 1.32, r * (0.14 + (1 - Math.abs(rx)) * 0.12));
+        targetCtx.stroke();
+    });
+
+    // Woven bamboo concentric rings on conical hat
+    targetCtx.strokeStyle = 'rgba(92, 58, 33, 0.42)';
+    targetCtx.lineWidth = Math.max(1.2, r * 0.05);
+    [0.26, 0.52, 0.78].forEach(t => {
+        const hw = r * 1.40 * t;
+        const hy = -r * 0.94 + (r * 1.04) * t;
+        targetCtx.beginPath();
+        targetCtx.moveTo(-hw, hy);
+        targetCtx.quadraticCurveTo(0, hy + r * 0.21 * t, hw, hy);
+        targetCtx.stroke();
+    });
+
+    // Decorative red silk hat band & golden star captain emblem
+    targetCtx.fillStyle = '#EF233C';
+    targetCtx.strokeStyle = '#3A1F0D';
+    targetCtx.lineWidth = Math.max(1.4, r * 0.055);
+    targetCtx.beginPath();
+    targetCtx.arc(0, -r * 0.36, r * 0.21, 0, Math.PI * 2);
+    targetCtx.fill();
+    targetCtx.stroke();
+
+    targetCtx.fillStyle = '#FFD166';
+    targetCtx.beginPath();
+    for (let s = 0; s < 10; s++) {
+        const sr = s % 2 === 0 ? r * 0.13 : r * 0.058;
+        const sa = -Math.PI / 2 + (s * Math.PI) / 5;
+        const sx = Math.cos(sa) * sr;
+        const sy = -r * 0.36 + Math.sin(sa) * sr;
+        if (s === 0) targetCtx.moveTo(sx, sy);
+        else targetCtx.lineTo(sx, sy);
+    }
+    targetCtx.closePath();
+    targetCtx.fill();
+
+    // Warm sunlight edge glint on left slope of hat
+    targetCtx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+    targetCtx.lineWidth = Math.max(1.8, r * 0.07);
+    targetCtx.lineCap = 'round';
+    targetCtx.beginPath();
+    targetCtx.moveTo(-r * 0.14, -r * 0.78);
+    targetCtx.lineTo(-r * 0.96, -r * 0.08);
+    targetCtx.stroke();
+
+    targetCtx.restore();
+
+    // Artisanal Bamboo Rowing Oar dipping rhythmically into the lagoon
+    const strokeAngle = Math.sin(captainPaddlePhase) * 0.46;
+    targetCtx.save();
+    targetCtx.translate(r * 0.44, r * 0.30);
+    targetCtx.rotate(0.50 + strokeAngle);
+
+    // Dark outline of bamboo shaft
+    targetCtx.strokeStyle = '#3A1F0D';
+    targetCtx.lineWidth = Math.max(7.5, r * 0.29);
+    targetCtx.lineCap = 'round';
+    targetCtx.beginPath();
+    targetCtx.moveTo(-r * 1.0, -r * 0.44);
+    targetCtx.lineTo(r * 2.18, r * 0.94);
+    targetCtx.stroke();
+
+    // Warm golden bamboo shaft gradient
+    const shaftGrad = targetCtx.createLinearGradient(-r, -r * 0.5, r * 2.2, r);
+    shaftGrad.addColorStop(0, '#F6D79A');
+    shaftGrad.addColorStop(0.5, '#E4B465');
+    shaftGrad.addColorStop(1, '#C58B3B');
+    targetCtx.strokeStyle = shaftGrad;
+    targetCtx.lineWidth = Math.max(4.6, r * 0.18);
+    targetCtx.beginPath();
+    targetCtx.moveTo(-r * 1.0, -r * 0.44);
+    targetCtx.lineTo(r * 2.18, r * 0.94);
+    targetCtx.stroke();
+
+    // Bamboo node rings along the pole
+    targetCtx.strokeStyle = '#5C3A21';
+    targetCtx.lineWidth = Math.max(1.6, r * 0.06);
+    [0.12, 0.42, 0.72].forEach(t => {
+        const nx = -r * 1.0 + r * 3.18 * t;
+        const ny = -r * 0.44 + r * 1.38 * t;
+        targetCtx.beginPath();
+        targetCtx.moveTo(nx - r * 0.05, ny + r * 0.11);
+        targetCtx.lineTo(nx + r * 0.05, ny - r * 0.11);
+        targetCtx.stroke();
+    });
+
+    // Sculpted teardrop wooden paddle blade with grain highlight
+    const bladeGrad = targetCtx.createLinearGradient(r * 1.85, r * 0.68, r * 2.85, r * 1.26);
+    bladeGrad.addColorStop(0, '#E6B88A');
+    bladeGrad.addColorStop(0.5, '#C0824F');
+    bladeGrad.addColorStop(1, '#7F4F24');
+    targetCtx.fillStyle = bladeGrad;
+    targetCtx.strokeStyle = '#3A1F0D';
+    targetCtx.lineWidth = Math.max(2.2, r * 0.08);
+    targetCtx.beginPath();
+    targetCtx.ellipse(r * 2.38, r * 1.03, r * 0.58, r * 0.27, 0.4, 0, Math.PI * 2);
+    targetCtx.fill();
+    targetCtx.stroke();
+
+    // Blade specular rib
+    targetCtx.strokeStyle = 'rgba(255, 245, 225, 0.45)';
+    targetCtx.lineWidth = Math.max(1.4, r * 0.055);
+    targetCtx.beginPath();
+    targetCtx.moveTo(r * 1.98, r * 0.85);
+    targetCtx.lineTo(r * 2.66, r * 1.15);
+    targetCtx.stroke();
+
+    // Rattan binding wrap where blade meets shaft
+    targetCtx.strokeStyle = '#EF233C';
+    targetCtx.lineWidth = Math.max(2.4, r * 0.09);
+    targetCtx.beginPath();
+    targetCtx.moveTo(r * 1.76, r * 0.86);
+    targetCtx.lineTo(r * 1.88, r * 0.66);
+    targetCtx.stroke();
+
+    // Captain's gripping paws right on the oar handle!
+    targetCtx.fillStyle = '#FFF8E7';
+    targetCtx.strokeStyle = '#3A1F0D';
+    targetCtx.lineWidth = Math.max(1.6, r * 0.065);
+    targetCtx.beginPath();
+    targetCtx.ellipse(-r * 0.46, -r * 0.20, r * 0.16, r * 0.13, 0.4, 0, Math.PI * 2);
+    targetCtx.ellipse(r * 0.18, r * 0.08, r * 0.16, r * 0.13, 0.4, 0, Math.PI * 2);
+    targetCtx.fill();
+    targetCtx.stroke();
+
+    // Dynamic sparkling turquoise & white foam splash at paddle tip
+    const splashPulse = 0.85 + Math.abs(Math.cos(captainPaddlePhase)) * 0.35;
+    targetCtx.fillStyle = 'rgba(224, 242, 254, 0.92)';
+    targetCtx.beginPath();
+    targetCtx.arc(r * 2.60, r * 1.12, r * 0.22 * splashPulse, 0, Math.PI * 2);
+    targetCtx.arc(r * 2.18, r * 1.22, r * 0.17 * splashPulse, 0, Math.PI * 2);
+    targetCtx.arc(r * 2.86, r * 0.96, r * 0.11 * splashPulse, 0, Math.PI * 2);
     targetCtx.fill();
 
     targetCtx.restore();
@@ -883,124 +1016,227 @@ function drawHamsterCharacter(
 
     const palette = hamster.palette || FUR_PALETTES[0];
     const vest = isCaptain
-        ? { main: '#D90429', dark: '#9B001A', stripe: '#FFD166' }
+        ? { main: '#C1121F', dark: '#780000', stripe: '#FFD166' }
         : (hamster.vest || VEST_COLORS[0]);
-    const furColor = isCaptain ? '#E08E45' : palette.body;
+    const furColor = isCaptain ? '#DD883E' : palette.body;
     const bellyColor = isCaptain ? '#FFF8E7' : palette.belly;
-    const earInner = isCaptain ? '#F4A261' : palette.ear;
-    const furShadow = isCaptain ? '#A85D1E' : palette.shadow;
+    const furShadow = isCaptain ? '#9D5317' : palette.shadow;
+    const expr = isCaptain ? 'captain' : (hamster.expression || 'happy');
+    const outlineW = Math.max(2.0, radius * 0.095);
 
-    // Soft ambient contact shadow under torso
-    targetCtx.fillStyle = 'rgba(28, 16, 8, 0.28)';
+    // Grounded soft contact shadow under plush body
+    targetCtx.fillStyle = 'rgba(28, 16, 8, 0.30)';
     targetCtx.beginPath();
-    targetCtx.ellipse(0, radius * 1.05, radius * 0.92, radius * 0.36, 0, 0, Math.PI * 2);
+    targetCtx.ellipse(0, radius * 1.10, radius * 0.96, radius * 0.36, 0, 0, Math.PI * 2);
     targetCtx.fill();
 
-    // Puffy life-vest neck float collar behind head
-    targetCtx.fillStyle = vest.main;
+    // Adorable stubby rosy hamster feet peeking beneath the chubby belly
+    targetCtx.fillStyle = '#FFC2D1';
     targetCtx.strokeStyle = '#3A1F0D';
-    targetCtx.lineWidth = Math.max(2, radius * 0.09);
+    targetCtx.lineWidth = Math.max(1.7, radius * 0.075);
+    [-1, 1].forEach(dir => {
+        targetCtx.beginPath();
+        targetCtx.ellipse(dir * radius * 0.42, radius * 1.00, radius * 0.25, radius * 0.14, dir * 0.18, 0, Math.PI * 2);
+        targetCtx.fill();
+        targetCtx.stroke();
+        // Tiny toe crease
+        targetCtx.beginPath();
+        targetCtx.moveTo(dir * radius * 0.46, radius * 0.94);
+        targetCtx.lineTo(dir * radius * 0.50, radius * 1.08);
+        targetCtx.stroke();
+    });
+
+    // Plump pear-shaped furry lower torso base
+    const bodyGrad = targetCtx.createRadialGradient(-radius * 0.2, radius * 0.5, radius * 0.1, 0, radius * 0.65, radius * 0.95);
+    bodyGrad.addColorStop(0, bellyColor);
+    bodyGrad.addColorStop(0.55, furColor);
+    bodyGrad.addColorStop(1, furShadow);
+    targetCtx.fillStyle = bodyGrad;
+    targetCtx.strokeStyle = '#3A1F0D';
+    targetCtx.lineWidth = outlineW;
     targetCtx.beginPath();
-    targetCtx.ellipse(0, radius * 0.32, radius * 0.96, radius * 0.42, 0, 0, Math.PI * 2);
+    targetCtx.moveTo(-radius * 0.72, radius * 0.24);
+    targetCtx.bezierCurveTo(-radius * 0.96, radius * 0.54, -radius * 0.88, radius * 1.02, 0, radius * 1.04);
+    targetCtx.bezierCurveTo(radius * 0.88, radius * 1.02, radius * 0.96, radius * 0.54, radius * 0.72, radius * 0.24);
+    targetCtx.closePath();
     targetCtx.fill();
     targetCtx.stroke();
 
-    // Upper Torso & Colorful Life Vest
-    const vestGrad = targetCtx.createLinearGradient(-radius * 0.85, radius * 0.25, radius * 0.85, radius * 1.05);
+    // Puffy tailored life-vest neck collar & contoured 3D vest jacket
+    targetCtx.fillStyle = vest.main;
+    targetCtx.strokeStyle = '#3A1F0D';
+    targetCtx.lineWidth = outlineW;
+    targetCtx.beginPath();
+    targetCtx.ellipse(0, radius * 0.30, radius * 0.94, radius * 0.38, 0, 0, Math.PI * 2);
+    targetCtx.fill();
+    targetCtx.stroke();
+
+    const vestGrad = targetCtx.createLinearGradient(-radius * 0.85, radius * 0.24, radius * 0.85, radius * 1.02);
     vestGrad.addColorStop(0, vest.main);
-    vestGrad.addColorStop(0.7, vest.main);
+    vestGrad.addColorStop(0.58, vest.main);
     vestGrad.addColorStop(1, vest.dark);
     targetCtx.fillStyle = vestGrad;
     targetCtx.beginPath();
-    targetCtx.roundRect(-radius * 0.82, radius * 0.26, radius * 1.64, radius * 0.78, radius * 0.38);
+    targetCtx.moveTo(-radius * 0.76, radius * 0.26);
+    targetCtx.bezierCurveTo(-radius * 0.92, radius * 0.56, -radius * 0.86, radius * 0.96, -radius * 0.42, radius * 0.98);
+    targetCtx.quadraticCurveTo(0, radius * 1.03, radius * 0.42, radius * 0.98);
+    targetCtx.bezierCurveTo(radius * 0.86, radius * 0.96, radius * 0.92, radius * 0.56, radius * 0.76, radius * 0.26);
+    targetCtx.closePath();
     targetCtx.fill();
     targetCtx.stroke();
 
-    // Cream furry chest V-neck visible in center of life vest
+    // Soft top-left highlight sheen on life vest panels
+    targetCtx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+    targetCtx.beginPath();
+    targetCtx.ellipse(-radius * 0.48, radius * 0.50, radius * 0.20, radius * 0.14, -0.35, 0, Math.PI * 2);
+    targetCtx.ellipse(radius * 0.48, radius * 0.50, radius * 0.16, radius * 0.11, 0.35, 0, Math.PI * 2);
+    targetCtx.fill();
+
+    // Plush cream furry chest V-neck peeking from center of vest
     targetCtx.fillStyle = bellyColor;
     targetCtx.beginPath();
     targetCtx.ellipse(0, radius * 0.56, radius * 0.28, radius * 0.36, 0, 0, Math.PI * 2);
     targetCtx.fill();
 
-    // Reflective safety stripes on life vest sides
-    targetCtx.fillStyle = vest.stripe;
-    targetCtx.fillRect(-radius * 0.72, radius * 0.46, radius * 0.34, radius * 0.13);
-    targetCtx.fillRect(radius * 0.38, radius * 0.46, radius * 0.34, radius * 0.13);
+    if (isCaptain) {
+        // Captain's braided gold epaulettes & shiny brass tunic buttons
+        targetCtx.fillStyle = '#FFD166';
+        targetCtx.strokeStyle = '#3A1F0D';
+        targetCtx.lineWidth = Math.max(1.4, radius * 0.055);
+        [-1, 1].forEach(dir => {
+            targetCtx.beginPath();
+            targetCtx.ellipse(dir * radius * 0.72, radius * 0.34, radius * 0.22, radius * 0.10, dir * 0.22, 0, Math.PI * 2);
+            targetCtx.fill();
+            targetCtx.stroke();
+            // Twin brass coat buttons
+            targetCtx.beginPath();
+            targetCtx.arc(dir * radius * 0.36, radius * 0.54, radius * 0.065, 0, Math.PI * 2);
+            targetCtx.arc(dir * radius * 0.38, radius * 0.76, radius * 0.065, 0, Math.PI * 2);
+            targetCtx.fill();
+            targetCtx.stroke();
+        });
+    } else {
+        // Contoured reflective safety stripes & chunky clip buckle on student life vest
+        targetCtx.fillStyle = vest.stripe;
+        targetCtx.beginPath();
+        targetCtx.roundRect(-radius * 0.74, radius * 0.46, radius * 0.34, radius * 0.13, radius * 0.05);
+        targetCtx.roundRect(radius * 0.40, radius * 0.46, radius * 0.34, radius * 0.13, radius * 0.05);
+        targetCtx.fill();
 
-    // Black life vest buckle strap across chest
-    targetCtx.fillStyle = '#1F2937';
-    targetCtx.fillRect(-radius * 0.68, radius * 0.70, radius * 1.36, radius * 0.13);
-    targetCtx.fillStyle = '#9CA3AF';
-    targetCtx.fillRect(-radius * 0.14, radius * 0.68, radius * 0.28, radius * 0.17);
+        // Curved waist buckle strap
+        targetCtx.fillStyle = '#1E293B';
+        targetCtx.beginPath();
+        targetCtx.roundRect(-radius * 0.74, radius * 0.69, radius * 1.48, radius * 0.14, radius * 0.06);
+        targetCtx.fill();
+        targetCtx.fillStyle = '#CBD5E1';
+        targetCtx.strokeStyle = '#1E293B';
+        targetCtx.lineWidth = Math.max(1.2, radius * 0.05);
+        targetCtx.beginPath();
+        targetCtx.roundRect(-radius * 0.17, radius * 0.66, radius * 0.34, radius * 0.20, radius * 0.06);
+        targetCtx.fill();
+        targetCtx.stroke();
+    }
 
-    // Round 3D ears with dark outline and pink inner cup
-    const earSpread = radius * 0.68;
+    // Fluffy angled hamster ears with warm shaded rose-pink inner cups
+    const earSpread = radius * 0.70;
     const earY = -radius * 0.64;
     [-1, 1].forEach(dir => {
+        targetCtx.save();
+        targetCtx.translate(dir * earSpread, earY);
+        targetCtx.rotate(dir * 0.22);
         targetCtx.fillStyle = furColor;
         targetCtx.strokeStyle = '#3A1F0D';
-        targetCtx.lineWidth = Math.max(2, radius * 0.10);
+        targetCtx.lineWidth = outlineW;
         targetCtx.beginPath();
-        targetCtx.arc(dir * earSpread, earY, radius * 0.34, 0, Math.PI * 2);
+        targetCtx.ellipse(0, 0, radius * 0.35, radius * 0.32, 0, 0, Math.PI * 2);
         targetCtx.fill();
         targetCtx.stroke();
 
-        targetCtx.fillStyle = '#FFAEBC';
+        const innerGrad = targetCtx.createRadialGradient(0, radius * 0.04, radius * 0.02, 0, 0, radius * 0.22);
+        innerGrad.addColorStop(0, '#FF8FA3');
+        innerGrad.addColorStop(1, '#FFC2D1');
+        targetCtx.fillStyle = innerGrad;
         targetCtx.beginPath();
-        targetCtx.arc(dir * earSpread, earY, radius * 0.19, 0, Math.PI * 2);
+        targetCtx.ellipse(0, radius * 0.02, radius * 0.20, radius * 0.18, 0, 0, Math.PI * 2);
         targetCtx.fill();
+        targetCtx.restore();
     });
 
-    // Chubby 3D-shaded hamster head with cheeks
-    const headGrad = targetCtx.createRadialGradient(-radius * 0.26, -radius * 0.34, radius * 0.08, 0, -radius * 0.05, radius * 1.05);
+    // Sculpted pear-rounded hamster head with irresistibly puffed-out chubby cheeks!
+    const headGrad = targetCtx.createRadialGradient(-radius * 0.28, -radius * 0.42, radius * 0.06, 0, -radius * 0.04, radius * 1.12);
     headGrad.addColorStop(0, '#FFFFFF');
-    headGrad.addColorStop(0.18, furColor);
-    headGrad.addColorStop(0.78, furColor);
+    headGrad.addColorStop(0.16, furColor);
+    headGrad.addColorStop(0.76, furColor);
     headGrad.addColorStop(1, furShadow);
     targetCtx.fillStyle = headGrad;
     targetCtx.strokeStyle = '#3A1F0D';
-    targetCtx.lineWidth = Math.max(2.2, radius * 0.11);
+    targetCtx.lineWidth = Math.max(2.2, radius * 0.105);
     targetCtx.beginPath();
-    targetCtx.ellipse(0, -radius * 0.06, radius * 0.95, radius * 0.82, 0, 0, Math.PI * 2);
+    targetCtx.moveTo(0, -radius * 0.88);
+    targetCtx.bezierCurveTo(radius * 0.74, -radius * 0.88, radius * 1.04, -radius * 0.32, radius * 0.98, radius * 0.08);
+    targetCtx.bezierCurveTo(radius * 0.94, radius * 0.56, radius * 0.46, radius * 0.74, 0, radius * 0.74);
+    targetCtx.bezierCurveTo(-radius * 0.46, radius * 0.74, -radius * 0.94, radius * 0.56, -radius * 0.98, radius * 0.08);
+    targetCtx.bezierCurveTo(-radius * 1.04, -radius * 0.32, -radius * 0.74, -radius * 0.88, 0, -radius * 0.88);
+    targetCtx.closePath();
     targetCtx.fill();
     targetCtx.stroke();
 
-    // Cream lower muzzle / cheek patch
+    // Cute subtle forehead hamster markings (soft crown fur stripes)
+    targetCtx.fillStyle = furShadow;
+    targetCtx.globalAlpha = 0.28;
+    targetCtx.beginPath();
+    targetCtx.ellipse(0, -radius * 0.64, radius * 0.11, radius * 0.18, 0, 0, Math.PI * 2);
+    targetCtx.ellipse(-radius * 0.24, -radius * 0.58, radius * 0.08, radius * 0.14, -0.25, 0, Math.PI * 2);
+    targetCtx.ellipse(radius * 0.24, -radius * 0.58, radius * 0.08, radius * 0.14, 0.25, 0, Math.PI * 2);
+    targetCtx.fill();
+    targetCtx.globalAlpha = 1;
+
+    // Plush twin-puff cream muzzle / hamster cheek pouch patch
     targetCtx.fillStyle = bellyColor;
     targetCtx.beginPath();
-    targetCtx.ellipse(0, radius * 0.14, radius * 0.64, radius * 0.42, 0, 0, Math.PI * 2);
+    targetCtx.ellipse(-radius * 0.26, radius * 0.18, radius * 0.44, radius * 0.34, -0.1, 0, Math.PI * 2);
+    targetCtx.ellipse(radius * 0.26, radius * 0.18, radius * 0.44, radius * 0.34, 0.1, 0, Math.PI * 2);
+    targetCtx.ellipse(0, radius * 0.26, radius * 0.48, radius * 0.32, 0, 0, Math.PI * 2);
     targetCtx.fill();
 
-    // Fluffy top head fur tuft
+    // Fluffy top head fur cowlick tuft
     targetCtx.fillStyle = furColor;
+    targetCtx.strokeStyle = '#3A1F0D';
+    targetCtx.lineWidth = Math.max(1.8, radius * 0.08);
     targetCtx.beginPath();
-    targetCtx.moveTo(-radius * 0.16, -radius * 0.84);
-    targetCtx.quadraticCurveTo(0, -radius * 1.08, radius * 0.06, -radius * 0.88);
-    targetCtx.quadraticCurveTo(radius * 0.18, -radius * 1.04, radius * 0.18, -radius * 0.82);
+    targetCtx.moveTo(-radius * 0.18, -radius * 0.84);
+    targetCtx.quadraticCurveTo(-radius * 0.04, -radius * 1.12, radius * 0.06, -radius * 0.88);
+    targetCtx.quadraticCurveTo(radius * 0.22, -radius * 1.08, radius * 0.20, -radius * 0.82);
     targetCtx.fill();
     targetCtx.stroke();
 
-    // Rosy pink cheeks & crisp whiskers
-    targetCtx.fillStyle = 'rgba(255, 92, 138, 0.72)';
+    // Soft glowing rosy pink cheeks & delicate whiskers
     [-1, 1].forEach(dir => {
+        const blushGrad = targetCtx.createRadialGradient(
+            dir * radius * 0.58, radius * 0.08, radius * 0.02,
+            dir * radius * 0.58, radius * 0.08, radius * 0.26
+        );
+        blushGrad.addColorStop(0, 'rgba(255, 89, 138, 0.78)');
+        blushGrad.addColorStop(1, 'rgba(255, 89, 138, 0)');
+        targetCtx.fillStyle = blushGrad;
         targetCtx.beginPath();
-        targetCtx.ellipse(dir * radius * 0.56, radius * 0.04, radius * 0.22, radius * 0.14, 0, 0, Math.PI * 2);
+        targetCtx.ellipse(dir * radius * 0.58, radius * 0.08, radius * 0.26, radius * 0.17, 0, 0, Math.PI * 2);
         targetCtx.fill();
 
-        targetCtx.strokeStyle = 'rgba(58, 31, 13, 0.72)';
-        targetCtx.lineWidth = Math.max(1.2, radius * 0.055);
+        targetCtx.strokeStyle = 'rgba(58, 31, 13, 0.65)';
+        targetCtx.lineWidth = Math.max(1.2, radius * 0.05);
+        targetCtx.lineCap = 'round';
         targetCtx.beginPath();
-        targetCtx.moveTo(dir * radius * 0.70, -radius * 0.01);
-        targetCtx.lineTo(dir * radius * 1.08, -radius * 0.08);
-        targetCtx.moveTo(dir * radius * 0.70, radius * 0.09);
-        targetCtx.lineTo(dir * radius * 1.06, radius * 0.13);
+        targetCtx.moveTo(dir * radius * 0.72, 0);
+        targetCtx.quadraticCurveTo(dir * radius * 0.94, -radius * 0.04, dir * radius * 1.12, -radius * 0.10);
+        targetCtx.moveTo(dir * radius * 0.72, radius * 0.10);
+        targetCtx.quadraticCurveTo(dir * radius * 0.94, radius * 0.12, dir * radius * 1.10, radius * 0.16);
         targetCtx.stroke();
     });
 
-    // Expressive eyes
-    const expr = isCaptain ? 'captain' : (hamster.expression || 'happy');
-    const eyeX = radius * 0.35;
-    const eyeY = -radius * 0.18;
+    // Expressive Glossy Anime Eyes + Emotion-Driven Eyebrows
+    const eyeX = radius * 0.36;
+    const eyeY = -radius * 0.16;
 
     if (expr === 'dizzy') {
         targetCtx.strokeStyle = '#3A1F0D';
@@ -1015,7 +1251,6 @@ function drawHamsterCharacter(
             targetCtx.restore();
         });
     } else if (expr === 'terrified') {
-        // Huge bulging terrified eyes with tiny vibrating pupils + flying cartoon sweat drop!
         const jitterX = Math.sin(time * 58) * radius * 0.04;
         const jitterY = Math.cos(time * 64) * radius * 0.04;
         [-1, 1].forEach(dir => {
@@ -1023,14 +1258,22 @@ function drawHamsterCharacter(
             targetCtx.strokeStyle = '#3A1F0D';
             targetCtx.lineWidth = Math.max(1.8, radius * 0.085);
             targetCtx.beginPath();
-            targetCtx.arc(dir * eyeX, eyeY, radius * 0.27, 0, Math.PI * 2);
+            targetCtx.arc(dir * eyeX, eyeY, radius * 0.28, 0, Math.PI * 2);
             targetCtx.fill();
             targetCtx.stroke();
 
             targetCtx.fillStyle = '#1F1209';
             targetCtx.beginPath();
-            targetCtx.arc(dir * eyeX + jitterX, eyeY + jitterY, radius * 0.065, 0, Math.PI * 2);
+            targetCtx.arc(dir * eyeX + jitterX, eyeY + jitterY, radius * 0.068, 0, Math.PI * 2);
             targetCtx.fill();
+
+            // Worried raised trembling eyebrows
+            targetCtx.strokeStyle = '#3A1F0D';
+            targetCtx.lineWidth = Math.max(1.8, radius * 0.075);
+            targetCtx.beginPath();
+            targetCtx.moveTo(dir * (eyeX - radius * 0.18), eyeY - radius * 0.36);
+            targetCtx.lineTo(dir * (eyeX + radius * 0.16), eyeY - radius * 0.28);
+            targetCtx.stroke();
         });
         // Panic blue sweat drop flying off forehead
         const dropY = -radius * 0.56 + Math.sin(time * 14) * radius * 0.08;
@@ -1038,33 +1281,29 @@ function drawHamsterCharacter(
         targetCtx.strokeStyle = '#0369A1';
         targetCtx.lineWidth = 1.4;
         targetCtx.beginPath();
-        targetCtx.moveTo(radius * 0.62, dropY - radius * 0.18);
-        targetCtx.quadraticCurveTo(radius * 0.78, dropY + radius * 0.06, radius * 0.62, dropY + radius * 0.14);
-        targetCtx.quadraticCurveTo(radius * 0.46, dropY + radius * 0.06, radius * 0.62, dropY - radius * 0.18);
+        targetCtx.moveTo(radius * 0.64, dropY - radius * 0.19);
+        targetCtx.quadraticCurveTo(radius * 0.80, dropY + radius * 0.06, radius * 0.64, dropY + radius * 0.15);
+        targetCtx.quadraticCurveTo(radius * 0.48, dropY + radius * 0.06, radius * 0.64, dropY - radius * 0.19);
         targetCtx.fill();
         targetCtx.stroke();
     } else if (expr === 'crying_funny') {
-        // Anime cartoon waterfall tears streaming out from "> <" squished eyes!
         const tearFlow = (time * 18) % 6;
         [-1, 1].forEach(dir => {
-            // Curved cyan waterfall stream
-            targetCtx.fillStyle = 'rgba(56, 189, 248, 0.85)';
+            targetCtx.fillStyle = 'rgba(56, 189, 248, 0.88)';
             targetCtx.beginPath();
             targetCtx.moveTo(dir * (eyeX - radius * 0.06), eyeY + radius * 0.06);
-            targetCtx.quadraticCurveTo(dir * (eyeX + radius * 0.22), eyeY + radius * 0.34, dir * (eyeX + radius * 0.12), eyeY + radius * 0.62);
-            targetCtx.lineTo(dir * (eyeX - radius * 0.08), eyeY + radius * 0.58);
+            targetCtx.quadraticCurveTo(dir * (eyeX + radius * 0.24), eyeY + radius * 0.34, dir * (eyeX + radius * 0.13), eyeY + radius * 0.64);
+            targetCtx.lineTo(dir * (eyeX - radius * 0.08), eyeY + radius * 0.60);
             targetCtx.quadraticCurveTo(dir * (eyeX + radius * 0.02), eyeY + radius * 0.30, dir * (eyeX - radius * 0.06), eyeY + radius * 0.06);
             targetCtx.fill();
 
-            // Little animated splash droplets
-            targetCtx.fillStyle = '#BAE6FD';
+            targetCtx.fillStyle = '#E0F2FE';
             targetCtx.beginPath();
-            targetCtx.arc(dir * (eyeX + radius * 0.14), eyeY + radius * (0.28 + tearFlow * 0.055), radius * 0.075, 0, Math.PI * 2);
+            targetCtx.arc(dir * (eyeX + radius * 0.14), eyeY + radius * (0.28 + tearFlow * 0.055), radius * 0.08, 0, Math.PI * 2);
             targetCtx.fill();
 
-            // Squished "> <" eyes
             targetCtx.strokeStyle = '#3A1F0D';
-            targetCtx.lineWidth = Math.max(2.2, radius * 0.1);
+            targetCtx.lineWidth = Math.max(2.2, radius * 0.10);
             targetCtx.lineCap = 'round';
             targetCtx.beginPath();
             targetCtx.moveTo(dir * (eyeX + radius * 0.16), eyeY - radius * 0.12);
@@ -1073,13 +1312,12 @@ function drawHamsterCharacter(
             targetCtx.stroke();
         });
     } else if (expr === 'relieved_smug') {
-        // Joyful relieved "^ ^" closed curved eyes!
         targetCtx.strokeStyle = '#3A1F0D';
-        targetCtx.lineWidth = Math.max(2.2, radius * 0.1);
+        targetCtx.lineWidth = Math.max(2.3, radius * 0.105);
         targetCtx.lineCap = 'round';
         [-1, 1].forEach(dir => {
             targetCtx.beginPath();
-            targetCtx.arc(dir * eyeX, eyeY + radius * 0.05, radius * 0.17, Math.PI * 1.15, Math.PI * 1.85);
+            targetCtx.arc(dir * eyeX, eyeY + radius * 0.05, radius * 0.18, Math.PI * 1.15, Math.PI * 1.85);
             targetCtx.stroke();
         });
     } else if (expr === 'shocked' || expr === 'scream' || expr === 'hiding') {
@@ -1088,130 +1326,192 @@ function drawHamsterCharacter(
             targetCtx.strokeStyle = '#3A1F0D';
             targetCtx.lineWidth = Math.max(1.8, radius * 0.08);
             targetCtx.beginPath();
-            targetCtx.arc(dir * eyeX, eyeY, radius * 0.23, 0, Math.PI * 2);
+            targetCtx.arc(dir * eyeX, eyeY, radius * 0.24, 0, Math.PI * 2);
             targetCtx.fill();
             targetCtx.stroke();
 
             targetCtx.fillStyle = '#1F1209';
             targetCtx.beginPath();
-            targetCtx.arc(dir * eyeX, eyeY, radius * 0.10, 0, Math.PI * 2);
+            targetCtx.arc(dir * eyeX, eyeY, radius * 0.105, 0, Math.PI * 2);
             targetCtx.fill();
 
             targetCtx.fillStyle = '#FFFFFF';
             targetCtx.beginPath();
-            targetCtx.arc(dir * eyeX - radius * 0.04, eyeY - radius * 0.04, radius * 0.04, 0, Math.PI * 2);
+            targetCtx.arc(dir * eyeX - radius * 0.04, eyeY - radius * 0.04, radius * 0.045, 0, Math.PI * 2);
             targetCtx.fill();
         });
     } else {
         [-1, 1].forEach(dir => {
-            targetCtx.fillStyle = '#1F1209';
+            // Deep glossy chocolate eyes with warm golden bottom crescent reflection!
+            targetCtx.fillStyle = '#1E1108';
             targetCtx.beginPath();
-            targetCtx.arc(dir * eyeX, eyeY, radius * 0.19, 0, Math.PI * 2);
+            targetCtx.ellipse(dir * eyeX, eyeY, radius * 0.20, radius * 0.22, 0, 0, Math.PI * 2);
+            targetCtx.fill();
+
+            // Warm lower iris crescent glow
+            targetCtx.fillStyle = '#9A5B25';
+            targetCtx.beginPath();
+            targetCtx.arc(dir * eyeX, eyeY + radius * 0.05, radius * 0.12, 0.15 * Math.PI, 0.85 * Math.PI);
             targetCtx.fill();
 
             // Dual anime eye catchlights
             targetCtx.fillStyle = '#FFFFFF';
             targetCtx.beginPath();
-            targetCtx.arc(dir * eyeX - radius * 0.06, eyeY - radius * 0.06, radius * 0.075, 0, Math.PI * 2);
+            targetCtx.arc(dir * eyeX - radius * 0.065, eyeY - radius * 0.075, radius * 0.082, 0, Math.PI * 2);
             targetCtx.fill();
 
             targetCtx.beginPath();
-            targetCtx.arc(dir * eyeX + radius * 0.05, eyeY + radius * 0.05, radius * 0.036, 0, Math.PI * 2);
+            targetCtx.arc(dir * eyeX + radius * 0.06, eyeY + radius * 0.06, radius * 0.038, 0, Math.PI * 2);
             targetCtx.fill();
+
+            // Captain gets jaunty determined bushy brows!
+            if (isCaptain) {
+                targetCtx.fillStyle = '#5C2C0C';
+                targetCtx.strokeStyle = '#3A1F0D';
+                targetCtx.lineWidth = Math.max(1.2, radius * 0.05);
+                targetCtx.beginPath();
+                targetCtx.ellipse(dir * eyeX, eyeY - radius * 0.28, radius * 0.22, radius * 0.075, dir * -0.18, 0, Math.PI * 2);
+                targetCtx.fill();
+                targetCtx.stroke();
+            }
         });
     }
 
-    // Cute 3D pink nose & expressive mouth
+    // Sculpted shiny pink button nose with pinpoint white highlight
     targetCtx.fillStyle = '#FF5D8F';
+    targetCtx.strokeStyle = '#881337';
+    targetCtx.lineWidth = Math.max(1.0, radius * 0.04);
     targetCtx.beginPath();
-    targetCtx.ellipse(0, -radius * 0.03, radius * 0.11, radius * 0.075, 0, 0, Math.PI * 2);
+    targetCtx.ellipse(0, 0, radius * 0.125, radius * 0.085, 0, 0, Math.PI * 2);
+    targetCtx.fill();
+    targetCtx.stroke();
+    targetCtx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    targetCtx.beginPath();
+    targetCtx.arc(-radius * 0.04, -radius * 0.025, radius * 0.032, 0, Math.PI * 2);
     targetCtx.fill();
 
+    // Expressive Mouth (+ Captain Coconut's charming curled mustache!)
     targetCtx.strokeStyle = '#3A1F0D';
     targetCtx.lineWidth = Math.max(1.8, radius * 0.08);
-    if (expr === 'terrified') {
-        // Chattering zig-zag scared teeth box!
+    if (isCaptain) {
+        // Confident grinning Captain smile
+        targetCtx.fillStyle = '#D90429';
+        targetCtx.beginPath();
+        targetCtx.arc(0, radius * 0.16, radius * 0.17, 0, Math.PI);
+        targetCtx.closePath();
+        targetCtx.fill();
+        targetCtx.stroke();
+
+        // Jaunty curled caramel-brown Captain mustache!
+        targetCtx.fillStyle = '#7C3E14';
+        targetCtx.strokeStyle = '#3A1F0D';
+        targetCtx.lineWidth = Math.max(1.4, radius * 0.06);
+        [-1, 1].forEach(dir => {
+            targetCtx.beginPath();
+            targetCtx.moveTo(0, radius * 0.08);
+            targetCtx.quadraticCurveTo(dir * radius * 0.22, radius * 0.01, dir * radius * 0.44, radius * 0.11);
+            targetCtx.quadraticCurveTo(dir * radius * 0.26, radius * 0.24, 0, radius * 0.14);
+            targetCtx.closePath();
+            targetCtx.fill();
+            targetCtx.stroke();
+        });
+    } else if (expr === 'terrified') {
         const chatter = Math.sin(time * 48) * radius * 0.03;
         targetCtx.fillStyle = '#FFFFFF';
         targetCtx.beginPath();
-        targetCtx.roundRect(-radius * 0.25, radius * 0.08 + chatter, radius * 0.50, radius * 0.22, radius * 0.08);
+        targetCtx.roundRect(-radius * 0.26, radius * 0.10 + chatter, radius * 0.52, radius * 0.23, radius * 0.08);
         targetCtx.fill();
         targetCtx.stroke();
         targetCtx.beginPath();
-        targetCtx.moveTo(-radius * 0.22, radius * 0.19 + chatter);
-        targetCtx.lineTo(radius * 0.22, radius * 0.19 + chatter);
-        targetCtx.moveTo(-radius * 0.08, radius * 0.08 + chatter);
-        targetCtx.lineTo(-radius * 0.08, radius * 0.30 + chatter);
-        targetCtx.moveTo(radius * 0.08, radius * 0.08 + chatter);
-        targetCtx.lineTo(radius * 0.08, radius * 0.30 + chatter);
+        targetCtx.moveTo(-radius * 0.23, radius * 0.215 + chatter);
+        targetCtx.lineTo(radius * 0.23, radius * 0.215 + chatter);
+        targetCtx.moveTo(-radius * 0.08, radius * 0.10 + chatter);
+        targetCtx.lineTo(-radius * 0.08, radius * 0.33 + chatter);
+        targetCtx.moveTo(radius * 0.08, radius * 0.10 + chatter);
+        targetCtx.lineTo(radius * 0.08, radius * 0.33 + chatter);
         targetCtx.stroke();
     } else if (expr === 'scream' || expr === 'shocked' || expr === 'crying_funny') {
         targetCtx.fillStyle = '#D90429';
         targetCtx.beginPath();
-        targetCtx.ellipse(0, radius * 0.16, radius * 0.18, radius * 0.22, 0, 0, Math.PI * 2);
+        targetCtx.ellipse(0, radius * 0.20, radius * 0.19, radius * 0.23, 0, 0, Math.PI * 2);
         targetCtx.fill();
         targetCtx.stroke();
-        // Little pink tongue inside mouth
         targetCtx.fillStyle = '#FF8FA3';
         targetCtx.beginPath();
-        targetCtx.arc(0, radius * 0.24, radius * 0.09, 0, Math.PI, true);
+        targetCtx.arc(0, radius * 0.29, radius * 0.095, 0, Math.PI, true);
         targetCtx.fill();
     } else if (expr === 'relieved_smug') {
-        // Cheeky victorious smile with playful tongue sticking out!
         targetCtx.beginPath();
-        targetCtx.arc(0, radius * 0.07, radius * 0.20, 0.1 * Math.PI, 0.9 * Math.PI);
+        targetCtx.arc(0, radius * 0.10, radius * 0.21, 0.1 * Math.PI, 0.9 * Math.PI);
         targetCtx.stroke();
         targetCtx.fillStyle = '#FF5D8F';
         targetCtx.beginPath();
-        targetCtx.ellipse(radius * 0.08, radius * 0.22, radius * 0.11, radius * 0.14, 0.25, 0, Math.PI * 2);
+        targetCtx.ellipse(radius * 0.08, radius * 0.25, radius * 0.115, radius * 0.145, 0.25, 0, Math.PI * 2);
         targetCtx.fill();
         targetCtx.stroke();
     } else {
-        // Cute cat/hamster 'w' smile with tiny buck tooth
+        // Cute hamster 'w' smile with bright little buck tooth
         targetCtx.fillStyle = '#FFFFFF';
-        targetCtx.fillRect(-radius * 0.05, radius * 0.06, radius * 0.10, radius * 0.09);
+        targetCtx.strokeStyle = '#3A1F0D';
+        targetCtx.lineWidth = Math.max(1.5, radius * 0.07);
         targetCtx.beginPath();
-        targetCtx.arc(-radius * 0.09, radius * 0.05, radius * 0.09, 0, Math.PI);
-        targetCtx.arc(radius * 0.09, radius * 0.05, radius * 0.09, 0, Math.PI);
+        targetCtx.roundRect(-radius * 0.06, radius * 0.11, radius * 0.12, radius * 0.10, radius * 0.03);
+        targetCtx.fill();
+        targetCtx.stroke();
+        targetCtx.beginPath();
+        targetCtx.arc(-radius * 0.10, radius * 0.08, radius * 0.10, 0, Math.PI);
+        targetCtx.arc(radius * 0.10, radius * 0.08, radius * 0.10, 0, Math.PI);
         targetCtx.stroke();
     }
 
-    // Animated Paws (hiding over eyes, Home-Alone cheeks pose, frantic panic wave, or relaxed grip)
-    const isPanic = expr === 'scream' || expr === 'shocked' || expr === 'dizzy' || expr === 'crying_funny';
-    const pawWave = isPanic
-        ? Math.sin(time * 24 + (hamster.bobOffset || 0)) * radius * 0.26
-        : Math.sin(time * 4 + (hamster.bobOffset || 0)) * radius * 0.07;
-    targetCtx.fillStyle = bellyColor;
-    targetCtx.strokeStyle = '#3A1F0D';
-    targetCtx.lineWidth = Math.max(1.8, radius * 0.08);
-    [-1, 1].forEach(dir => {
-        let px = dir * radius * (isPanic ? 0.78 : 0.56);
-        let py = isPanic ? (-radius * 0.12 + dir * pawWave) : (radius * 0.48 - Math.abs(pawWave));
-        if (expr === 'terrified') {
-            // Paws clutched tightly to cheeks in comical shock!
-            px = dir * radius * 0.62;
-            py = radius * 0.12 + Math.sin(time * 44) * radius * 0.05;
-        } else if (expr === 'hiding') {
-            // Both paws covering eyes while peeking nervously!
-            px = dir * radius * 0.34;
-            py = -radius * 0.12 + Math.sin(time * 16) * radius * 0.03;
-        } else if (expr === 'relieved_smug') {
-            // Celebratory waving paws!
-            px = dir * radius * 0.76;
-            py = -radius * 0.06 + Math.sin(time * 12 + dir) * radius * 0.14;
-        }
-        targetCtx.beginPath();
-        targetCtx.arc(px, py, radius * 0.18, 0, Math.PI * 2);
-        targetCtx.fill();
-        targetCtx.stroke();
-    });
+    // Expressive Oval Cupped Paws with tiny pink paw pads!
+    if (!isCaptain) {
+        const isPanic = expr === 'scream' || expr === 'shocked' || expr === 'dizzy' || expr === 'crying_funny';
+        const pawWave = isPanic
+            ? Math.sin(time * 24 + (hamster.bobOffset || 0)) * radius * 0.26
+            : Math.sin(time * 4 + (hamster.bobOffset || 0)) * radius * 0.07;
+        targetCtx.lineWidth = Math.max(1.8, radius * 0.08);
+        [-1, 1].forEach(dir => {
+            let px = dir * radius * (isPanic ? 0.80 : 0.58);
+            let py = isPanic ? (-radius * 0.10 + dir * pawWave) : (radius * 0.50 - Math.abs(pawWave));
+            let pawRot = isPanic ? dir * -0.55 : dir * 0.35;
+            if (expr === 'terrified') {
+                px = dir * radius * 0.64;
+                py = radius * 0.14 + Math.sin(time * 44) * radius * 0.05;
+                pawRot = dir * -0.25;
+            } else if (expr === 'hiding') {
+                px = dir * radius * 0.35;
+                py = -radius * 0.10 + Math.sin(time * 16) * radius * 0.03;
+                pawRot = dir * 0.15;
+            } else if (expr === 'relieved_smug') {
+                px = dir * radius * 0.78;
+                py = -radius * 0.06 + Math.sin(time * 12 + dir) * radius * 0.14;
+                pawRot = dir * -0.5;
+            }
+            targetCtx.save();
+            targetCtx.translate(px, py);
+            targetCtx.rotate(pawRot);
+            targetCtx.fillStyle = bellyColor;
+            targetCtx.strokeStyle = '#3A1F0D';
+            targetCtx.beginPath();
+            targetCtx.ellipse(0, 0, radius * 0.20, radius * 0.16, 0, 0, Math.PI * 2);
+            targetCtx.fill();
+            targetCtx.stroke();
+            // Cute pink inner paw pad
+            targetCtx.fillStyle = '#FFAEBC';
+            targetCtx.beginPath();
+            targetCtx.ellipse(0, radius * 0.02, radius * 0.09, radius * 0.07, 0, 0, Math.PI * 2);
+            targetCtx.fill();
+            targetCtx.restore();
+        });
+    }
 
     if (!isCaptain && hamster.eatingSeed && isIdleState) {
         targetCtx.fillStyle = '#3D405B';
         targetCtx.strokeStyle = '#FFFFFF';
         targetCtx.lineWidth = 1.2;
         targetCtx.beginPath();
-        targetCtx.ellipse(0, radius * 0.32, radius * 0.12, radius * 0.18, 0.3, 0, Math.PI * 2);
+        targetCtx.ellipse(0, radius * 0.34, radius * 0.12, radius * 0.18, 0.3, 0, Math.PI * 2);
         targetCtx.fill();
         targetCtx.stroke();
     }
@@ -1894,9 +2194,9 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             const isNarrow = w < 640;
             const baseRadius = Math.min(w, h) * (isNarrow ? 0.35 : 0.32);
 
-            const safeTop = Math.max(76, h * (isNarrow ? 0.12 : 0.115));
-            const safeBottom = h - Math.max(84, h * (isNarrow ? 0.125 : 0.12));
-            const safeLeft = Math.max(20, w * 0.03);
+            const safeTop = Math.max(66, h * (isNarrow ? 0.10 : 0.095));
+            const safeBottom = h - Math.max(76, h * (isNarrow ? 0.115 : 0.105));
+            const safeLeft = Math.max(18, w * 0.025);
             const safeRight = w - safeLeft;
             const safeH = Math.max(180, safeBottom - safeTop);
 
@@ -1911,7 +2211,7 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             const sinCam = Math.sin(g.cameraPitch);
             const floatBaseRatio = activeCount > 28 ? 1.26 : activeCount > 16 ? 1.35 : 1.46;
             const elimFactor = g.currentEliminatedMargin;
-            const baseTopHalfY = boatRadius * sinCam * 0.96 + 50;
+            const baseTopHalfY = boatRadius * sinCam * 0.96 + 44;
             const baseBotHalfY = boatRadius * sinCam * 1.0 + bowlDepth * 0.45 + 22;
             const elimVertHalfY = boatRadius * (floatBaseRatio + 0.03) * sinCam + 36;
             const topHalfY = baseTopHalfY + Math.max(0, elimVertHalfY - baseTopHalfY) * elimFactor;
@@ -1920,12 +2220,12 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             const cx = w / 2;
             const cy = safeTop + safeH * (topHalfY / Math.max(1, topHalfY + botHalfY));
 
-            // Smooth continuous hamster radius: stays chunky for small classes and crisp/legible for 40–70+ students
-            const viewportScale = Math.max(0.68, Math.min(1.18, Math.min(w, h) / 720));
-            const smoothDensity = 1 / (1 + Math.pow(Math.max(0, activeCount - 6) / 20, 0.88));
-            const rawHam = (11.2 + 16.8 * smoothDensity) * viewportScale;
-            const hamRadius = Math.max(11.5, Math.min(28, rawHam));
-            const captainRadius = Math.max(19, Math.min(34, Math.max(hamRadius * 1.26 + 3.5, boatRadius * 0.115)));
+            // Bigger, chunkier hamsters so every character & funny expression reads clearly from across the classroom
+            const viewportScale = Math.max(0.78, Math.min(1.28, Math.min(w, h) / 680));
+            const smoothDensity = 1 / (1 + Math.pow(Math.max(0, activeCount - 8) / 26, 0.82));
+            const rawHam = (15.5 + 19.5 * smoothDensity) * viewportScale;
+            const hamRadius = Math.max(16, Math.min(35, rawHam));
+            const captainRadius = Math.max(24, Math.min(40, Math.max(hamRadius * 1.2 + 3.5, boatRadius * 0.125)));
 
             // Structural hull richness scales up smoothly with boat size (multiples of 4 keep RIM_COLORS symmetrical)
             const hullSegments =
@@ -1952,12 +2252,12 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
 
             const tagTier =
                 activeCount <= 16
-                    ? { fontSize: 12, boxH: 20, paddingX: 9, maxChars: 18, maxWidth: 185 }
+                    ? { fontSize: 15, boxH: 25, paddingX: 11, maxChars: 22, maxWidth: 235 }
                     : activeCount <= 30
-                        ? { fontSize: 11, boxH: 18.5, paddingX: 7.5, maxChars: 14, maxWidth: 145 }
+                        ? { fontSize: 13.5, boxH: 23, paddingX: 9.5, maxChars: 18, maxWidth: 205 }
                         : activeCount <= 48
-                            ? { fontSize: 10, boxH: 17, paddingX: 6.5, maxChars: 11, maxWidth: 116 }
-                            : { fontSize: 9.5, boxH: 15.5, paddingX: 5.5, maxChars: 9, maxWidth: 96 };
+                            ? { fontSize: 12, boxH: 21, paddingX: 8.5, maxChars: 15, maxWidth: 170 }
+                            : { fontSize: 11, boxH: 19.5, paddingX: 7.5, maxChars: 12, maxWidth: 140 };
 
             return {
                 cx,
@@ -1992,8 +2292,8 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             time: number,
             layout?: BoatLayoutMetrics
         ) => {
-            const horizonY = h * 0.22;
-            const pr = pad.r * (w < 640 ? 0.78 : 1.0);
+            const horizonY = Math.max(130, h * 0.25);
+            const pr = pad.r * (w < 640 ? 0.88 : 1.15);
             let px = pad.xRatio * w + Math.sin(time * 1.15 + idx * 1.4) * 5;
             let py = pad.yRatio * h + Math.cos(time * 1.45 + idx * 1.2) * 3.5;
 
@@ -2020,34 +2320,53 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             const g = gameRef.current;
             const sinCam = Math.sin(g.cameraPitch);
             const preferredSide = g.crocodile.x >= layout.cx ? 1 : -1;
+            const bx = layout.cx;
+            const by = layout.cy + layout.bowlDepth * 0.16;
+            const exRx = layout.boatRadius * 1.15 + 52;
+            const exRy = layout.boatRadius * sinCam * 1.15 + layout.bowlDepth * 0.45 + 46;
+
             const candidateSpots = [
                 {
-                    x: layout.cx + preferredSide * Math.min(w * 0.24, layout.boatRadius * 1.08 + 46),
-                    y: Math.min(h - 72, layout.cy + layout.boatRadius * sinCam * 0.72 + 54)
+                    x: bx + preferredSide * exRx,
+                    y: Math.min(h - 62, by + exRy * 0.52)
                 },
                 {
-                    x: layout.cx - preferredSide * Math.min(w * 0.24, layout.boatRadius * 1.08 + 46),
-                    y: Math.min(h - 72, layout.cy + layout.boatRadius * sinCam * 0.72 + 54)
+                    x: bx - preferredSide * exRx,
+                    y: Math.min(h - 62, by + exRy * 0.52)
                 },
                 {
-                    x: layout.cx,
-                    y: Math.min(h - 64, layout.cy + layout.boatRadius * sinCam * 1.02 + layout.bowlDepth * 0.42 + 44)
+                    x: bx + preferredSide * exRx * 0.65,
+                    y: Math.min(h - 56, by + exRy * 0.92)
+                },
+                {
+                    x: bx,
+                    y: Math.min(h - 54, by + exRy * 1.06)
                 }
             ];
 
             let bestSpot = candidateSpots[0];
-            let bestClearance = -1;
+            let bestClearance = -Infinity;
 
             candidateSpots.forEach(spot => {
-                const cx = Math.max(layout.safeLeft + 92, Math.min(layout.safeRight - 92, spot.x));
-                const cy = Math.max(h * 0.36, Math.min(h - 62, spot.y));
+                let cx = Math.max(layout.safeLeft + 74, Math.min(layout.safeRight - 74, spot.x));
+                let cy = Math.max(h * 0.36, Math.min(h - 54, spot.y));
+                // Push outside boat exclusion ellipse if viewport clamping brought it near the hull
+                const u = (cx - bx) / Math.max(1, exRx);
+                const v = (cy - by) / Math.max(1, exRy);
+                const d = Math.hypot(u, v);
+                if (d < 1.02 && d > 0.001) {
+                    cx = Math.max(layout.safeLeft + 74, Math.min(layout.safeRight - 74, bx + (u / d) * exRx * 1.04));
+                    cy = Math.max(h * 0.36, Math.min(h - 54, by + (v / d) * exRy * 1.04));
+                }
                 let minPadDist = Infinity;
                 g.lotusPads.forEach((pad, idx) => {
                     const pos = getLotusPadScreenPos(pad, idx, w, h, time, layout);
                     minPadDist = Math.min(minPadDist, Math.hypot(cx - pos.x, cy - pos.y) - pos.r);
                 });
-                if (minPadDist > bestClearance) {
-                    bestClearance = minPadDist;
+                const boatClearance = Math.hypot((cx - bx) / Math.max(1, exRx), (cy - by) / Math.max(1, exRy)) >= 1.0 ? 200 : -400;
+                const score = minPadDist + boatClearance;
+                if (score > bestClearance) {
+                    bestClearance = score;
                     bestSpot = { x: cx, y: cy };
                 }
             });
@@ -2090,7 +2409,9 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 .map((pad, idx) => ({ pad, idx }))
                 .filter(({ pad, idx }) => pad.occupantId === null && !targetedPadIndices.has(idx))
                 .map(({ idx }) => idx);
-            if (freePadIndices.length === 0) return false;
+            // In 20s+ Crocodile Lily Hunt, always keep at least 2 free water lilies open so escaping players can leap from lily to lily!
+            const minReservePads = g.roundDuration >= 20 ? (preferTarget ? 1 : 2) : 0;
+            if (freePadIndices.length <= minReservePads) return false;
 
             const chosen = candidates[Math.floor(Math.random() * candidates.length)];
             const layout = getBoatLayoutMetrics(w, h);
@@ -2169,41 +2490,65 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
 
             const targetedPadIndices = new Set([
                 ...g.lilyFlights.map(f => f.padIndex),
-                ...g.escapeJumps.filter(e => e.targetPadIndex !== null).map(e => e.targetPadIndex as number)
+                ...g.escapeJumps.map(e => e.targetPadIndex)
             ]);
             const freePadIndices = g.lotusPads
                 .map((pad, idx) => ({ pad, idx }))
                 .filter(({ pad, idx }) => idx !== fromPadIndex && pad.occupantId === null && !targetedPadIndices.has(idx))
                 .map(({ idx }) => idx);
 
-            // Pick either the farthest free lily pad from the crocodile OR a comedic bounce back into the boat!
-            let targetPadIndex: number | null = null;
-            let targetX = layout.cx;
-            let targetY = layout.cy;
-            const shouldBounceToBoat = freePadIndices.length === 0 || (g.crocodile.escapeCount % 3 === 2 && g.students.filter(s => !s.eliminated).length > 1);
-
-            if (!shouldBounceToBoat && freePadIndices.length > 0) {
-                let farthestPad = freePadIndices[0];
-                let maxDist = -1;
-                freePadIndices.forEach(idx => {
-                    const pos = getLotusPadScreenPos(g.lotusPads[idx], idx, w, h, time, layout);
-                    const d = Math.hypot(pos.x - fromPos.x, pos.y - fromPos.y);
-                    if (d > maxDist) {
-                        maxDist = d;
-                        farthestPad = idx;
-                    }
-                });
-                targetPadIndex = farthestPad;
-                const dest = getLotusPadScreenPos(g.lotusPads[farthestPad], farthestPad, w, h, time, layout);
-                targetX = dest.x;
-                targetY = dest.y - 6;
+            // Players on water lilies NEVER return to the boat — they ALWAYS leap onto another water lily pad!
+            let targetPadIndex: number;
+            if (freePadIndices.length > 0) {
+                // Sort free lily pads by distance from the crocodile/current pad and pick among the top 2 farthest
+                const ranked = freePadIndices
+                    .map(idx => {
+                        const pos = getLotusPadScreenPos(g.lotusPads[idx], idx, w, h, time, layout);
+                        return { idx, dist: Math.hypot(pos.x - fromPos.x, pos.y - fromPos.y) };
+                    })
+                    .sort((a, b) => b.dist - a.dist);
+                const pickIdx = ranked.length > 1 && Math.random() < 0.35 ? 1 : 0;
+                targetPadIndex = ranked[pickIdx].idx;
             } else {
-                const lx = hamster.seatX * layout.usableRadius;
-                const ly = hamster.seatY * layout.usableRadius;
-                const seatProj = projectBoatPoint(lx, ly, -layout.boatRadius * 0.06, layout.cx, layout.cy);
-                targetX = seatProj.x;
-                targetY = seatProj.y;
+                // Edge case if every pad is full: leap to the farthest OTHER water lily and swap pads with its occupant!
+                const otherPads = g.lotusPads
+                    .map((pad, idx) => ({ pad, idx }))
+                    .filter(({ idx }) => idx !== fromPadIndex && !targetedPadIndices.has(idx))
+                    .map(({ pad, idx }) => {
+                        const pos = getLotusPadScreenPos(pad, idx, w, h, time, layout);
+                        return { pad, idx, dist: Math.hypot(pos.x - fromPos.x, pos.y - fromPos.y) };
+                    })
+                    .sort((a, b) => b.dist - a.dist);
+
+                const swapPick = otherPads[0] || { pad: g.lotusPads[(fromPadIndex + 1) % g.lotusPads.length], idx: (fromPadIndex + 1) % g.lotusPads.length };
+                targetPadIndex = swapPick.idx;
+
+                // Send the other pad's occupant hopping cleanly to the vacated water lily (musical lilies!)
+                if (swapPick.pad.occupantId) {
+                    const swapHam = g.students.find(s => s.id === swapPick.pad.occupantId);
+                    if (swapHam) {
+                        swapPick.pad.occupantId = null;
+                        swapHam.onLilyPadIndex = null;
+                        const swapStart = getLotusPadScreenPos(swapPick.pad, swapPick.idx, w, h, time, layout);
+                        g.escapeJumps.push({
+                            hamster: swapHam,
+                            startX: swapStart.x,
+                            startY: swapStart.y - 10,
+                            targetPadIndex: fromPadIndex,
+                            targetX: fromPos.x,
+                            targetY: fromPos.y - 6,
+                            t: 0,
+                            duration: 0.96,
+                            escapeQuote: 'SWAP PADS!! 🪷',
+                            trail: [{ x: swapStart.x, y: swapStart.y - 10 }]
+                        });
+                    }
+                }
             }
+
+            const dest = getLotusPadScreenPos(g.lotusPads[targetPadIndex], targetPadIndex, w, h, time, layout);
+            const targetX = dest.x;
+            const targetY = dest.y - 6;
 
             const escapeQuote = ESCAPE_QUOTES[g.crocodile.escapeCount % ESCAPE_QUOTES.length];
             g.crocodile.escapeCount += 1;
@@ -2247,32 +2592,27 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 const ej = g.escapeJumps[i];
                 ej.t += dt / ej.duration;
 
-                if (ej.targetPadIndex !== null) {
-                    const pad = g.lotusPads[ej.targetPadIndex];
-                    if (pad) {
-                        const dest = getLotusPadScreenPos(pad, ej.targetPadIndex, w, h, time, layout);
-                        ej.targetX = dest.x;
-                        ej.targetY = dest.y - 6;
-                    }
-                } else {
-                    const lx = ej.hamster.seatX * layout.usableRadius;
-                    const ly = ej.hamster.seatY * layout.usableRadius;
-                    const seatProj = projectBoatPoint(lx, ly, -layout.boatRadius * 0.06, layout.cx, layout.cy);
-                    ej.targetX = seatProj.x;
-                    ej.targetY = seatProj.y;
+                const pad = g.lotusPads[ej.targetPadIndex];
+                if (pad) {
+                    const dest = getLotusPadScreenPos(pad, ej.targetPadIndex, w, h, time, layout);
+                    ej.targetX = dest.x;
+                    ej.targetY = dest.y - 6;
                 }
 
                 if (ej.t >= 1.0) {
-                    if (ej.targetPadIndex !== null) {
-                        const pad = g.lotusPads[ej.targetPadIndex];
-                        if (pad && pad.occupantId === null) {
-                            pad.occupantId = ej.hamster.id;
-                            pad.bounce = 1.0;
-                            pad.bounceVel = -7.5;
-                            pad.ripple = 1.0;
-                            ej.hamster.onLilyPadIndex = ej.targetPadIndex;
-                            ej.hamster.lilyLandTime = time;
-                        }
+                    let landIdx = ej.targetPadIndex;
+                    if (!g.lotusPads[landIdx] || g.lotusPads[landIdx].occupantId !== null) {
+                        const fallbackIdx = g.lotusPads.findIndex(p => p.occupantId === null);
+                        if (fallbackIdx !== -1) landIdx = fallbackIdx;
+                    }
+                    const landPad = g.lotusPads[landIdx];
+                    if (landPad) {
+                        landPad.occupantId = ej.hamster.id;
+                        landPad.bounce = 1.0;
+                        landPad.bounceVel = -7.5;
+                        landPad.ripple = 1.0;
+                        ej.hamster.onLilyPadIndex = landIdx;
+                        ej.hamster.lilyLandTime = time;
                     }
                     ej.hamster.expression = 'relieved_smug';
                     ej.hamster.relievedUntil = time + 2.6;
@@ -2292,9 +2632,21 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             const active = g.students.filter(s => !s.eliminated);
             if (active.length === 0) return;
 
-            // Cancel any in-flight escape jumps so targets are clean
+            // Land any mid-air escape jumps cleanly on their destination water lily (never snap back to the boat!)
             g.escapeJumps.forEach(ej => {
+                let landIdx = ej.targetPadIndex;
+                if (!g.lotusPads[landIdx] || g.lotusPads[landIdx].occupantId !== null) {
+                    const fallbackIdx = g.lotusPads.findIndex(p => p.occupantId === null);
+                    if (fallbackIdx !== -1) landIdx = fallbackIdx;
+                }
+                const landPad = g.lotusPads[landIdx];
+                if (landPad) {
+                    landPad.occupantId = ej.hamster.id;
+                    ej.hamster.onLilyPadIndex = landIdx;
+                    ej.hamster.lilyLandTime = time;
+                }
                 ej.hamster.expression = 'happy';
+                ej.hamster.wobbleAngle = 0;
             });
             g.escapeJumps = [];
 
@@ -2457,18 +2809,195 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             }
         };
 
+        const getBoatExclusionEllipse = (layout: BoatLayoutMetrics, sinCam: number) => ({
+            bx: layout.cx,
+            by: layout.cy + layout.bowlDepth * 0.16,
+            rx: layout.boatRadius * 1.13 + 48,
+            ry: layout.boatRadius * sinCam * 1.14 + layout.bowlDepth * 0.44 + 44
+        });
+
+        const clampPointOutsideBoat = (
+            px: number,
+            py: number,
+            layout: BoatLayoutMetrics,
+            sinCam: number,
+            w: number,
+            h: number,
+            padScale = 1.04
+        ) => {
+            const horizonY = Math.max(130, h * 0.25);
+            const minX = layout.safeLeft + 46;
+            const maxX = layout.safeRight - 46;
+            const minY = horizonY + 34;
+            const maxY = h - 42;
+
+            let x = Math.max(minX, Math.min(maxX, px));
+            let y = Math.max(minY, Math.min(maxY, py));
+
+            const { bx, by, rx, ry } = getBoatExclusionEllipse(layout, sinCam);
+            let u = (x - bx) / Math.max(1, rx);
+            let v = (y - by) / Math.max(1, ry);
+            const d = Math.hypot(u, v);
+
+            if (d < padScale) {
+                if (d < 0.001) {
+                    u = 0;
+                    v = padScale;
+                } else {
+                    const scale = padScale / d;
+                    u *= scale;
+                    v *= scale;
+                }
+                x = bx + u * rx;
+                y = by + v * ry;
+
+                // If pushing upward hits the shoreline or screen top, wrap cleanly to the closer side/front lagoon
+                if (y < minY) {
+                    y = minY;
+                    const clampedV = (y - by) / Math.max(1, ry);
+                    const reqU = Math.sqrt(Math.max(0.04, padScale * padScale - clampedV * clampedV));
+                    const sideSign = u >= 0 ? 1 : -1;
+                    x = bx + sideSign * reqU * rx;
+                }
+                if (y > maxY) {
+                    y = maxY;
+                    const clampedV = (y - by) / Math.max(1, ry);
+                    const reqU = Math.sqrt(Math.max(0.04, padScale * padScale - clampedV * clampedV));
+                    const sideSign = u >= 0 ? 1 : -1;
+                    x = bx + sideSign * reqU * rx;
+                }
+                if (x < minX || x > maxX) {
+                    x = Math.max(minX, Math.min(maxX, x));
+                    const clampedU = (x - bx) / Math.max(1, rx);
+                    if (Math.abs(clampedU) < padScale) {
+                        const reqV = Math.sqrt(Math.max(0.04, padScale * padScale - clampedU * clampedU));
+                        const lowerY = by + reqV * ry;
+                        const upperY = by - reqV * ry;
+                        y = lowerY <= maxY ? lowerY : Math.max(minY, upperY);
+                    }
+                }
+                x = Math.max(minX, Math.min(maxX, x));
+                y = Math.max(minY, Math.min(maxY, y));
+            }
+            return { x, y };
+        };
+
+        const swimCrocAvoidingBoat = (
+            croc: CrocodileState,
+            rawGoalX: number,
+            rawGoalY: number,
+            maxSpeed: number,
+            dt: number,
+            layout: BoatLayoutMetrics,
+            sinCam: number,
+            w: number,
+            h: number
+        ) => {
+            const safeGoal = clampPointOutsideBoat(rawGoalX, rawGoalY, layout, sinCam, w, h, 1.04);
+            const { bx, by, rx, ry } = getBoatExclusionEllipse(layout, sinCam);
+            const horizonY = Math.max(130, h * 0.25);
+
+            const u0 = (croc.x - bx) / Math.max(1, rx);
+            const v0 = (croc.y - by) / Math.max(1, ry);
+            const u1 = (safeGoal.x - bx) / Math.max(1, rx);
+            const v1 = (safeGoal.y - by) / Math.max(1, ry);
+
+            // Check if the straight line from crocodile to goal intersects the boat exclusion ellipse
+            const du = u1 - u0;
+            const dv = v1 - v0;
+            const segLenSq = du * du + dv * dv;
+            const tClosest = segLenSq > 1e-6 ? Math.max(0, Math.min(1, -(u0 * du + v0 * dv) / segLenSq)) : 0;
+            const cu = u0 + du * tClosest;
+            const cv = v0 + dv * tClosest;
+            const segMinDist = Math.hypot(cu, cv);
+
+            let steerX = safeGoal.x;
+            let steerY = safeGoal.y;
+
+            if (segMinDist < 1.03 && segLenSq > 0.01) {
+                const ang0 = Math.atan2(v0, u0);
+                const ang1 = Math.atan2(v1, u1);
+                let delta = ang1 - ang0;
+                while (delta > Math.PI) delta -= Math.PI * 2;
+                while (delta < -Math.PI) delta += Math.PI * 2;
+
+                // Check whether the shorter arc goes through the top shoreline; if top water is tight, curve under the front of the boat!
+                const midAng = ang0 + delta * 0.5;
+                const midY = by + Math.sin(midAng) * ry * 1.1;
+                if (midY < horizonY + 42) {
+                    // Flip to the opposite arc around the wide open lower/front lagoon
+                    delta = delta > 0 ? delta - Math.PI * 2 : delta + Math.PI * 2;
+                }
+
+                const stepAng = Math.sign(delta || 1) * Math.min(Math.abs(delta), 0.52);
+                const nextAng = ang0 + stepAng;
+                const orbitScale = 1.11;
+                const wp = clampPointOutsideBoat(
+                    bx + Math.cos(nextAng) * rx * orbitScale,
+                    by + Math.sin(nextAng) * ry * orbitScale,
+                    layout,
+                    sinCam,
+                    w,
+                    h,
+                    1.05
+                );
+                steerX = wp.x;
+                steerY = wp.y;
+            }
+
+            const prevX = croc.x;
+            const prevY = croc.y;
+            const dx = steerX - croc.x;
+            const dy = steerY - croc.y;
+            const dist = Math.hypot(dx, dy);
+
+            if (dist > 1) {
+                const moveStep = Math.min(dist, maxSpeed * dt);
+                croc.x += (dx / dist) * moveStep;
+                croc.y += (dy / dist) * moveStep;
+            }
+
+            // Hard safety invariant: crocodile can NEVER step inside the boat footprint
+            const clamped = clampPointOutsideBoat(croc.x, croc.y, layout, sinCam, w, h, 1.02);
+            croc.x = clamped.x;
+            croc.y = clamped.y;
+
+            const moveX = croc.x - prevX;
+            const moveY = croc.y - prevY;
+            if (Math.hypot(moveX, moveY) > 0.35) {
+                const desiredAngle = Math.atan2(moveY, moveX);
+                let diff = desiredAngle - croc.angle;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                croc.angle += diff * Math.min(1, 7.5 * dt);
+            }
+
+            return Math.hypot(safeGoal.x - croc.x, safeGoal.y - croc.y);
+        };
+
         const updateCrocodile = (dt: number, time: number, w: number, h: number, layout: BoatLayoutMetrics) => {
             const g = gameRef.current;
             const croc = g.crocodile;
             const sinCam = Math.sin(g.cameraPitch);
-            const orbitRx = Math.min(w * 0.39, layout.boatRadius * 1.38 + 42);
-            const orbitRy = Math.min(h * 0.30, layout.boatRadius * sinCam * 1.35 + layout.bowlDepth * 0.32 + 34);
-            const orbitCy = Math.min(h - 70, layout.cy + 14);
+            const horizonY = Math.max(130, h * 0.25);
+            const { bx, by, rx: exRx, ry: exRy } = getBoatExclusionEllipse(layout, sinCam);
+            const orbitRx = Math.max(exRx + 18, Math.min(w * 0.45, layout.boatRadius * 1.38 + 48));
+            const orbitRy = Math.max(exRy + 12, Math.min(h * 0.34, layout.boatRadius * sinCam * 1.35 + layout.bowlDepth * 0.38 + 42));
+            const hasTopWater = (by - orbitRy) > (horizonY + 42);
 
             if (!croc.initialized) {
                 croc.initialized = true;
-                croc.x = layout.cx + Math.cos(croc.patrolAngle) * orbitRx;
-                croc.y = orbitCy + Math.sin(croc.patrolAngle) * orbitRy;
+                const initPt = clampPointOutsideBoat(
+                    bx + Math.cos(croc.patrolAngle) * orbitRx,
+                    by + Math.sin(croc.patrolAngle) * orbitRy,
+                    layout,
+                    sinCam,
+                    w,
+                    h,
+                    1.08
+                );
+                croc.x = initPt.x;
+                croc.y = initPt.y;
                 croc.angle = croc.patrolAngle + Math.PI * 0.5;
             }
 
@@ -2495,26 +3024,19 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             if (croc.phase === 'PATROL' || croc.phase === 'STALKING') {
                 const isStalking = g.state === 'CHAOS_SPIN';
                 croc.phase = isStalking ? 'STALKING' : 'PATROL';
-                const angularSpeed = isStalking ? 0.62 : 0.24;
+                const angularSpeed = isStalking ? 0.62 : 0.26;
                 croc.patrolAngle += angularSpeed * dt;
                 croc.swimPhase += dt * (isStalking ? 10.5 : 4.8);
 
-                const desiredX = Math.max(layout.safeLeft + 74, Math.min(layout.safeRight - 74, layout.cx + Math.cos(croc.patrolAngle) * orbitRx));
-                const desiredY = Math.max(h * 0.31, Math.min(h - 56, orbitCy + Math.sin(croc.patrolAngle) * orbitRy));
+                // If the boat fills near the upper riverbank, cruise smoothly back and forth around the front & sides of the boat
+                const effectiveAngle = hasTopWater
+                    ? croc.patrolAngle
+                    : Math.PI * 0.5 + Math.sin(croc.patrolAngle * 0.72) * (Math.PI * 0.52);
 
-                const dx = desiredX - croc.x;
-                const dy = desiredY - croc.y;
-                const moveEase = Math.min(1, (isStalking ? 5.2 : 2.8) * dt);
-                croc.x += dx * moveEase;
-                croc.y += dy * moveEase;
-
-                if (Math.hypot(dx, dy) > 0.6) {
-                    const desiredAngle = Math.atan2(dy, dx);
-                    let diff = desiredAngle - croc.angle;
-                    while (diff > Math.PI) diff -= Math.PI * 2;
-                    while (diff < -Math.PI) diff += Math.PI * 2;
-                    croc.angle += diff * Math.min(1, 5.5 * dt);
-                }
+                const desiredX = bx + Math.cos(effectiveAngle) * orbitRx;
+                const desiredY = by + Math.sin(effectiveAngle) * orbitRy;
+                const patrolSpeed = isStalking ? 290 : 145;
+                swimCrocAvoidingBoat(croc, desiredX, desiredY, patrolSpeed, dt, layout, sinCam, w, h);
 
                 croc.surfaceHeight += (0 - croc.surfaceHeight) * Math.min(1, 6 * dt);
 
@@ -2550,7 +3072,7 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                     });
                 }
             } else if (croc.phase === 'LILY_ROAM') {
-                // Extended 20s+ Hunt: Crocodile prowls menacingly around the water lilies!
+                // Extended 20s+ Hunt: Crocodile prowls menacingly around the water lilies (always steering around the boat!)
                 croc.swimPhase += dt * 9.5;
                 croc.surfaceHeight += (0 - croc.surfaceHeight) * Math.min(1, 7 * dt);
                 croc.petalOnNose = false;
@@ -2583,36 +3105,23 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 if (croc.huntTargetPadIndex !== null) {
                     const pad = g.lotusPads[croc.huntTargetPadIndex];
                     const padPos = getLotusPadScreenPos(pad, croc.huntTargetPadIndex, w, h, time, layout);
-                    // Approach the lily pad from the lagoon-center side so the crocodile stays nicely visible
-                    const inwardDirX = padPos.x < layout.cx ? 1 : -1;
-                    const desiredX = padPos.x + inwardDirX * (padPos.r + 54);
-                    const desiredY = padPos.y + 18;
-                    const dx = desiredX - croc.x;
-                    const dy = desiredY - croc.y;
-                    const dist = Math.hypot(dx, dy);
+                    // Approach the lily pad from its open-water side (away from the boat!)
+                    const outDx = padPos.x - bx;
+                    const outDy = padPos.y - by;
+                    const outLen = Math.hypot(outDx, outDy) || 1;
+                    const desiredX = padPos.x + (outDx / outLen) * (padPos.r + 36) * 0.45;
+                    const desiredY = padPos.y + padPos.r * 0.72 + 24;
 
-                    // Swim smoothly with subtle S-sway
-                    const speed = Math.min(340, 210 + dist * 0.65);
-                    if (dist > 6) {
-                        croc.x += (dx / dist) * speed * dt;
-                        croc.y += (dy / dist) * speed * dt;
-                        const desiredAngle = Math.atan2(dy, dx);
-                        let diff = desiredAngle - croc.angle;
-                        while (diff > Math.PI) diff -= Math.PI * 2;
-                        while (diff < -Math.PI) diff += Math.PI * 2;
-                        croc.angle += diff * Math.min(1, 6.5 * dt);
-                    }
+                    const dist = swimCrocAvoidingBoat(croc, desiredX, desiredY, 315, dt, layout, sinCam, w, h);
 
                     croc.jawTarget = 0.25 + Math.sin(time * 9) * 0.14;
                     croc.jawOpen += (croc.jawTarget - croc.jawOpen) * Math.min(1, 12 * dt);
 
-                    if (dist < 42 || croc.huntTimer > 2.2) {
+                    if (dist < 48 || croc.huntTimer > 3.6) {
                         croc.phase = 'LILY_STALK';
                         croc.huntTimer = 0;
                         const victimHam = g.students.find(s => s.id === pad.occupantId);
                         if (victimHam) {
-                            victimHam.speechBubble = 'OH NO!! IT PICKED ME!! 😱';
-                            victimHam.speechExpiry = time + 1.8;
                             soundRef.current.playSqueak();
                             const stalkMsg = `🐊 UH-OH!! THE CROCODILE IS STALKING ${victimHam.name.toUpperCase()} ON THE WATER LILY!!`;
                             g.activeBanner = stalkMsg;
@@ -2628,15 +3137,25 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                         }
                     }
                 } else {
-                    // Fallback cruise while waiting for a pad to fill
+                    // Fallback cruise around the boat while waiting for a pad to fill
                     croc.patrolAngle += 0.55 * dt;
-                    const desiredX = layout.cx + Math.cos(croc.patrolAngle) * orbitRx;
-                    const desiredY = orbitCy + Math.sin(croc.patrolAngle) * orbitRy;
-                    croc.x += (desiredX - croc.x) * Math.min(1, 4 * dt);
-                    croc.y += (desiredY - croc.y) * Math.min(1, 4 * dt);
+                    const effectiveAngle = hasTopWater
+                        ? croc.patrolAngle
+                        : Math.PI * 0.5 + Math.sin(croc.patrolAngle * 0.72) * (Math.PI * 0.52);
+                    swimCrocAvoidingBoat(
+                        croc,
+                        bx + Math.cos(effectiveAngle) * orbitRx,
+                        by + Math.sin(effectiveAngle) * orbitRy,
+                        220,
+                        dt,
+                        layout,
+                        sinCam,
+                        w,
+                        h
+                    );
                 }
             } else if (croc.phase === 'LILY_STALK') {
-                // Tight menacing circling right around the targeted water lily!
+                // Tight menacing circling right around the targeted water lily (always staying outside the boat!)
                 croc.swimPhase += dt * 13;
                 croc.huntTimer += dt;
                 const padIdx = croc.huntTargetPadIndex;
@@ -2646,13 +3165,17 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                     croc.huntTargetPadIndex = null;
                 } else {
                     const padPos = getLotusPadScreenPos(pad, padIdx!, w, h, time, layout);
-                    const orbitAng = time * 3.8;
-                    const desiredX = Math.max(layout.safeLeft + 62, Math.min(layout.safeRight - 62, padPos.x + Math.cos(orbitAng) * (padPos.r + 44)));
-                    const desiredY = Math.max(h * 0.34, Math.min(h - 50, padPos.y + Math.sin(orbitAng) * (padPos.r * 0.65 + 24)));
-                    const dx = desiredX - croc.x;
-                    const dy = desiredY - croc.y;
+                    const orbitAng = time * 3.6;
+                    const rawX = padPos.x + Math.cos(orbitAng) * (padPos.r + 38);
+                    const rawY = padPos.y + Math.sin(orbitAng) * (padPos.r * 0.65 + 24);
+                    const safeOrbit = clampPointOutsideBoat(rawX, rawY, layout, sinCam, w, h, 1.04);
+                    const dx = safeOrbit.x - croc.x;
+                    const dy = safeOrbit.y - croc.y;
                     croc.x += dx * Math.min(1, 7.5 * dt);
                     croc.y += dy * Math.min(1, 7.5 * dt);
+                    const enforced = clampPointOutsideBoat(croc.x, croc.y, layout, sinCam, w, h, 1.02);
+                    croc.x = enforced.x;
+                    croc.y = enforced.y;
 
                     // Keep snout pointed wickedly toward the trembling lily pad!
                     const aimAngle = Math.atan2(padPos.y - croc.y, padPos.x - croc.x);
@@ -2686,8 +3209,9 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                         croc.phase = 'LILY_LUNGE';
                         croc.huntTimer = 0;
                         croc.huntEscapeTriggered = false;
-                        croc.targetX = padPos.x;
-                        croc.targetY = padPos.y + 10;
+                        const lungeTarget = clampPointOutsideBoat(padPos.x, padPos.y + 10, layout, sinCam, w, h, 1.02);
+                        croc.targetX = lungeTarget.x;
+                        croc.targetY = lungeTarget.y;
                         croc.facingDir = croc.x <= padPos.x ? 1 : -1;
                         croc.jawTarget = 1.0;
                         soundRef.current.playCrocGrowl();
@@ -2701,12 +3225,12 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 const pad = padIdx !== null ? g.lotusPads[padIdx] : null;
                 if (pad && padIdx !== null) {
                     const padPos = getLotusPadScreenPos(pad, padIdx, w, h, time, layout);
-                    croc.targetX = padPos.x;
-                    croc.targetY = padPos.y + 10;
+                    const safeLunge = clampPointOutsideBoat(padPos.x, padPos.y + 10, layout, sinCam, w, h, 1.02);
+                    croc.targetX = safeLunge.x;
+                    croc.targetY = safeLunge.y;
                 }
 
-                croc.x += (croc.targetX - croc.x) * Math.min(1, 9.5 * dt);
-                croc.y += (croc.targetY - croc.y) * Math.min(1, 9.5 * dt);
+                swimCrocAvoidingBoat(croc, croc.targetX, croc.targetY, 440, dt, layout, sinCam, w, h);
                 croc.surfaceHeight += (1 - croc.surfaceHeight) * Math.min(1, 10 * dt);
 
                 if (croc.huntTimer < 0.52) {
@@ -2743,6 +3267,9 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 croc.grumpTimer += dt;
                 croc.jawOpen = Math.abs(Math.sin(croc.grumpTimer * 18)) * 0.08;
                 croc.surfaceHeight += (0.78 - croc.surfaceHeight) * Math.min(1, 6 * dt);
+                const enforced = clampPointOutsideBoat(croc.x, croc.y, layout, sinCam, w, h, 1.02);
+                croc.x = enforced.x;
+                croc.y = enforced.y;
 
                 if (croc.grumpTimer >= 1.05) {
                     croc.phase = 'LILY_ROAM';
@@ -2751,14 +3278,15 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 }
             } else if (croc.phase === 'SURFACING' || croc.phase === 'OPEN_JAWS') {
                 croc.swimPhase += dt * 13;
-                const rushEase = Math.min(1, 8.5 * dt);
-                croc.x += (croc.targetX - croc.x) * rushEase;
-                croc.y += (croc.targetY - croc.y) * rushEase;
+                const safeCatch = clampPointOutsideBoat(croc.targetX, croc.targetY, layout, sinCam, w, h, 1.02);
+                croc.targetX = safeCatch.x;
+                croc.targetY = safeCatch.y;
+                const distToCatch = swimCrocAvoidingBoat(croc, croc.targetX, croc.targetY, 540, dt, layout, sinCam, w, h);
                 croc.surfaceHeight += (1 - croc.surfaceHeight) * Math.min(1, 8.5 * dt);
                 croc.jawTarget = 1.0;
                 croc.jawOpen += (croc.jawTarget - croc.jawOpen) * Math.min(1, 13 * dt);
 
-                if (Math.hypot(croc.targetX - croc.x, croc.targetY - croc.y) < 16 && croc.surfaceHeight > 0.72) {
+                if (distToCatch < 20 && croc.surfaceHeight > 0.72) {
                     croc.phase = 'OPEN_JAWS';
                 }
 
@@ -3729,20 +4257,20 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             bounds: { left: number; right: number; top: number; bottom: number }
         ) => {
             const boxes = tags.map(t => {
-                const fontSize = t.fontSize || (t.isCaptain ? 12 : 11.5);
-                const paddingX = t.paddingX ?? 8;
-                const boxH = t.boxH ?? (t.isCaptain ? 22 : 19);
+                const fontSize = t.fontSize || (t.isCaptain ? 14 : 13.5);
+                const paddingX = t.paddingX ?? 9.5;
+                const boxH = t.boxH ?? (t.isCaptain ? 25 : 23);
                 const label = t.displayText ?? t.name;
                 fontCtx.font = t.isCaptain || t.priority === 'spotlight'
-                    ? `800 ${fontSize}px 'Fredoka', sans-serif`
-                    : `700 ${fontSize}px 'Quicksand', sans-serif`;
+                    ? `900 ${fontSize}px 'Fredoka', 'Nunito', 'Segoe UI', sans-serif`
+                    : `800 ${fontSize}px 'Fredoka', 'Nunito', 'Segoe UI', sans-serif`;
                 const textW = fontCtx.measureText(label).width;
-                const dotSpace = !t.isCaptain && t.accentColor ? 6 : 0;
-                const maxW = t.maxWidth ?? 185;
+                const dotSpace = !t.isCaptain && t.accentColor ? 10 : 0;
+                const maxW = t.maxWidth ?? 215;
                 return {
                     tag: t,
                     w: Math.min(maxW, textW + paddingX * 2 + dotSpace),
-                    h: boxH + 1
+                    h: boxH + 2
                 };
             });
 
@@ -3803,56 +4331,56 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
         const drawNameTag = (item: NameTagItem) => {
             ctx.save();
             const isSpotlight = item.priority === 'spotlight';
-            const fontSize = item.fontSize ?? (isSpotlight ? 13 : item.isCaptain ? 12 : 11.5);
-            const paddingX = item.paddingX ?? (isSpotlight ? 10 : 8.5);
-            const boxH = item.boxH ?? (isSpotlight ? 24 : item.isCaptain ? 22 : 19);
+            const fontSize = item.fontSize ?? (isSpotlight ? 15.5 : item.isCaptain ? 14 : 13.5);
+            const paddingX = item.paddingX ?? (isSpotlight ? 12 : 9.5);
+            const boxH = item.boxH ?? (isSpotlight ? 28 : item.isCaptain ? 25 : 23);
             const label = item.displayText ?? item.name;
 
             ctx.font = item.isCaptain || isSpotlight
-                ? `800 ${fontSize}px 'Fredoka', sans-serif`
-                : `700 ${fontSize}px 'Quicksand', sans-serif`;
+                ? `900 ${fontSize}px 'Fredoka', 'Nunito', 'Segoe UI', sans-serif`
+                : `800 ${fontSize}px 'Fredoka', 'Nunito', 'Segoe UI', sans-serif`;
 
             const hasDot = !item.isCaptain && Boolean(item.accentColor);
-            const dotSpace = hasDot ? 6 : 0;
+            const dotSpace = hasDot ? 10 : 0;
             const metrics = ctx.measureText(label);
-            const boxW = Math.min(item.maxWidth ?? 210, metrics.width + paddingX * 2 + dotSpace);
-            const radius = Math.min(9, boxH * 0.45);
+            const boxW = Math.min(item.maxWidth ?? 240, metrics.width + paddingX * 2 + dotSpace);
+            const radius = Math.min(11, boxH * 0.48);
 
             // Subtle tether line + tiny anchor pip if anti-overlap nudged the tag away from its hamster
             const distMoved = Math.hypot(item.x - item.anchorX, item.y - item.anchorY);
             if (distMoved > 7 && !isSpotlight) {
-                ctx.strokeStyle = 'rgba(58, 31, 13, 0.48)';
-                ctx.lineWidth = 1.3;
+                ctx.strokeStyle = 'rgba(30, 27, 24, 0.52)';
+                ctx.lineWidth = 1.5;
                 ctx.beginPath();
-                ctx.moveTo(item.x, item.y + (item.anchorY >= item.y ? boxH * 0.42 : -boxH * 0.42));
+                ctx.moveTo(item.x, item.y + (item.anchorY >= item.y ? boxH * 0.44 : -boxH * 0.44));
                 ctx.lineTo(item.anchorX, item.anchorY + 5);
                 ctx.stroke();
 
-                ctx.fillStyle = item.accentColor || '#3A1F0D';
+                ctx.fillStyle = item.accentColor || '#1E1B18';
                 ctx.beginPath();
-                ctx.arc(item.anchorX, item.anchorY + 5, 2.2, 0, Math.PI * 2);
+                ctx.arc(item.anchorX, item.anchorY + 5, 2.5, 0, Math.PI * 2);
                 ctx.fill();
             }
 
             ctx.translate(item.x, item.y);
 
-            // Soft drop shadow
-            ctx.fillStyle = isSpotlight ? 'rgba(239, 35, 60, 0.32)' : 'rgba(28, 16, 8, 0.28)';
+            // Crisp drop shadow for strong readability over both wood and lagoon water
+            ctx.fillStyle = isSpotlight ? 'rgba(239, 35, 60, 0.36)' : 'rgba(15, 23, 42, 0.34)';
             ctx.beginPath();
-            ctx.roundRect(-boxW / 2, -boxH / 2 + 2.2, boxW, boxH, radius);
+            ctx.roundRect(-boxW / 2, -boxH / 2 + 2.5, boxW, boxH, radius);
             ctx.fill();
 
             ctx.fillStyle = item.isCaptain
-                ? '#3A1F0D'
+                ? '#2B180A'
                 : isSpotlight
                     ? '#FFFBEB'
-                    : 'rgba(255, 253, 247, 0.96)';
+                    : 'rgba(255, 255, 255, 0.98)';
             ctx.strokeStyle = item.isCaptain
                 ? '#FFD166'
                 : isSpotlight
                     ? '#F59E0B'
-                    : '#3A1F0D';
-            ctx.lineWidth = isSpotlight ? 2.6 : (boxH < 17 ? 1.5 : 1.9);
+                    : '#1E1B18';
+            ctx.lineWidth = isSpotlight ? 2.8 : 2.3;
 
             ctx.beginPath();
             ctx.roundRect(-boxW / 2, -boxH / 2, boxW, boxH, radius);
@@ -3861,102 +4389,136 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
 
             // Left color accent dot for student life vest color
             if (hasDot && item.accentColor) {
-                const dotR = boxH < 17 ? 2.4 : 3;
+                const dotR = boxH < 20 ? 3 : 3.6;
                 ctx.fillStyle = item.accentColor;
                 ctx.beginPath();
-                ctx.arc(-boxW / 2 + paddingX * 0.72, 0, dotR, 0, Math.PI * 2);
+                ctx.arc(-boxW / 2 + paddingX * 0.78, 0, dotR, 0, Math.PI * 2);
                 ctx.fill();
             }
 
             // Pointer triangle only when tag sits right above its hamster
             if (distMoved <= 12) {
                 ctx.fillStyle = item.isCaptain
-                    ? '#3A1F0D'
+                    ? '#2B180A'
                     : isSpotlight
                         ? '#FFFBEB'
-                        : 'rgba(255, 253, 247, 0.96)';
+                        : 'rgba(255, 255, 255, 0.98)';
                 ctx.beginPath();
-                ctx.moveTo(-3, boxH / 2);
-                ctx.lineTo(3, boxH / 2);
-                ctx.lineTo(0, boxH / 2 + 3.2);
+                ctx.moveTo(-3.5, boxH / 2);
+                ctx.lineTo(3.5, boxH / 2);
+                ctx.lineTo(0, boxH / 2 + 3.8);
                 ctx.closePath();
                 ctx.fill();
             }
 
-            ctx.fillStyle = item.isCaptain ? '#FFD166' : '#2B180A';
+            ctx.fillStyle = item.isCaptain ? '#FFD166' : '#0F172A';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(label, hasDot ? 2.5 : 0, 0.5, boxW - paddingX * 1.4 - dotSpace);
+            ctx.fillText(label, hasDot ? 4 : 0, 0.5, boxW - paddingX * 1.4 - dotSpace);
             ctx.restore();
         };
 
-        // Expressive Animated Cartoon Lagoon Crocodile (Swimming Patrol + Lunging Open-Jaws Chomp)
+        // Expressive Sculpted Cartoon Lagoon Crocodile (Swimming Patrol + Lunging Open-Jaws Chomp)
         const drawCrocodileSwimming = (croc: CrocodileState, time: number, scale: number) => {
             ctx.save();
             ctx.translate(croc.x, croc.y);
-            ctx.scale(scale, scale);
+            ctx.scale(scale * 1.12, scale * 1.12);
 
-            // Water shadow & V-shaped swimming wake ripples
+            const isHunting = croc.phase === 'STALKING' || croc.phase === 'LILY_ROAM' || croc.phase === 'LILY_STALK';
+
             ctx.save();
             ctx.rotate(croc.angle);
-            ctx.strokeStyle = 'rgba(224, 242, 254, 0.52)';
-            ctx.lineWidth = 2.4;
+
+            // Multi-layered shimmering water wake V-ripples
+            const wakePulse = Math.sin(time * 6.5) * 4.5;
             ctx.lineCap = 'round';
-            const wakePulse = Math.sin(time * 6) * 4;
+            ctx.strokeStyle = 'rgba(224, 242, 254, 0.62)';
+            ctx.lineWidth = 2.8;
             ctx.beginPath();
-            ctx.moveTo(42, 0);
-            ctx.quadraticCurveTo(10, -28 - wakePulse * 0.5, -62, -40 - wakePulse);
-            ctx.moveTo(42, 0);
-            ctx.quadraticCurveTo(10, 28 + wakePulse * 0.5, -62, 40 + wakePulse);
+            ctx.moveTo(46, 0);
+            ctx.quadraticCurveTo(10, -28 - wakePulse * 0.5, -72, -42 - wakePulse);
+            ctx.moveTo(46, 0);
+            ctx.quadraticCurveTo(10, 28 + wakePulse * 0.5, -72, 42 + wakePulse);
             ctx.stroke();
 
-            // Subtle underwater body shadow
-            ctx.fillStyle = 'rgba(6, 38, 48, 0.34)';
+            ctx.strokeStyle = 'rgba(186, 230, 253, 0.34)';
+            ctx.lineWidth = 1.8;
             ctx.beginPath();
-            ctx.ellipse(-8, 5, 58, 20, 0, 0, Math.PI * 2);
+            ctx.moveTo(28, 0);
+            ctx.quadraticCurveTo(-8, -36 - wakePulse * 0.4, -86, -54 - wakePulse);
+            ctx.moveTo(28, 0);
+            ctx.quadraticCurveTo(-8, 36 + wakePulse * 0.4, -86, 54 + wakePulse);
+            ctx.stroke();
+
+            // Deep translucent lagoon underwater body shadow
+            ctx.fillStyle = 'rgba(6, 36, 48, 0.34)';
+            ctx.beginPath();
+            ctx.ellipse(-10, 6, 66, 22, 0, 0, Math.PI * 2);
             ctx.fill();
 
-            // Articulated S-wave swimming tail (7 tapered emerald segments + dorsal ridge spikes)
-            const tailSegments = 7;
+            // Articulated tapered 9-segment S-wave swimming tail with 3D dorsal ridge crests
+            const tailSegments = 9;
             for (let i = tailSegments; i >= 1; i--) {
                 const frac = i / tailSegments;
-                const tx = -18 - i * 11.5;
-                const ty = Math.sin(croc.swimPhase - i * 0.68) * (5.5 + i * 2.1);
-                const segR = Math.max(4.5, 16.5 * (1 - frac * 0.72));
+                const tx = -16 - i * 9.8;
+                const ty = Math.sin(croc.swimPhase - i * 0.58) * (4.5 + i * 2.0);
+                const segR = Math.max(3.6, 17.5 * (1 - frac * 0.78));
+                const segTilt = Math.cos(croc.swimPhase - i * 0.58) * 0.24;
 
-                ctx.fillStyle = i % 2 === 0 ? '#2D6A4F' : '#40916C';
-                ctx.strokeStyle = '#143324';
-                ctx.lineWidth = 2.4;
+                // Subtle cream under-flank rim
+                ctx.fillStyle = '#D9ED92';
                 ctx.beginPath();
-                ctx.ellipse(tx, ty, segR * 1.25, segR * 0.82, Math.cos(croc.swimPhase - i * 0.68) * 0.22, 0, Math.PI * 2);
+                ctx.ellipse(tx, ty + 1.2, segR * 1.22, segR * 0.86, segTilt, 0, Math.PI * 2);
+                ctx.fill();
+
+                const segGrad = ctx.createLinearGradient(tx, ty - segR, tx, ty + segR);
+                segGrad.addColorStop(0, i % 2 === 0 ? '#74C69D' : '#52B788');
+                segGrad.addColorStop(0.55, '#2D6A4F');
+                segGrad.addColorStop(1, '#1B4332');
+                ctx.fillStyle = segGrad;
+                ctx.strokeStyle = '#102A1D';
+                ctx.lineWidth = 2.2;
+                ctx.beginPath();
+                ctx.ellipse(tx, ty, segR * 1.26, segR * 0.78, segTilt, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.stroke();
 
-                // Dorsal ridge scute along spine
+                // Sculpted dorsal spine ridge plate with sunlit edge
                 ctx.fillStyle = '#1B4332';
+                ctx.strokeStyle = '#95D5B2';
+                ctx.lineWidth = 0.9;
                 ctx.beginPath();
-                ctx.ellipse(tx, ty, segR * 0.48, segR * 0.28, 0, 0, Math.PI * 2);
+                ctx.ellipse(tx, ty, segR * 0.54, segR * 0.27, segTilt, 0, Math.PI * 2);
                 ctx.fill();
+                ctx.stroke();
             }
 
-            // Stubby webbed paddling legs stroking rhythmically
-            const legStroke = Math.sin(croc.swimPhase) * 0.45;
+            // Muscular paddling webbed legs with cute curved ivory claws
+            const legStroke = Math.sin(croc.swimPhase) * 0.48;
             const drawLeg = (lx: number, side: number, phaseSign: number) => {
                 ctx.save();
                 ctx.translate(lx, side * 15);
-                ctx.rotate(side * (0.55 + legStroke * phaseSign));
-                ctx.fillStyle = '#40916C';
-                ctx.strokeStyle = '#143324';
+                ctx.rotate(side * (0.52 + legStroke * phaseSign));
+                const legGrad = ctx.createLinearGradient(-8, 0, 8, side * 18);
+                legGrad.addColorStop(0, '#52B788');
+                legGrad.addColorStop(1, '#2D6A4F');
+                ctx.fillStyle = legGrad;
+                ctx.strokeStyle = '#102A1D';
                 ctx.lineWidth = 2.2;
                 ctx.beginPath();
-                ctx.ellipse(0, side * 9, 7.5, 11.5, 0, 0, Math.PI * 2);
+                ctx.ellipse(0, side * 9, 8, 12.5, 0, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.stroke();
-                // Cute 3 webbed toes
-                ctx.fillStyle = '#74C69D';
+
+                // 3 webbed toes with tiny ivory claws
                 for (let t = -1; t <= 1; t++) {
+                    ctx.fillStyle = '#74C69D';
                     ctx.beginPath();
-                    ctx.arc(t * 4.5, side * 18, 2.6, 0, Math.PI * 2);
+                    ctx.arc(t * 4.8, side * 18, 2.8, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#FEF9C3';
+                    ctx.beginPath();
+                    ctx.arc(t * 5.2, side * 20.5, 1.4, 0, Math.PI * 2);
                     ctx.fill();
                 }
                 ctx.restore();
@@ -3966,136 +4528,176 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             drawLeg(12, -1, -1);
             drawLeg(12, 1, 1);
 
-            // Muscular torpedo torso
-            const torsoGrad = ctx.createLinearGradient(-28, -18, 24, 18);
-            torsoGrad.addColorStop(0, '#74C69D');
-            torsoGrad.addColorStop(0.55, '#40916C');
+            // Muscular sculpted torso with warm sunlit emerald gradient & cream flank edging
+            ctx.fillStyle = '#D9ED92';
+            ctx.beginPath();
+            ctx.ellipse(-2, 0, 31, 19.5, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            const torsoGrad = ctx.createLinearGradient(-30, -19, 26, 19);
+            torsoGrad.addColorStop(0, '#95D5B2');
+            torsoGrad.addColorStop(0.35, '#52B788');
+            torsoGrad.addColorStop(0.75, '#2D6A4F');
             torsoGrad.addColorStop(1, '#1B4332');
             ctx.fillStyle = torsoGrad;
-            ctx.strokeStyle = '#143324';
+            ctx.strokeStyle = '#102A1D';
             ctx.lineWidth = 2.8;
             ctx.beginPath();
-            ctx.ellipse(-2, 0, 28, 17, 0, 0, Math.PI * 2);
+            ctx.ellipse(-2, 0, 30, 17.5, 0, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
 
-            // Armored dorsal scute plates along torso back
+            // Twin rows of armored 3D dorsal osteoderm scutes with highlights
             for (let s = -2; s <= 1; s++) {
-                ctx.fillStyle = '#2D6A4F';
-                ctx.strokeStyle = '#143324';
-                ctx.lineWidth = 1.5;
-                ctx.beginPath();
-                ctx.roundRect(s * 10 - 3, -8, 7.5, 5.5, 2.5);
-                ctx.roundRect(s * 10 - 3, 2.5, 7.5, 5.5, 2.5);
-                ctx.fill();
-                ctx.stroke();
+                [-6.8, 1.8].forEach(sy => {
+                    ctx.fillStyle = '#1B4332';
+                    ctx.strokeStyle = '#102A1D';
+                    ctx.lineWidth = 1.4;
+                    ctx.beginPath();
+                    ctx.roundRect(s * 10.5 - 3.5, sy, 8.2, 5.4, 2.6);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    ctx.fillStyle = 'rgba(183, 228, 199, 0.35)';
+                    ctx.beginPath();
+                    ctx.roundRect(s * 10.5 - 2.2, sy + 0.9, 5.2, 1.8, 1);
+                    ctx.fill();
+                });
             }
 
-            // Head & expressive snapping snout
+            // Expressive Sculpted Crocodile Head & Snout
             const headYaw = Math.sin(croc.swimPhase * 0.5) * 0.06;
             ctx.save();
             ctx.translate(22, 0);
             ctx.rotate(headYaw);
 
-            // Snout tease-open glow inside jaws when stalking
+            // Open crimson mouth & wiggling pink tongue peek when snapping/teasing
             if (croc.jawOpen > 0.08) {
-                ctx.fillStyle = '#B91C1C';
-                ctx.strokeStyle = '#143324';
-                ctx.lineWidth = 2;
+                ctx.fillStyle = '#991B1B';
+                ctx.strokeStyle = '#102A1D';
+                ctx.lineWidth = 2.2;
                 ctx.beginPath();
-                ctx.ellipse(22, 0, 18 + croc.jawOpen * 7, 9 + croc.jawOpen * 7, 0, 0, Math.PI * 2);
+                ctx.ellipse(24, 0, 19 + croc.jawOpen * 8, 9.5 + croc.jawOpen * 7.5, 0, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.stroke();
 
-                // Cute pink tongue peek
                 ctx.fillStyle = '#FB7185';
                 ctx.beginPath();
-                ctx.ellipse(20, 0, 10, 5 + croc.jawOpen * 3, 0, 0, Math.PI * 2);
+                ctx.ellipse(21, 0, 11, 5.2 + croc.jawOpen * 3, 0, 0, Math.PI * 2);
                 ctx.fill();
             }
 
-            // Rounded zig-zag white cartoon teeth peeking along jawline
+            // Glossy white conical cartoon fangs peeking along the sinuous jawline
             ctx.fillStyle = '#FFFFFF';
-            ctx.strokeStyle = '#143324';
-            ctx.lineWidth = 1.4;
-            const teethSpread = croc.jawOpen * 3.5;
+            ctx.strokeStyle = '#102A1D';
+            ctx.lineWidth = 1.5;
+            const teethSpread = croc.jawOpen * 4;
             [-1, 1].forEach(side => {
-                [12, 20, 28].forEach(tx => {
+                [11, 19.5, 28.5, 36].forEach((tx, idx) => {
+                    const toothLen = idx === 2 ? 6.2 : 4.8;
                     ctx.beginPath();
-                    ctx.moveTo(tx - 3, side * (9.5 + teethSpread));
-                    ctx.lineTo(tx, side * (14.5 + teethSpread));
-                    ctx.lineTo(tx + 3, side * (9.5 + teethSpread));
+                    ctx.moveTo(tx - 3.2, side * (8.5 + teethSpread));
+                    ctx.quadraticCurveTo(tx, side * (9.5 + toothLen + teethSpread), tx + 3.2, side * (8.5 + teethSpread));
                     ctx.closePath();
                     ctx.fill();
                     ctx.stroke();
                 });
             });
 
-            // Sculpted crocodile snout & skull
-            const headGrad = ctx.createLinearGradient(0, -14, 38, 14);
-            headGrad.addColorStop(0, '#74C69D');
-            headGrad.addColorStop(0.6, '#40916C');
-            headGrad.addColorStop(1, '#2D6A4F');
+            // Sculpted peanut-tapered snout & bulbous nose tip
+            const headGrad = ctx.createLinearGradient(-6, -15, 44, 15);
+            headGrad.addColorStop(0, '#95D5B2');
+            headGrad.addColorStop(0.42, '#52B788');
+            headGrad.addColorStop(0.82, '#2D6A4F');
+            headGrad.addColorStop(1, '#1B4332');
             ctx.fillStyle = headGrad;
-            ctx.strokeStyle = '#143324';
+            ctx.strokeStyle = '#102A1D';
             ctx.lineWidth = 2.8;
             ctx.beginPath();
-            ctx.moveTo(-6, -13);
-            ctx.quadraticCurveTo(10, -14, 24, -10.5);
-            ctx.quadraticCurveTo(40, -9, 41, 0);
-            ctx.quadraticCurveTo(40, 9, 24, 10.5);
-            ctx.quadraticCurveTo(10, 14, -6, 13);
+            ctx.moveTo(-6, -14.5);
+            ctx.bezierCurveTo(6, -16, 16, -11, 27, -10.5);
+            ctx.bezierCurveTo(38, -12.5, 46, -8, 46, 0);
+            ctx.bezierCurveTo(46, 8, 38, 12.5, 27, 10.5);
+            ctx.bezierCurveTo(16, 11, 6, 16, -6, 14.5);
             ctx.closePath();
             ctx.fill();
             ctx.stroke();
 
-            // Snout bridge highlight & bumpy nostrils
-            ctx.fillStyle = 'rgba(183, 228, 199, 0.45)';
+            // Snout bridge glossy highlight & subtle scale dots
+            ctx.fillStyle = 'rgba(216, 243, 220, 0.45)';
             ctx.beginPath();
-            ctx.ellipse(18, -3, 14, 4, 0, 0, Math.PI * 2);
+            ctx.ellipse(21, -2.5, 16, 4.2, 0, 0, Math.PI * 2);
             ctx.fill();
 
-            ctx.fillStyle = '#143324';
-            ctx.beginPath();
-            ctx.arc(34, -4.2, 2.1, 0, Math.PI * 2);
-            ctx.arc(34, 4.2, 2.1, 0, Math.PI * 2);
-            ctx.fill();
+            // Raised bulbous twin nostril domes at snout tip
+            [-1, 1].forEach(side => {
+                ctx.fillStyle = '#40916C';
+                ctx.strokeStyle = '#102A1D';
+                ctx.lineWidth = 1.6;
+                ctx.beginPath();
+                ctx.arc(38, side * 5.2, 3.6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
 
-            // Bulging yellow cartoon eyes with sneaky eyebrows & blinking
+                ctx.fillStyle = '#102A1D';
+                ctx.beginPath();
+                ctx.arc(39.2, side * 5.2, 1.6, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Bulging expressive golden-amber cartoon eyes with dynamic hunter/sneaky eyebrows
             [-1, 1].forEach(side => {
                 ctx.fillStyle = '#52B788';
-                ctx.strokeStyle = '#143324';
-                ctx.lineWidth = 2.2;
+                ctx.strokeStyle = '#102A1D';
+                ctx.lineWidth = 2.3;
                 ctx.beginPath();
-                ctx.arc(4, side * 9.5, 7.2, 0, Math.PI * 2);
+                ctx.arc(3.5, side * 10.2, 7.8, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.stroke();
 
                 if (croc.isBlinking) {
-                    ctx.strokeStyle = '#143324';
-                    ctx.lineWidth = 2.2;
+                    ctx.strokeStyle = '#102A1D';
+                    ctx.lineWidth = 2.3;
                     ctx.beginPath();
-                    ctx.moveTo(1, side * 9.5);
-                    ctx.lineTo(8, side * 9.5);
+                    ctx.moveTo(0, side * 10.2);
+                    ctx.lineTo(8, side * 10.2);
                     ctx.stroke();
                 } else {
-                    ctx.fillStyle = '#FDE047';
+                    const eyeGrad = ctx.createRadialGradient(4, side * 10, 1, 5, side * 10.2, 6);
+                    eyeGrad.addColorStop(0, '#FEF9C3');
+                    eyeGrad.addColorStop(0.7, '#FACC15');
+                    eyeGrad.addColorStop(1, '#CA8A04');
+                    ctx.fillStyle = eyeGrad;
                     ctx.beginPath();
-                    ctx.arc(5, side * 9.5, 5.2, 0, Math.PI * 2);
+                    ctx.arc(4.8, side * 10.2, 5.6, 0, Math.PI * 2);
                     ctx.fill();
                     ctx.stroke();
 
-                    // Expressive vertical slit pupil tracking forward
-                    ctx.fillStyle = '#143324';
+                    // Sharp reptilian slit pupil
+                    ctx.fillStyle = '#102A1D';
                     ctx.beginPath();
-                    ctx.ellipse(6.5, side * 9.5, 2.0, 3.6, 0, 0, Math.PI * 2);
+                    ctx.ellipse(6.6, side * 10.2, 2.0, 4.0, 0, 0, Math.PI * 2);
                     ctx.fill();
 
                     // Specular catchlight
                     ctx.fillStyle = '#FFFFFF';
                     ctx.beginPath();
-                    ctx.arc(3.8, side * 8.2, 1.6, 0, Math.PI * 2);
+                    ctx.arc(3.4, side * 8.6, 1.8, 0, Math.PI * 2);
                     ctx.fill();
+
+                    // Expressive slanted hunter brow when stalking or roaming
+                    if (isHunting) {
+                        ctx.fillStyle = '#2D6A4F';
+                        ctx.strokeStyle = '#102A1D';
+                        ctx.lineWidth = 1.8;
+                        ctx.beginPath();
+                        ctx.moveTo(-2, side * 14.5);
+                        ctx.lineTo(10, side * 7.5);
+                        ctx.lineTo(4, side * 16.5);
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.stroke();
+                    }
                 }
             });
 
@@ -4104,16 +4706,17 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             ctx.restore();
         };
 
-        // Dramatic Heroic Lunging / Open-Jaws / Chomp / Happy-Chew Crocodile (supports 2-pass layering so falling hamster drops INSIDE the jaws!)
+        // Dramatic Heroic Lunging / Open-Jaws / Chomp / Happy-Chew Crocodile (2-pass layering so falling hamster drops INSIDE the jaws!)
         const drawCrocodileLunging = (
             croc: CrocodileState,
             time: number,
             scale: number,
             pass: 'back' | 'front'
         ) => {
+            const heroScale = scale * 1.12;
             const impactSquash = croc.chompImpact;
-            const sx = scale * (1 + impactSquash * 0.22) * croc.facingDir;
-            const sy = scale * (1 - impactSquash * 0.16);
+            const sx = heroScale * (1 + impactSquash * 0.22) * croc.facingDir;
+            const sy = heroScale * (1 - impactSquash * 0.16);
             const bobY = croc.phase === 'HAPPY_CHEW'
                 ? Math.sin(time * 9) * 4.5
                 : Math.sin(time * 12) * 2.5;
@@ -4124,153 +4727,196 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
 
             if (pass === 'back') {
                 // Turbulent water swirl & foaming surface collar
-                const swirlR = (46 + croc.jawOpen * 14 + Math.sin(time * 10) * 4) * scale;
+                const swirlR = (48 + croc.jawOpen * 15 + Math.sin(time * 10) * 4) * heroScale;
                 ctx.save();
-                const waterRingGrad = ctx.createRadialGradient(0, 14 * scale, 4, 0, 14 * scale, swirlR * 1.25);
-                waterRingGrad.addColorStop(0, 'rgba(6, 48, 66, 0.45)');
-                waterRingGrad.addColorStop(0.7, 'rgba(202, 240, 248, 0.45)');
+                const waterRingGrad = ctx.createRadialGradient(0, 14 * heroScale, 4, 0, 14 * heroScale, swirlR * 1.28);
+                waterRingGrad.addColorStop(0, 'rgba(6, 48, 66, 0.48)');
+                waterRingGrad.addColorStop(0.68, 'rgba(202, 240, 248, 0.52)');
                 waterRingGrad.addColorStop(1, 'rgba(202, 240, 248, 0)');
                 ctx.fillStyle = waterRingGrad;
                 ctx.beginPath();
-                ctx.ellipse(0, 14 * scale, swirlR * 1.25, swirlR * 0.56, 0, 0, Math.PI * 2);
+                ctx.ellipse(0, 14 * heroScale, swirlR * 1.28, swirlR * 0.56, 0, 0, Math.PI * 2);
                 ctx.fill();
 
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
-                ctx.lineWidth = 3 * scale;
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.90)';
+                ctx.lineWidth = 3.2 * heroScale;
                 ctx.beginPath();
-                ctx.ellipse(0, 15 * scale, swirlR, swirlR * 0.44, 0, 0, Math.PI * 2);
+                ctx.ellipse(0, 15 * heroScale, swirlR, swirlR * 0.44, 0, 0, Math.PI * 2);
                 ctx.stroke();
 
-                ctx.strokeStyle = 'rgba(144, 224, 239, 0.65)';
-                ctx.lineWidth = 2 * scale;
+                ctx.strokeStyle = 'rgba(144, 224, 239, 0.68)';
+                ctx.lineWidth = 2.1 * heroScale;
                 ctx.beginPath();
-                ctx.ellipse(0, 17 * scale, swirlR * 1.28, swirlR * 0.56, 0, 0, Math.PI * 2);
+                ctx.ellipse(0, 17 * heroScale, swirlR * 1.32, swirlR * 0.58, 0, 0, Math.PI * 2);
                 ctx.stroke();
                 ctx.restore();
             }
 
             ctx.scale(sx, sy);
 
-            const jawAngle = croc.jawOpen * 0.92; // opens wide (~53 deg upper + ~32 deg lower!)
+            const jawAngle = croc.jawOpen * 0.94;
 
             if (pass === 'back') {
-                // Wagging tail curling behind the surfacing croc
+                // Sweeping crested tail curling dynamically behind the surfacing croc
                 ctx.save();
-                const tailWave = Math.sin(croc.swimPhase) * 10;
-                ctx.fillStyle = '#2D6A4F';
-                ctx.strokeStyle = '#143324';
+                const tailWave = Math.sin(croc.swimPhase) * 11;
+                const tailGrad = ctx.createLinearGradient(-22, 10, -82, -12 + tailWave);
+                tailGrad.addColorStop(0, '#40916C');
+                tailGrad.addColorStop(1, '#1B4332');
+                ctx.fillStyle = tailGrad;
+                ctx.strokeStyle = '#102A1D';
                 ctx.lineWidth = 3;
                 ctx.beginPath();
-                ctx.moveTo(-24, 10);
-                ctx.quadraticCurveTo(-56, 8 + tailWave, -74, -8 + tailWave * 1.2);
-                ctx.quadraticCurveTo(-50, 26 + tailWave * 0.5, -18, 22);
-                ctx.closePath();
-                ctx.fill();
-                ctx.stroke();
-                ctx.restore();
-
-                // Surfacing emerald chest & ribbed cream-yellow belly
-                const bodyGrad = ctx.createLinearGradient(-26, -10, 24, 22);
-                bodyGrad.addColorStop(0, '#52B788');
-                bodyGrad.addColorStop(0.55, '#2D6A4F');
-                bodyGrad.addColorStop(1, '#1B4332');
-                ctx.fillStyle = bodyGrad;
-                ctx.strokeStyle = '#143324';
-                ctx.lineWidth = 3.2;
-                ctx.beginPath();
-                ctx.ellipse(-6, 8, 34, 22, -0.12, Math.PI, 0, false);
-                ctx.quadraticCurveTo(26, 22, -4, 24);
-                ctx.quadraticCurveTo(-34, 24, -40, 10);
+                ctx.moveTo(-24, 9);
+                ctx.quadraticCurveTo(-58, 6 + tailWave, -80, -12 + tailWave * 1.2);
+                ctx.quadraticCurveTo(-54, 28 + tailWave * 0.5, -18, 23);
                 ctx.closePath();
                 ctx.fill();
                 ctx.stroke();
 
-                // Warm cream segmented belly
-                ctx.fillStyle = '#E9F5DB';
-                ctx.beginPath();
-                ctx.ellipse(8, 12, 18, 12, 0.15, 0, Math.PI * 2);
-                ctx.fill();
-
-                // Raised cartoon claws gripping the air / water
-                [-1, 1].forEach(side => {
-                    ctx.save();
-                    ctx.translate(side < 0 ? -18 : 14, 14);
-                    ctx.rotate(side * 0.4 + Math.sin(time * 10) * 0.12);
-                    ctx.fillStyle = '#40916C';
-                    ctx.strokeStyle = '#143324';
-                    ctx.lineWidth = 2.4;
+                // Tail dorsal spikes
+                ctx.fillStyle = '#1B4332';
+                [-40, -56, -70].forEach((tx, idx) => {
+                    const ty = 2 + tailWave * (0.45 + idx * 0.25) - idx * 3;
                     ctx.beginPath();
-                    ctx.ellipse(0, 0, 10, 6.5, 0, 0, Math.PI * 2);
+                    ctx.moveTo(tx - 4, ty + 4);
+                    ctx.lineTo(tx - 1, ty - 5);
+                    ctx.lineTo(tx + 4, ty + 3);
+                    ctx.closePath();
                     ctx.fill();
                     ctx.stroke();
+                });
+                ctx.restore();
+
+                // Surfacing emerald muscular chest & shoulders
+                const bodyGrad = ctx.createLinearGradient(-30, -12, 26, 24);
+                bodyGrad.addColorStop(0, '#74C69D');
+                bodyGrad.addColorStop(0.45, '#40916C');
+                bodyGrad.addColorStop(1, '#1B4332');
+                ctx.fillStyle = bodyGrad;
+                ctx.strokeStyle = '#102A1D';
+                ctx.lineWidth = 3.2;
+                ctx.beginPath();
+                ctx.ellipse(-6, 8, 36, 23, -0.12, Math.PI, 0, false);
+                ctx.quadraticCurveTo(28, 22, -4, 25);
+                ctx.quadraticCurveTo(-36, 25, -42, 10);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                // Sculpted warm cream-gold ribbed belly scute plates
+                const bellyGrad = ctx.createLinearGradient(-4, 0, 22, 22);
+                bellyGrad.addColorStop(0, '#FEFCE8');
+                bellyGrad.addColorStop(1, '#D9ED92');
+                ctx.fillStyle = bellyGrad;
+                ctx.strokeStyle = '#365314';
+                ctx.lineWidth = 1.6;
+                ctx.beginPath();
+                ctx.ellipse(9, 13, 19, 12.5, 0.14, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                // Horizontal belly plate grooves
+                ctx.strokeStyle = 'rgba(54, 83, 20, 0.45)';
+                ctx.lineWidth = 1.4;
+                [7, 13, 19].forEach(by => {
+                    ctx.beginPath();
+                    ctx.moveTo(-4, by);
+                    ctx.quadraticCurveTo(10, by + 2.5, 24, by - 1);
+                    ctx.stroke();
+                });
+
+                // Raised cartoon forelimbs with distinct little claws gripping the water
+                [-1, 1].forEach(side => {
+                    ctx.save();
+                    ctx.translate(side < 0 ? -20 : 16, 15);
+                    ctx.rotate(side * 0.42 + Math.sin(time * 10) * 0.12);
+                    ctx.fillStyle = '#52B788';
+                    ctx.strokeStyle = '#102A1D';
+                    ctx.lineWidth = 2.4;
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, 11, 7, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                    // Tiny ivory claws
+                    ctx.fillStyle = '#FEF9C3';
+                    [-3.5, 0, 3.5].forEach(cy => {
+                        ctx.beginPath();
+                        ctx.arc(side * 10, cy, 1.8, 0, Math.PI * 2);
+                        ctx.fill();
+                    });
                     ctx.restore();
                 });
 
-                // OPEN MOUTH INTERIOR (deep throat & wiggling pink tongue)
+                // OPEN MOUTH INTERIOR (richly shaded crimson throat + glossy wiggling pink tongue)
                 if (croc.jawOpen > 0.06) {
                     ctx.save();
                     ctx.translate(-8, -8);
-                    const throatGrad = ctx.createRadialGradient(18, -8, 4, 22, -4, 38);
-                    throatGrad.addColorStop(0, '#7F1D1D');
-                    throatGrad.addColorStop(0.65, '#B91C1C');
-                    throatGrad.addColorStop(1, '#DC2626');
+                    const throatGrad = ctx.createRadialGradient(14, -6, 3, 22, -4, 42);
+                    throatGrad.addColorStop(0, '#450A0A');
+                    throatGrad.addColorStop(0.45, '#991B1B');
+                    throatGrad.addColorStop(0.85, '#DC2626');
+                    throatGrad.addColorStop(1, '#F87171');
                     ctx.fillStyle = throatGrad;
                     ctx.beginPath();
                     ctx.moveTo(-4, 4);
-                    ctx.lineTo(Math.cos(-jawAngle - 0.18) * 52, Math.sin(-jawAngle - 0.18) * 52);
-                    ctx.quadraticCurveTo(38, -10, Math.cos(jawAngle * 0.55) * 48, Math.sin(jawAngle * 0.55) * 48);
+                    ctx.lineTo(Math.cos(-jawAngle - 0.18) * 54, Math.sin(-jawAngle - 0.18) * 54);
+                    ctx.quadraticCurveTo(40, -10, Math.cos(jawAngle * 0.55) * 50, Math.sin(jawAngle * 0.55) * 50);
                     ctx.closePath();
                     ctx.fill();
 
-                    // Wiggling pink tongue inside open jaws
-                    const tongueWiggle = Math.sin(time * 16) * 3;
+                    // Wiggling glossy pink cartoon tongue
+                    const tongueWiggle = Math.sin(time * 16) * 3.2;
                     ctx.fillStyle = '#FB7185';
                     ctx.strokeStyle = '#881337';
-                    ctx.lineWidth = 1.8;
+                    ctx.lineWidth = 1.9;
                     ctx.beginPath();
-                    ctx.ellipse(20, 4 + tongueWiggle * 0.4, 16, 7.5, 0.12, 0, Math.PI * 2);
+                    ctx.ellipse(22, 4 + tongueWiggle * 0.4, 17, 7.8, 0.12, 0, Math.PI * 2);
                     ctx.fill();
                     ctx.stroke();
+                    // Wet highlight on tongue
+                    ctx.fillStyle = 'rgba(255, 228, 230, 0.58)';
+                    ctx.beginPath();
+                    ctx.ellipse(24, 1.5 + tongueWiggle * 0.4, 9, 2.5, 0.12, 0, Math.PI * 2);
+                    ctx.fill();
                     ctx.restore();
                 }
 
-                // LOWER JAW (hinged down so falling hamster drops right onto it!)
+                // LOWER JAW (hinged wide so the falling hamster drops right inside!)
                 ctx.save();
                 ctx.translate(-8, -4);
                 ctx.rotate(jawAngle * 0.52);
 
-                const lowerGrad = ctx.createLinearGradient(0, 0, 48, 18);
-                lowerGrad.addColorStop(0, '#52B788');
-                lowerGrad.addColorStop(0.6, '#40916C');
+                const lowerGrad = ctx.createLinearGradient(0, 0, 50, 18);
+                lowerGrad.addColorStop(0, '#74C69D');
+                lowerGrad.addColorStop(0.55, '#40916C');
                 lowerGrad.addColorStop(1, '#2D6A4F');
                 ctx.fillStyle = lowerGrad;
-                ctx.strokeStyle = '#143324';
+                ctx.strokeStyle = '#102A1D';
                 ctx.lineWidth = 3;
                 ctx.beginPath();
                 ctx.moveTo(-8, -2);
-                ctx.lineTo(48, 0);
-                ctx.quadraticCurveTo(54, 10, 42, 16);
-                ctx.quadraticCurveTo(14, 20, -10, 12);
+                ctx.lineTo(50, 0);
+                ctx.quadraticCurveTo(56, 10, 44, 17);
+                ctx.quadraticCurveTo(14, 21, -10, 13);
                 ctx.closePath();
                 ctx.fill();
                 ctx.stroke();
 
-                // Cream underside of lower jaw
-                ctx.fillStyle = '#E9F5DB';
+                // Warm cream underside of lower jaw
+                ctx.fillStyle = '#FEFCE8';
                 ctx.beginPath();
-                ctx.ellipse(20, 11, 22, 4.5, 0.04, 0, Math.PI * 2);
+                ctx.ellipse(21, 12, 23, 4.8, 0.04, 0, Math.PI * 2);
                 ctx.fill();
 
-                // Lower row of chunky cartoon white teeth
+                // Lower row of varied curved white cartoon fangs
                 ctx.fillStyle = '#FFFFFF';
-                ctx.strokeStyle = '#143324';
+                ctx.strokeStyle = '#102A1D';
                 ctx.lineWidth = 1.8;
-                [8, 18, 28, 38].forEach((tx, ti) => {
-                    const th = ti === 3 ? 9.5 : 8;
+                [7, 17.5, 28.5, 40].forEach((tx, ti) => {
+                    const th = ti === 3 ? 11.5 : ti === 1 ? 9.5 : 8;
                     ctx.beginPath();
-                    ctx.moveTo(tx - 4.2, 1);
-                    ctx.lineTo(tx, -th);
-                    ctx.lineTo(tx + 4.2, 1);
+                    ctx.moveTo(tx - 4.4, 1);
+                    ctx.quadraticCurveTo(tx + 0.5, -th, tx + 4.4, 1);
                     ctx.closePath();
                     ctx.fill();
                     ctx.stroke();
@@ -4279,153 +4925,170 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             }
 
             if (pass === 'front') {
-                // UPPER JAW & EXPRESSIVE FACE (rendered IN FRONT of the falling hamster so it truly chomps over it!)
+                // UPPER JAW & EXPRESSIVE SCULPTED FACE (drawn IN FRONT of falling hamster so it truly chomps over it!)
                 ctx.save();
                 ctx.translate(-8, -8);
                 ctx.rotate(-jawAngle * 0.92);
 
-                // Upper row of chunky rounded white cartoon teeth
+                // Upper row of chunky curved white cartoon fangs
                 ctx.fillStyle = '#FFFFFF';
-                ctx.strokeStyle = '#143324';
+                ctx.strokeStyle = '#102A1D';
                 ctx.lineWidth = 1.8;
-                [10, 20, 30, 40].forEach((tx, ti) => {
-                    const th = ti === 2 ? 10 : 8.5;
+                [9, 19.5, 30.5, 41.5].forEach((tx, ti) => {
+                    const th = ti === 2 ? 11.5 : ti === 0 ? 9.5 : 8.5;
                     ctx.beginPath();
-                    ctx.moveTo(tx - 4.4, -1);
-                    ctx.lineTo(tx, th);
-                    ctx.lineTo(tx + 4.4, -1);
+                    ctx.moveTo(tx - 4.5, -1);
+                    ctx.quadraticCurveTo(tx + 0.5, th, tx + 4.5, -1);
                     ctx.closePath();
                     ctx.fill();
                     ctx.stroke();
                 });
 
-                // Upper snout & brow
-                const upperGrad = ctx.createLinearGradient(-10, -24, 52, 4);
-                upperGrad.addColorStop(0, '#95D5B2');
-                upperGrad.addColorStop(0.5, '#52B788');
-                upperGrad.addColorStop(1, '#2D6A4F');
+                // Contoured upper snout & brow skull with sunlit emerald sheen
+                const upperGrad = ctx.createLinearGradient(-12, -26, 54, 4);
+                upperGrad.addColorStop(0, '#B7E4C7');
+                upperGrad.addColorStop(0.38, '#52B788');
+                upperGrad.addColorStop(0.82, '#2D6A4F');
+                upperGrad.addColorStop(1, '#1B4332');
                 ctx.fillStyle = upperGrad;
-                ctx.strokeStyle = '#143324';
+                ctx.strokeStyle = '#102A1D';
                 ctx.lineWidth = 3.2;
                 ctx.beginPath();
                 ctx.moveTo(-14, 0);
-                ctx.quadraticCurveTo(-12, -22, 4, -22);
-                ctx.quadraticCurveTo(18, -22, 24, -14);
-                ctx.quadraticCurveTo(44, -15, 52, -6);
-                ctx.quadraticCurveTo(56, 1, 46, 2);
+                ctx.bezierCurveTo(-12, -24, 6, -25, 22, -15);
+                ctx.bezierCurveTo(36, -16, 48, -15, 54, -6);
+                ctx.bezierCurveTo(58, 1, 48, 3, 40, 2.5);
                 ctx.lineTo(-10, 2);
                 ctx.closePath();
                 ctx.fill();
                 ctx.stroke();
 
+                // Glossy specular ridge along upper snout
+                ctx.fillStyle = 'rgba(216, 243, 220, 0.42)';
+                ctx.beginPath();
+                ctx.ellipse(27, -9.5, 13, 3.2, -0.08, 0, Math.PI * 2);
+                ctx.fill();
+
                 // Cute rosy cheek blush when happily chewing!
                 if (croc.phase === 'HAPPY_CHEW' || croc.phase === 'CHOMP') {
-                    ctx.fillStyle = 'rgba(255, 117, 143, 0.55)';
+                    ctx.fillStyle = 'rgba(255, 117, 143, 0.62)';
                     ctx.beginPath();
-                    ctx.ellipse(2, -4, 7.5, 4.5, 0, 0, Math.PI * 2);
+                    ctx.ellipse(2, -4, 8.5, 5, 0, 0, Math.PI * 2);
                     ctx.fill();
                 }
 
-                // Raised nostril bump at snout tip
-                ctx.fillStyle = '#40916C';
-                ctx.strokeStyle = '#143324';
-                ctx.lineWidth = 2.2;
+                // Raised bulbous nostril dome at snout tip
+                ctx.fillStyle = '#52B788';
+                ctx.strokeStyle = '#102A1D';
+                ctx.lineWidth = 2.3;
                 ctx.beginPath();
-                ctx.arc(44, -11, 5.5, Math.PI, 0);
+                ctx.arc(46, -11.5, 6.2, Math.PI, 0);
                 ctx.fill();
                 ctx.stroke();
-                ctx.fillStyle = '#143324';
+                ctx.fillStyle = '#102A1D';
                 ctx.beginPath();
-                ctx.arc(45, -10.5, 2.2, 0, Math.PI * 2);
+                ctx.arc(47.2, -11, 2.4, 0, Math.PI * 2);
                 ctx.fill();
 
-                // Cute pink lotus petal stuck comically on crocodile's snout after missing a bite!
+                // Comical pink lotus petal stuck to crocodile's snout after missing a bite!
                 if (croc.petalOnNose) {
                     ctx.save();
-                    ctx.translate(46, -15);
+                    ctx.translate(48, -16.5);
                     ctx.rotate(0.45);
                     ctx.fillStyle = '#FF758F';
                     ctx.strokeStyle = '#881337';
                     ctx.lineWidth = 1.6;
                     ctx.beginPath();
-                    ctx.ellipse(0, 0, 8, 4.5, 0, 0, Math.PI * 2);
+                    ctx.ellipse(0, 0, 9, 5, 0, 0, Math.PI * 2);
                     ctx.fill();
                     ctx.stroke();
                     ctx.restore();
                 }
 
-                // Expressive Cartoon Eyes
+                // Expressive Cartoon Eyes with 3D golden irises & characterful brows
                 const drawEye = (ex: number, ey: number, er: number) => {
                     ctx.fillStyle = '#52B788';
-                    ctx.strokeStyle = '#143324';
+                    ctx.strokeStyle = '#102A1D';
                     ctx.lineWidth = 2.6;
                     ctx.beginPath();
-                    ctx.arc(ex, ey, er + 2.5, 0, Math.PI * 2);
+                    ctx.arc(ex, ey, er + 2.8, 0, Math.PI * 2);
                     ctx.fill();
                     ctx.stroke();
 
                     if (croc.phase === 'HAPPY_CHEW') {
-                        ctx.fillStyle = '#FDE047';
+                        ctx.fillStyle = '#FEF08A';
                         ctx.beginPath();
                         ctx.arc(ex, ey, er, 0, Math.PI * 2);
                         ctx.fill();
-                        ctx.strokeStyle = '#143324';
+                        ctx.strokeStyle = '#102A1D';
                         ctx.lineWidth = 2.8;
                         ctx.lineCap = 'round';
                         ctx.beginPath();
                         ctx.arc(ex, ey + 2.5, er * 0.56, Math.PI * 1.15, Math.PI * 1.85);
                         ctx.stroke();
                     } else if (croc.phase === 'LILY_MISS_GRUMP') {
-                        // Grumpy annoyed squinted eyes after missing the student!
                         ctx.fillStyle = '#FEF08A';
                         ctx.beginPath();
                         ctx.arc(ex, ey, er, 0, Math.PI * 2);
                         ctx.fill();
                         ctx.stroke();
 
-                        ctx.fillStyle = '#143324';
+                        ctx.fillStyle = '#102A1D';
                         ctx.beginPath();
-                        ctx.arc(ex + 1, ey + 1, er * 0.35, 0, Math.PI * 2);
+                        ctx.arc(ex + 1.2, ey + 1.2, er * 0.36, 0, Math.PI * 2);
                         ctx.fill();
 
                         // Heavy slanted grumpy brow
                         ctx.fillStyle = '#2D6A4F';
-                        ctx.strokeStyle = '#143324';
+                        ctx.strokeStyle = '#102A1D';
                         ctx.lineWidth = 2.6;
                         ctx.beginPath();
-                        ctx.moveTo(ex - er - 2, ey - er * 0.65);
-                        ctx.lineTo(ex + er + 3, ey + er * 0.1);
-                        ctx.lineTo(ex + er + 2, ey - er - 3);
+                        ctx.moveTo(ex - er - 2.5, ey - er * 0.7);
+                        ctx.lineTo(ex + er + 3.5, ey + er * 0.15);
+                        ctx.lineTo(ex + er + 2.5, ey - er - 3.5);
                         ctx.closePath();
                         ctx.fill();
                         ctx.stroke();
                     } else {
-                        ctx.fillStyle = '#FEF08A';
+                        const eyeGrad = ctx.createRadialGradient(ex - 1, ey - 1, 1, ex, ey, er);
+                        eyeGrad.addColorStop(0, '#FEF9C3');
+                        eyeGrad.addColorStop(0.7, '#FACC15');
+                        eyeGrad.addColorStop(1, '#CA8A04');
+                        ctx.fillStyle = eyeGrad;
                         ctx.beginPath();
                         ctx.arc(ex, ey, er, 0, Math.PI * 2);
                         ctx.fill();
                         ctx.stroke();
 
-                        ctx.fillStyle = '#143324';
+                        ctx.fillStyle = '#102A1D';
                         ctx.beginPath();
-                        ctx.ellipse(ex + 2, ey - 2.2, er * 0.36, er * 0.56, -0.2, 0, Math.PI * 2);
+                        ctx.ellipse(ex + 2.2, ey - 2.0, er * 0.36, er * 0.58, -0.2, 0, Math.PI * 2);
                         ctx.fill();
 
                         ctx.fillStyle = '#FFFFFF';
                         ctx.beginPath();
-                        ctx.arc(ex - 1.5, ey - 3.2, er * 0.28, 0, Math.PI * 2);
+                        ctx.arc(ex - 1.6, ey - 3.2, er * 0.30, 0, Math.PI * 2);
                         ctx.fill();
+
+                        // Dramatic arched hunter brow ridge
+                        ctx.strokeStyle = '#102A1D';
+                        ctx.lineWidth = 2.6;
+                        ctx.lineCap = 'round';
+                        ctx.beginPath();
+                        ctx.moveTo(ex - er * 0.85, ey - er * 0.85);
+                        ctx.quadraticCurveTo(ex + 1, ey - er * 1.35, ex + er * 0.95, ey - er * 0.55);
+                        ctx.stroke();
                     }
                 };
-                drawEye(11, -21, 6.2);
-                drawEye(-1, -18, 7.6);
+                drawEye(12, -22, 6.6);
+                drawEye(-1, -19, 8.0);
 
                 ctx.restore();
 
-                // Water splash lip across chest base so crocodile sits seamlessly IN the lagoon
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+                // Water splash foam lip across chest base so crocodile sits seamlessly IN the lagoon
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
                 ctx.beginPath();
-                ctx.ellipse(0, 22, 34, 6.5, 0, 0, Math.PI * 2);
+                ctx.ellipse(0, 22, 36, 6.8, 0, 0, Math.PI * 2);
                 ctx.fill();
             }
 
@@ -4601,9 +5264,9 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 croc.phase === 'STALKING' ||
                 croc.phase === 'LILY_ROAM' ||
                 croc.phase === 'LILY_STALK';
-            const crocBehindBoat = isCrocSwimming && croc.y < cy + boatRadius * Math.sin(g.cameraPitch) * 0.15;
+            const crocBehindBoat = isCrocSwimming && croc.y < cy - boatRadius * Math.sin(g.cameraPitch) * 0.32;
 
-            // Draw patrolling/stalking crocodile behind the boat when it orbits to the far side of the lagoon
+            // Draw patrolling/stalking crocodile behind the boat only when clearly on the far water side
             if (crocBehindBoat) {
                 drawCrocodileSwimming(croc, time, crocScale * 0.94);
             }
@@ -4970,7 +5633,7 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                         g.captainPaddlePhase,
                         isIdleLike
                     );
-                    const tagY = ent.proj.y - capR - 20;
+                    const tagY = ent.proj.y - capR - 22;
                     nameTagQueue.push({
                         x: ent.proj.x,
                         y: tagY,
@@ -4980,21 +5643,21 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                         displayText: active.length > 36 ? 'CAPTAIN 🥥' : 'CAPTAIN COCONUT 🥥',
                         isCaptain: true,
                         priority: 'captain',
-                        fontSize: active.length > 36 ? 11 : 12,
-                        boxH: active.length > 36 ? 20 : 22,
-                        paddingX: 8.5,
-                        maxWidth: 190
+                        fontSize: active.length > 36 ? 12.5 : 14,
+                        boxH: active.length > 36 ? 23 : 25,
+                        paddingX: 10,
+                        maxWidth: 215
                     });
                 } else if (ent.ham) {
                     const ham = ent.ham;
                     const screenX = ent.proj.x;
                     const screenY = ent.proj.y + Math.sin(time * 5 + ham.bobOffset) * 2.0;
                     const depthFactor = Math.max(-1, Math.min(1, ent.proj.depth / Math.max(1, boatRadius)));
-                    const scale = 0.90 + (depthFactor + 1) * 0.10;
+                    const scale = 0.92 + (depthFactor + 1) * 0.10;
                     const drawnR = hamRadius * scale;
 
                     drawHamsterCharacter(ctx, screenX, screenY, drawnR, ham, time, false, g.captainPaddlePhase, isIdleLike);
-                    const tagOffset = Math.max(10, drawnR + (tagTier.boxH * 0.68));
+                    const tagOffset = Math.max(14, drawnR + (tagTier.boxH * 0.72));
                     const tagY = screenY - tagOffset;
                     nameTagQueue.push({
                         x: screenX,
@@ -5017,8 +5680,7 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
             // Foreground eliminated hamsters (if any legacy inner-tube floaters)
             drawEliminatedSet(true);
 
-            // Students perched on floating water lilies — react dynamically with funny scared/relieved emotions!
-            const speechBubbleQueue: { x: number; y: number; text: string; isScared: boolean }[] = [];
+            // Students perched on floating water lilies — bigger hamsters with funny scared/relieved expressions & crisp names!
             active.forEach(ham => {
                 if (ham.onLilyPadIndex === null) return;
                 const pad = g.lotusPads[ham.onLilyPadIndex];
@@ -5047,8 +5709,8 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                     ? Math.abs(Math.sin(time * 22 + ham.bobOffset)) * 2.5
                     : Math.abs(Math.sin((time - ham.lilyLandTime) * 5.5)) * 5;
                 const sx = pos.x + shiverX;
-                const sy = pos.y + pad.bounce * 8 - 10 - happyHop;
-                const safeR = Math.max(15, Math.min(22, hamRadius * 0.95));
+                const sy = pos.y + pad.bounce * 8 - 14 - happyHop;
+                const safeR = Math.max(22, Math.min(31, hamRadius * 1.06));
 
                 if (g.state !== 'LILY_HUNT') {
                     ham.expression = ham.relievedUntil > time ? 'relieved_smug' : 'happy';
@@ -5073,15 +5735,15 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                         ? '#F59E0B'
                         : '#06D6A0';
                 const badgeTextCol = isStalked ? '#FFFFFF' : '#073B4C';
-                ctx.font = "800 10.5px 'Fredoka', sans-serif";
+                ctx.font = "800 11px 'Fredoka', sans-serif";
                 const sbw = ctx.measureText(statusBadge).width + 12;
                 const sbx = Math.max(safeLeft + sbw / 2, Math.min(safeRight - sbw / 2, sx));
-                const sby = Math.min(h - 14, pos.y + pos.r * 0.65 + 10);
+                const sby = Math.min(h - 14, pos.y + pos.r * 0.65 + 11);
                 ctx.fillStyle = badgeFill;
                 ctx.strokeStyle = isStalked ? '#FFFFFF' : '#143324';
                 ctx.lineWidth = 2;
                 ctx.beginPath();
-                ctx.roundRect(sbx - sbw / 2, sby - 9, sbw, 18, 9);
+                ctx.roundRect(sbx - sbw / 2, sby - 9.5, sbw, 19, 9.5);
                 ctx.fill();
                 ctx.stroke();
                 ctx.fillStyle = badgeTextCol;
@@ -5090,31 +5752,22 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 ctx.fillText(statusBadge, sbx, sby + 0.5);
                 ctx.restore();
 
-                const safeTagY = sy - safeR - 14;
+                const safeTagY = sy - safeR - 18;
                 nameTagQueue.push({
                     x: sx,
                     y: safeTagY,
                     anchorX: sx,
                     anchorY: safeTagY,
                     name: ham.name,
-                    displayText: formatSmartTagName(ham.name, Math.max(11, tagTier.maxChars)),
+                    displayText: formatSmartTagName(ham.name, Math.max(18, tagTier.maxChars)),
                     isCaptain: false,
                     priority: isStalked ? 'spotlight' : 'normal',
                     accentColor: isStalked ? '#EF233C' : '#06D6A0',
-                    fontSize: Math.max(10.5, tagTier.fontSize),
-                    boxH: Math.max(18, tagTier.boxH),
-                    paddingX: Math.max(7, tagTier.paddingX),
-                    maxWidth: tagTier.maxWidth
+                    fontSize: Math.max(14, tagTier.fontSize + 0.5),
+                    boxH: Math.max(24, tagTier.boxH + 1),
+                    paddingX: Math.max(10, tagTier.paddingX),
+                    maxWidth: Math.max(210, tagTier.maxWidth)
                 });
-
-                if (ham.speechBubble && time < ham.speechExpiry) {
-                    speechBubbleQueue.push({
-                        x: sx,
-                        y: safeTagY - 24,
-                        text: ham.speechBubble,
-                        isScared: isScared || isStalked
-                    });
-                }
             });
 
             // Foreground patrolling/stalking crocodile
@@ -5127,33 +5780,12 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 drawCrocodileLunging(croc, time, crocScale * 1.15, 'back');
             }
 
-            // Render funny panic / escape comic speech bubbles above lily-pad hamsters
-            speechBubbleQueue.forEach(sb => {
-                ctx.save();
-                ctx.font = "800 11.5px 'Fredoka', sans-serif";
-                const bw = ctx.measureText(sb.text).width + 18;
-                const bx = Math.max(safeLeft + bw / 2 + 4, Math.min(safeRight - bw / 2 - 4, sb.x));
-                const by = Math.max(safeTop + 14, sb.y);
-                ctx.fillStyle = sb.isScared ? '#FFFBEB' : '#ECFDF5';
-                ctx.strokeStyle = sb.isScared ? '#EA580C' : '#059669';
-                ctx.lineWidth = 2.2;
-                ctx.beginPath();
-                ctx.roundRect(bx - bw / 2, by - 11, bw, 22, 11);
-                ctx.fill();
-                ctx.stroke();
-                ctx.fillStyle = sb.isScared ? '#9A3412' : '#065F46';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(sb.text, bx, by + 0.5);
-                ctx.restore();
-            });
-
             // Resolve overlapping name tags cleanly within safe HUD bounds and render upright badges
             resolveNameTagCollisions(nameTagQueue, ctx, {
                 left: safeLeft,
                 right: safeRight,
-                top: safeTop - 16,
-                bottom: safeBottom + 12
+                top: safeTop - 6,
+                bottom: safeBottom + 14
             });
             // Draw normal tags first, Captain on top
             nameTagQueue
@@ -5168,7 +5800,7 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 const curX = lf.startX + (lf.targetX - lf.startX) * t;
                 const arcHeight = Math.sin(t * Math.PI) * 185 * arcScale;
                 const curY = lf.startY + (lf.targetY - lf.startY) * t - arcHeight;
-                const zoomScale = 1 + Math.sin(t * Math.PI) * 0.72;
+                const zoomScale = 1 + Math.sin(t * Math.PI) * 0.65;
 
                 lf.trail.push({ x: curX, y: curY });
                 if (lf.trail.length > 16) lf.trail.shift();
@@ -5192,18 +5824,18 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 ctx.strokeStyle = `rgba(6, 214, 160, ${0.45 + Math.sin(time * 16) * 0.35})`;
                 ctx.lineWidth = 3;
                 ctx.beginPath();
-                ctx.ellipse(lf.targetX, lf.targetY + 4, 34, 19, 0, 0, Math.PI * 2);
+                ctx.ellipse(lf.targetX, lf.targetY + 4, 38, 21, 0, 0, Math.PI * 2);
                 ctx.stroke();
                 ctx.restore();
 
                 lf.hamster.wobbleAngle = t * Math.PI * 4.5;
                 lf.hamster.expression = t < 0.65 ? 'shocked' : 'excited';
-                const flyR = Math.max(19, hamRadius * zoomScale);
+                const flyR = Math.max(24, hamRadius * zoomScale);
                 drawHamsterCharacter(ctx, curX, curY, flyR, lf.hamster, time, false, g.captainPaddlePhase, false);
 
-                const clampedTagY = Math.max(safeTop + 34, curY - flyR - 18);
+                const clampedTagY = Math.max(safeTop + 18, curY - flyR - 20);
                 drawNameTag({
-                    x: Math.max(safeLeft + 60, Math.min(safeRight - 60, curX)),
+                    x: Math.max(safeLeft + 70, Math.min(safeRight - 70, curX)),
                     y: clampedTagY,
                     anchorX: curX,
                     anchorY: clampedTagY,
@@ -5212,32 +5844,11 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                     isCaptain: false,
                     priority: 'spotlight',
                     accentColor: '#06D6A0',
-                    fontSize: 13,
-                    boxH: 24,
-                    paddingX: 10,
-                    maxWidth: 220
+                    fontSize: 15.5,
+                    boxH: 28,
+                    paddingX: 12,
+                    maxWidth: 260
                 });
-
-                const badgeText = t < 0.6 ? '😱 FLYING OUT!!' : '🪷 LANDING ON LILY PAD!!';
-                const badgeBg = t < 0.6 ? '#F59E0B' : '#06D6A0';
-                const badgeFg = t < 0.6 ? '#FFFFFF' : '#073B4C';
-                ctx.save();
-                ctx.font = "800 12px 'Fredoka', sans-serif";
-                const bWidth = ctx.measureText(badgeText).width + 18;
-                const bx = Math.max(safeLeft + bWidth / 2, Math.min(safeRight - bWidth / 2, curX));
-                const by = Math.max(safeTop + 12, clampedTagY - 26);
-                ctx.fillStyle = badgeBg;
-                ctx.strokeStyle = '#3A2210';
-                ctx.lineWidth = 2.2;
-                ctx.beginPath();
-                ctx.roundRect(bx - bWidth / 2, by - 11, bWidth, 22, 11);
-                ctx.fill();
-                ctx.stroke();
-                ctx.fillStyle = badgeFg;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(badgeText, bx, by);
-                ctx.restore();
             });
 
             // Hilarious last-second escape jumps over the crocodile's snapping jaws!
@@ -5246,7 +5857,7 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 const curX = ej.startX + (ej.targetX - ej.startX) * t;
                 const arcH = Math.sin(t * Math.PI) * 210 * arcScale;
                 const curY = ej.startY + (ej.targetY - ej.startY) * t - arcH;
-                const zoomScale = 1 + Math.sin(t * Math.PI) * 0.78;
+                const zoomScale = 1 + Math.sin(t * Math.PI) * 0.72;
 
                 ej.trail.push({ x: curX, y: curY });
                 if (ej.trail.length > 18) ej.trail.shift();
@@ -5266,12 +5877,12 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
 
                 ej.hamster.wobbleAngle = -t * Math.PI * 4;
                 ej.hamster.expression = t < 0.45 ? 'terrified' : 'relieved_smug';
-                const flyR = Math.max(20, hamRadius * zoomScale);
+                const flyR = Math.max(25, hamRadius * zoomScale);
                 drawHamsterCharacter(ctx, curX, curY, flyR, ej.hamster, time, false, g.captainPaddlePhase, false);
 
-                const clampedTagY = Math.max(safeTop + 34, curY - flyR - 18);
+                const clampedTagY = Math.max(safeTop + 18, curY - flyR - 20);
                 drawNameTag({
-                    x: Math.max(safeLeft + 60, Math.min(safeRight - 60, curX)),
+                    x: Math.max(safeLeft + 70, Math.min(safeRight - 70, curX)),
                     y: clampedTagY,
                     anchorX: curX,
                     anchorY: clampedTagY,
@@ -5280,30 +5891,11 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                     isCaptain: false,
                     priority: 'spotlight',
                     accentColor: '#FFD166',
-                    fontSize: 13,
-                    boxH: 24,
-                    paddingX: 10,
-                    maxWidth: 220
+                    fontSize: 15.5,
+                    boxH: 28,
+                    paddingX: 12,
+                    maxWidth: 260
                 });
-
-                const escBadge = `💨 ESCAPED!! ${ej.escapeQuote}`;
-                ctx.save();
-                ctx.font = "900 12px 'Fredoka', sans-serif";
-                const ew = ctx.measureText(escBadge).width + 18;
-                const ex = Math.max(safeLeft + ew / 2, Math.min(safeRight - ew / 2, curX));
-                const ey = Math.max(safeTop + 12, clampedTagY - 26);
-                ctx.fillStyle = '#06D6A0';
-                ctx.strokeStyle = '#143324';
-                ctx.lineWidth = 2.4;
-                ctx.beginPath();
-                ctx.roundRect(ex - ew / 2, ey - 11, ew, 22, 11);
-                ctx.fill();
-                ctx.stroke();
-                ctx.fillStyle = '#073B4C';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(escBadge, ex, ey);
-                ctx.restore();
             });
 
             // Chosen target hamster(s) arcing straight down into the crocodile's wide-open jaws!
@@ -5316,8 +5908,8 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 const curY = fh.startY + (fh.targetY - fh.startY) * t - Math.sin(t * Math.PI) * arcPeak * launchArcScale;
                 // Shrink slightly right as the hamster drops inside the open mouth (t = 0.85..1.0)
                 const mouthDropScale = t > 0.84 ? Math.max(0.45, 1 - ((t - 0.84) / 0.16) * 0.55) : 1;
-                const zoomScale = (1 + Math.sin(t * Math.PI) * 0.82) * mouthDropScale;
-                const flyR = Math.max(16, hamRadius * zoomScale);
+                const zoomScale = (1 + Math.sin(t * Math.PI) * 0.72) * mouthDropScale;
+                const flyR = Math.max(20, hamRadius * zoomScale);
 
                 fh.trail.push({ x: curX, y: curY });
                 if (fh.trail.length > 18) fh.trail.shift();
@@ -5340,9 +5932,9 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                 drawHamsterCharacter(ctx, curX, curY, flyR, fh.hamster, time, false, g.captainPaddlePhase, false);
 
                 if (t < 0.92) {
-                    const clampedTagY = Math.max(safeTop + 34, curY - flyR - 18);
+                    const clampedTagY = Math.max(safeTop + 18, curY - flyR - 20);
                     drawNameTag({
-                        x: Math.max(safeLeft + 60, Math.min(safeRight - 60, curX)),
+                        x: Math.max(safeLeft + 70, Math.min(safeRight - 70, curX)),
                         y: clampedTagY,
                         anchorX: curX,
                         anchorY: clampedTagY,
@@ -5351,30 +5943,11 @@ export const CoconutBoatStage = forwardRef<CoconutBoatStageHandle, CoconutBoatSt
                         isCaptain: false,
                         priority: 'spotlight',
                         accentColor: '#EF233C',
-                        fontSize: 13.5,
-                        boxH: 25,
-                        paddingX: 10,
-                        maxWidth: 230
+                        fontSize: 16,
+                        boxH: 29,
+                        paddingX: 12,
+                        maxWidth: 270
                     });
-
-                    const dangerBadge = '🐊 FALLING TO THE CROC!!';
-                    ctx.save();
-                    ctx.font = "900 12px 'Fredoka', sans-serif";
-                    const dw = ctx.measureText(dangerBadge).width + 18;
-                    const dx = Math.max(safeLeft + dw / 2, Math.min(safeRight - dw / 2, curX));
-                    const dy = Math.max(safeTop + 12, clampedTagY - 26);
-                    ctx.fillStyle = '#EF233C';
-                    ctx.strokeStyle = '#FFFFFF';
-                    ctx.lineWidth = 2.4;
-                    ctx.beginPath();
-                    ctx.roundRect(dx - dw / 2, dy - 11, dw, 22, 11);
-                    ctx.fill();
-                    ctx.stroke();
-                    ctx.fillStyle = '#FFFFFF';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(dangerBadge, dx, dy);
-                    ctx.restore();
                 }
             });
 

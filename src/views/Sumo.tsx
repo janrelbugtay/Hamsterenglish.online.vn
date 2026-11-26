@@ -9,8 +9,15 @@ import { useAuth } from "../contexts/AuthContext";
 import { GameModeModal } from "../components/GameModeModal";
 import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput, convertQuestionsContentMode } from "../components/SetupSmartControls";
 import { OptionContentMode, parseOptionContent, formatOptionContent } from "../utils/mediaAndPresets";
-import { UnifiedGameSetup } from "../components/UnifiedGameSetup";
 import { persistUserGameToCloudAndCache } from "../utils/platformCache";
+import {
+  MysteryBox3DLobby,
+  CuteHamsterAvatar,
+  CUTE_HAMSTER_ICONS,
+  BoxDifficultyMode,
+  ArenaThemeId,
+} from "../components/MysteryBox3DLobby";
+import sumoShowdownBannerImg from "../assets/images/sumo_showdown_3d_wide_banner_1795689361276.jpg";
 import {
   SumoStadiumEnvironment,
   SumoCharacter,
@@ -343,7 +350,30 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
     }
   };
 
-  const questionsDB = (activeGame?.questions && activeGame.questions.length > 0) ? activeGame.questions : DEFAULT_QUESTIONS;
+  const allQuestionsDB = (activeGame?.questions && activeGame.questions.length > 0) ? activeGame.questions : DEFAULT_QUESTIONS;
+  const [selectedQuestionLimit, setSelectedQuestionLimit] = useState<number | null>(null);
+  const effectiveQuestionLimit = Math.max(
+    1,
+    Math.min(
+      Math.max(1, allQuestionsDB.length),
+      selectedQuestionLimit ?? Math.max(1, allQuestionsDB.length)
+    )
+  );
+  const questionsDB = allQuestionsDB.slice(0, effectiveQuestionLimit);
+
+  const [timerMinutes, setTimerMinutes] = useState<number>(0);
+  const [playerNames, setPlayerNames] = useState<string[]>(['Team 1', 'Team 2']);
+  const [teamAvatars, setTeamAvatars] = useState<number[]>([1, 2]);
+  const [lobbyDifficulty, setLobbyDifficulty] = useState<BoxDifficultyMode>('medium');
+  const [answerBonusPoints, setAnswerBonusPoints] = useState<boolean>(true);
+  const [wrongAnswerPenalty, setWrongAnswerPenalty] = useState<boolean>(true);
+  const [soundVolume, setSoundVolume] = useState<number>(75);
+  const [selectedTheme, setSelectedTheme] = useState<ArenaThemeId>('theme-sky');
+
+  const blueDisplayName =
+    playerNames[0] && playerNames[0].trim() ? playerNames[0].trim() : 'Team 1';
+  const redDisplayName =
+    playerNames[1] && playerNames[1].trim() ? playerNames[1].trim() : 'Team 2';
 
   const [questionMode, setQuestionMode] = useState<'single' | 'split'>('single');
   const [showStartBattleModal, setShowStartBattleModal] = useState(false);
@@ -947,198 +977,146 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
   }
 
   if (screen === 'menu') {
-    const leftInfo = SUMO_CHARACTER_OPTIONS.find((c) => c.id === leftCharacter);
-    const rightInfo = SUMO_CHARACTER_OPTIONS.find((c) => c.id === rightCharacter);
-
     return (
-      <div id="game-container" className="w-full min-h-full flex-1 relative select-none">
-        <UnifiedGameSetup
-          title={activeGame?.title || 'SUMO TAGS 3D'}
-          containerId="game-container"
-          questionCount={activeGame?.questions?.length}
-          onBack={() => onViewChange('home', { __stepBack: true })}
-          onOpenGameSwitcher={() => setShowModeModal(true)}
-          onOpenQuizEditor={() => setScreen('setup')}
-          startLabel="⚔️ START BATTLE"
-          onStart={() => setShowStartBattleModal(true)}
-          onStudy={() => {
+      <div id="game-container" className="w-full min-h-full flex-1 relative select-none flex flex-col">
+        <MysteryBox3DLobby
+          headerBannerSrc={sumoShowdownBannerImg}
+          headerBannerAlt="Sumo Showdown - Sumo Hamster and Yokozuna Panda"
+          showModeAndTheme={false}
+          optionsSubtitle="Adjust Sumo Showdown sound volume, audio effects, and study options"
+          fixedTeamCount={2}
+          numPlayers={2}
+          onSelectNumPlayers={() => {}}
+          questionCount={allQuestionsDB.length}
+          selectedQuestionLimit={effectiveQuestionLimit}
+          onSelectQuestionLimit={(limit) => setSelectedQuestionLimit(limit)}
+          gameTimeMinutes={timerMinutes}
+          onSelectGameTime={(mins) => setTimerMinutes(mins)}
+          playerNames={playerNames}
+          onChangePlayerName={(idx, name) => {
+            setPlayerNames((prev) => {
+              const next = [...prev];
+              next[idx] = name;
+              return next;
+            });
+          }}
+          teamAvatars={teamAvatars}
+          onChangeTeamAvatar={(teamIndex, avatarId) => {
+            setTeamAvatars((prev) => {
+              const next = [...prev];
+              next[teamIndex] = avatarId;
+              return next;
+            });
+            const mappedChar =
+              SUMO_CHARACTER_OPTIONS[(avatarId - 1) % SUMO_CHARACTER_OPTIONS.length]?.id;
+            if (mappedChar) {
+              if (teamIndex === 0) setLeftCharacter(mappedChar);
+              if (teamIndex === 1) setRightCharacter(mappedChar);
+            }
+          }}
+          onRandomizeTeamAvatars={() => {
+            const shuffled = [...CUTE_HAMSTER_ICONS].sort(() => Math.random() - 0.5);
+            const a0 = shuffled[0]?.id ?? 1;
+            const a1 = shuffled[1]?.id ?? 2;
+            setTeamAvatars([a0, a1]);
+            const char0 =
+              SUMO_CHARACTER_OPTIONS[(a0 - 1) % SUMO_CHARACTER_OPTIONS.length]?.id;
+            const char1 =
+              SUMO_CHARACTER_OPTIONS[(a1 - 1) % SUMO_CHARACTER_OPTIONS.length]?.id;
+            if (char0) setLeftCharacter(char0);
+            if (char1) setRightCharacter(char1);
+          }}
+          difficulty={lobbyDifficulty}
+          onSelectDifficulty={(d) => setLobbyDifficulty(d)}
+          answerBonusPoints={answerBonusPoints}
+          onToggleBonus={() => setAnswerBonusPoints((v) => !v)}
+          wrongAnswerPenalty={wrongAnswerPenalty}
+          onTogglePenalty={() => setWrongAnswerPenalty((v) => !v)}
+          isMuted={soundMuted}
+          onToggleMute={() => setSoundMuted((v) => !v)}
+          soundVolume={soundVolume}
+          onChangeSoundVolume={(vol) => {
+            setSoundVolume(vol);
+            if (vol === 0 && !soundMuted) setSoundMuted(true);
+            else if (vol > 0 && soundMuted) setSoundMuted(false);
+          }}
+          selectedTheme={selectedTheme}
+          onSelectTheme={(t) => setSelectedTheme(t)}
+          onStartGame={() => setShowStartBattleModal(true)}
+          onOpenStudy={() => {
             setStudyIndex(0);
             setStudySelectedOption(null);
             setScreen('study');
           }}
-        >
-          {/* MULTIPLAYER SUMO ROYALE: DOJO SHOWDOWN QUICK LAUNCH BANNER */}
-          <div className="mb-3.5 bg-gradient-to-r from-[#7f1d1d] via-[#b91c1c] to-[#b45309] text-white rounded-3xl p-3.5 sm:px-5 sm:py-3.5 border-2 border-amber-400 border-b-4 border-b-[#450a0a] shadow-lg flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="flex items-center gap-3 text-center sm:text-left">
-              <div className="w-11 h-11 rounded-2xl bg-amber-400 text-slate-950 font-black flex items-center justify-center text-xl shadow border-2 border-white shrink-0">
-                VS
-              </div>
-              <div>
-                <div className="flex items-center justify-center sm:justify-start gap-2">
-                  <span className="font-black text-sm sm:text-base uppercase tracking-wide">
-                    Sumo Royale: Dojo Showdown
-                  </span>
-                  <span className="bg-amber-400 text-slate-950 font-black text-[10px] px-2 py-0.5 rounded-md uppercase">
-                    Multiplayer QR &amp; Link
-                  </span>
-                </div>
-                <p className="text-xs text-amber-100 font-semibold">
-                  Students join via QR code or Game ID in Solo (1v1 VS) or Auto-Balanced Dojo Teams with Starting Energy Lives!
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setRoyaleRole('host');
-                setRoyaleInitialCode(undefined);
-                setScreen('royale');
-              }}
-              className="px-5 py-2.5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs sm:text-sm uppercase tracking-wider border-2 border-white border-b-4 border-b-amber-600 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-            >
-              ⚡ Host Multiplayer VS →
-            </button>
-          </div>
+          onBack={() => onViewChange('home', { __stepBack: true })}
+          onOpenGameSwitcher={() => setShowModeModal(true)}
+          onOpenQuizEditor={() => setScreen('setup')}
+        />
 
-          {/* 3D BLUE VS RED SUMO FIGHTER ROSTER */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-stretch">
-            {/* BLUE TEAM FIGHTER ROSTER (5 cols) */}
-            <div className="lg:col-span-5 bg-blue-50/90 border-2 border-blue-200 border-b-4 border-b-blue-400 rounded-3xl p-3.5 flex flex-col justify-between">
-              <div className="flex items-center justify-between mb-2.5">
-                <span className="font-black text-xs sm:text-sm text-blue-950 uppercase tracking-wider">
-                  🔵 BLUE FIGHTER
-                </span>
-                <span className="bg-blue-600 text-white font-black text-xs px-2.5 py-0.5 rounded-xl">
-                  {leftInfo?.name}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2">
-                {SUMO_CHARACTER_OPTIONS.map((opt) => {
-                  const selected = leftCharacter === opt.id;
-                  return (
-                    <button
-                      key={`menu-left-${opt.id}`}
-                      type="button"
-                      onClick={() => setLeftCharacter(opt.id)}
-                      className={`p-2 rounded-2xl border-2 border-b-4 flex flex-col items-center justify-between text-center transition-all cursor-pointer ${
-                        selected
-                          ? 'bg-gradient-to-b from-blue-500 to-blue-600 text-white border-blue-300 border-b-blue-900 shadow-md -translate-y-0.5'
-                          : 'bg-white hover:bg-blue-100/60 text-slate-900 border-blue-200 border-b-blue-300'
-                      }`}
-                    >
-                      <div className="py-0.5 flex items-center justify-center scale-90">
-                        <SumoCharacter team="left" character={opt.id} size="card" />
-                      </div>
-                      <div className="font-black text-[11px] leading-tight uppercase truncate w-full">
-                        {opt.name}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* CENTER LIVE MATCHUP SHOWCASE (2 cols) */}
-            <div className="lg:col-span-2 bg-gradient-to-b from-sky-100 via-white to-amber-50 text-slate-900 rounded-3xl p-3 border-2 border-amber-300 border-b-4 border-b-amber-500 flex flex-row lg:flex-col items-center justify-around gap-2">
-              <div className="flex flex-col items-center text-center">
-                <span className="text-[10px] font-black uppercase text-white bg-blue-600 px-2.5 py-0.5 rounded-lg mb-1">
-                  {leftInfo?.name}
-                </span>
-                <SumoCharacter team="left" character={leftCharacter} compact />
-              </div>
-
-              <div className="w-10 h-10 rounded-2xl bg-amber-400 border-2 border-white border-b-4 border-b-amber-600 shadow flex items-center justify-center font-black italic text-base text-slate-950 shrink-0">
-                VS
-              </div>
-
-              <div className="flex flex-col items-center text-center">
-                <SumoCharacter team="right" character={rightCharacter} compact />
-                <span className="text-[10px] font-black uppercase text-white bg-red-600 px-2.5 py-0.5 rounded-lg mt-1">
-                  {rightInfo?.name}
-                </span>
-              </div>
-            </div>
-
-            {/* RED TEAM FIGHTER ROSTER (5 cols) */}
-            <div className="lg:col-span-5 bg-red-50/90 border-2 border-red-200 border-b-4 border-b-red-400 rounded-3xl p-3.5 flex flex-col justify-between">
-              <div className="flex items-center justify-between mb-2.5">
-                <span className="font-black text-xs sm:text-sm text-red-950 uppercase tracking-wider">
-                  🔴 RED FIGHTER
-                </span>
-                <span className="bg-red-600 text-white font-black text-xs px-2.5 py-0.5 rounded-xl">
-                  {rightInfo?.name}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2">
-                {SUMO_CHARACTER_OPTIONS.map((opt) => {
-                  const selected = rightCharacter === opt.id;
-                  return (
-                    <button
-                      key={`menu-right-${opt.id}`}
-                      type="button"
-                      onClick={() => setRightCharacter(opt.id)}
-                      className={`p-2 rounded-2xl border-2 border-b-4 flex flex-col items-center justify-between text-center transition-all cursor-pointer ${
-                        selected
-                          ? 'bg-gradient-to-b from-red-500 to-red-600 text-white border-red-300 border-b-red-900 shadow-md -translate-y-0.5'
-                          : 'bg-white hover:bg-red-100/60 text-slate-900 border-red-200 border-b-red-300'
-                      }`}
-                    >
-                      <div className="py-0.5 flex items-center justify-center scale-90">
-                        <SumoCharacter team="right" character={opt.id} size="card" />
-                      </div>
-                      <div className="font-black text-[11px] leading-tight uppercase truncate w-full">
-                        {opt.name}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </UnifiedGameSetup>
-
-        {/* Sumo Battle Mode Selection Modal (Single Question vs Split Questions) */}
+        {/* Sumo Battle Mode Selection Modal (Single Question vs Split Questions vs Multiplayer Royale) */}
         {showStartBattleModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 md:p-10 max-w-xl w-full text-center shadow-2xl border-4 border-amber-400 relative">
-              <button 
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#072647]/65 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-gradient-to-b from-[#e4f3ff] via-[#cde8ff] to-[#b5dcff] rounded-[2.4rem] p-6 sm:p-8 md:p-10 max-w-2xl w-full text-center shadow-[0_24px_50px_rgba(9,63,120,0.45),inset_0_4px_0_rgba(255,255,255,0.95)] border-[5px] border-white relative">
+              <button
                 onClick={() => setShowStartBattleModal(false)}
-                className="absolute top-5 right-5 p-2 rounded-full hover:bg-slate-100 text-slate-500 cursor-pointer"
+                className="absolute top-5 right-5 w-10 h-10 rounded-full bg-white/80 hover:bg-white text-[#0d3b66] flex items-center justify-center shadow-sm cursor-pointer transition-transform hover:scale-105"
                 title="Close"
               >
-                <X size={24} />
+                <X size={22} strokeWidth={3} />
               </button>
 
-              <div className="flex justify-center gap-3 mb-3">
-                <div className="w-8 h-8 rounded-full bg-blue-600 border-2 border-white shadow-md"></div>
-                <div className="w-8 h-8 rounded-full bg-red-600 border-2 border-white shadow-md"></div>
+              {/* Selected Hamster Team Avatars Preview */}
+              <div className="flex justify-center items-center gap-4 mb-3">
+                <div className="flex items-center gap-2 bg-white/85 px-3.5 py-1.5 rounded-2xl border-2 border-[#38a3f1] shadow-sm">
+                  <div className="w-8 h-8 rounded-full overflow-hidden bg-white border border-sky-200">
+                    <CuteHamsterAvatar avatarId={teamAvatars[0] || 1} className="w-full h-full" />
+                  </div>
+                  <span className="font-black text-xs sm:text-sm text-[#072b4d] uppercase">
+                    {blueDisplayName}
+                  </span>
+                </div>
+                <span className="font-black text-sm text-[#0e5894]">VS</span>
+                <div className="flex items-center gap-2 bg-white/85 px-3.5 py-1.5 rounded-2xl border-2 border-[#f43f5e] shadow-sm">
+                  <div className="w-8 h-8 rounded-full overflow-hidden bg-white border border-rose-200">
+                    <CuteHamsterAvatar avatarId={teamAvatars[1] || 2} className="w-full h-full" />
+                  </div>
+                  <span className="font-black text-xs sm:text-sm text-[#072b4d] uppercase">
+                    {redDisplayName}
+                  </span>
+                </div>
               </div>
 
-              <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-slate-900 uppercase tracking-tight mb-2">
-                Choose Battle Mode
+              <h2
+                className="text-2xl sm:text-3xl md:text-4xl font-black text-[#072b4d] uppercase tracking-tight mb-1.5"
+                style={{ fontFamily: "'Fredoka', 'Nunito', sans-serif" }}
+              >
+                CHOOSE BATTLE MODE
               </h2>
-              <p className="text-slate-500 text-xs sm:text-sm font-semibold mb-6">
-                Choose how questions will appear in this Sumo battle:
+              <p className="text-[#0e5894] text-xs sm:text-sm font-extrabold mb-6">
+                Choose how questions will appear in this Sumo Showdown battle:
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 text-left">
                 {/* SINGLE QUESTION MODE BUTTON */}
                 <button
                   onClick={() => startGame(false, 'single')}
-                  className="group p-5 rounded-3xl border-3 border-amber-300 hover:border-amber-500 bg-amber-50/70 hover:bg-amber-100/90 transition-all shadow-md hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] cursor-pointer flex flex-col justify-between"
+                  className="group p-5 rounded-3xl border-[3px] border-white bg-white/90 hover:bg-white transition-all shadow-[0_6px_0_#7cb8e8,0_10px_20px_rgba(12,74,138,0.18)] hover:scale-[1.02] active:translate-y-0.5 cursor-pointer flex flex-col justify-between"
                 >
                   <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-3xl">🎯</span>
-                      <span className="font-black text-base sm:text-lg text-slate-900 uppercase">Single Question</span>
+                    <div className="flex items-center gap-2.5 mb-2">
+                      <span className="w-10 h-10 rounded-2xl bg-gradient-to-b from-[#ffb338] to-[#ea580c] text-white flex items-center justify-center text-xl shadow-sm">
+                        🎯
+                      </span>
+                      <span className="font-black text-base sm:text-lg text-[#072b4d] uppercase">
+                        Single Question
+                      </span>
                     </div>
-                    <p className="text-xs text-slate-600 font-medium leading-relaxed">
-                      Both Red and Blue race to answer <strong className="text-slate-900">1 shared question</strong> centered in the middle of the arena.
+                    <p className="text-xs text-slate-600 font-bold leading-relaxed">
+                      Both teams race to answer{' '}
+                      <strong className="text-[#072b4d]">1 shared question</strong> centered in the middle of the sumo arena.
                     </p>
                   </div>
-                  <div className="mt-4 inline-flex items-center text-xs font-black text-amber-800 uppercase tracking-wider group-hover:translate-x-1 transition-transform">
+                  <div className="mt-4 inline-flex items-center justify-center w-full py-2.5 rounded-xl bg-gradient-to-b from-[#33b6ff] via-[#1393eb] to-[#0b74c4] text-white text-xs font-black uppercase tracking-wider border-b-[3px] border-[#064a80] shadow-sm">
                     Start Single Battle →
                   </div>
                 </button>
@@ -1146,18 +1124,23 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
                 {/* SPLIT QUESTION MODE BUTTON */}
                 <button
                   onClick={() => startGame(false, 'split')}
-                  className="group p-5 rounded-3xl border-3 border-indigo-300 hover:border-indigo-500 bg-indigo-50/70 hover:bg-indigo-100/90 transition-all shadow-md hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] cursor-pointer flex flex-col justify-between"
+                  className="group p-5 rounded-3xl border-[3px] border-white bg-white/90 hover:bg-white transition-all shadow-[0_6px_0_#7cb8e8,0_10px_20px_rgba(12,74,138,0.18)] hover:scale-[1.02] active:translate-y-0.5 cursor-pointer flex flex-col justify-between"
                 >
                   <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-3xl">⚡</span>
-                      <span className="font-black text-base sm:text-lg text-slate-900 uppercase">Split Questions</span>
+                    <div className="flex items-center gap-2.5 mb-2">
+                      <span className="w-10 h-10 rounded-2xl bg-gradient-to-b from-[#38bdf8] to-[#0284c7] text-white flex items-center justify-center text-xl shadow-sm">
+                        ⚡
+                      </span>
+                      <span className="font-black text-base sm:text-lg text-[#072b4d] uppercase">
+                        Split Questions
+                      </span>
                     </div>
-                    <p className="text-xs text-slate-600 font-medium leading-relaxed">
-                      Each team has their own <strong className="text-slate-900">randomized question order</strong> appearing directly on Red side and Blue side.
+                    <p className="text-xs text-slate-600 font-bold leading-relaxed">
+                      Each team gets their own{' '}
+                      <strong className="text-[#072b4d]">independent question deck</strong> appearing on their side of the ring.
                     </p>
                   </div>
-                  <div className="mt-4 inline-flex items-center text-xs font-black text-indigo-800 uppercase tracking-wider group-hover:translate-x-1 transition-transform">
+                  <div className="mt-4 inline-flex items-center justify-center w-full py-2.5 rounded-xl bg-gradient-to-b from-[#ffb338] via-[#f59e0b] to-[#d97706] text-[#451a03] text-xs font-black uppercase tracking-wider border-b-[3px] border-[#92400e] shadow-sm">
                     Start Split Battle →
                   </div>
                 </button>
@@ -1170,23 +1153,28 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
                     setRoyaleInitialCode(undefined);
                     setScreen('royale');
                   }}
-                  className="sm:col-span-2 group p-5 rounded-3xl border-3 border-red-400 hover:border-red-600 bg-gradient-to-r from-red-50 via-amber-50 to-orange-50 hover:from-red-100 hover:to-amber-100 transition-all shadow-md hover:shadow-xl hover:scale-[1.01] active:scale-[0.99] cursor-pointer flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+                  className="sm:col-span-2 group p-5 rounded-3xl border-[3px] border-white bg-white/90 hover:bg-white transition-all shadow-[0_6px_0_#7cb8e8,0_10px_20px_rgba(12,74,138,0.18)] hover:scale-[1.01] active:translate-y-0.5 cursor-pointer flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
                 >
                   <div>
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <span className="text-2xl">🏆</span>
-                      <span className="font-black text-base sm:text-lg text-red-950 uppercase">
-                        Sumo Royale: Dojo Showdown (Multiplayer VS)
+                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                      <span className="w-9 h-9 rounded-2xl bg-gradient-to-b from-[#f43f5e] to-[#be123c] text-white flex items-center justify-center text-lg shadow-sm">
+                        🏆
                       </span>
-                      <span className="bg-red-700 text-white font-black text-[10px] px-2 py-0.5 rounded-md uppercase">
-                        QR &amp; Game ID
+                      <span className="font-black text-base sm:text-lg text-[#072b4d] uppercase">
+                        Sumo Royale: Dojo Showdown
+                      </span>
+                      <span className="bg-[#f43f5e] text-white font-black text-[10px] px-2.5 py-0.5 rounded-full uppercase">
+                        Multiplayer QR &amp; Game ID
                       </span>
                     </div>
-                    <p className="text-xs text-slate-700 font-medium leading-relaxed">
-                      Students join on their own devices via <strong className="text-slate-900">QR Code or Link</strong> in <strong className="text-slate-900">Solo (1v1 VS)</strong> or <strong className="text-slate-900">Teams</strong> mode with Starting Energy lives!
+                    <p className="text-xs text-slate-600 font-bold leading-relaxed">
+                      Students join on their own devices via{' '}
+                      <strong className="text-[#072b4d]">QR Code or Link</strong> in{' '}
+                      <strong className="text-[#072b4d]">Solo (1v1 VS)</strong> or{' '}
+                      <strong className="text-[#072b4d]">Teams</strong> mode with Starting Energy lives!
                     </p>
                   </div>
-                  <div className="inline-flex items-center px-4 py-2.5 rounded-2xl bg-gradient-to-r from-red-600 to-amber-500 text-white text-xs font-black uppercase tracking-wider border-b-4 border-red-900 shrink-0 group-hover:translate-x-1 transition-transform">
+                  <div className="inline-flex items-center px-5 py-2.5 rounded-xl bg-gradient-to-b from-[#f43f5e] via-[#e11d48] to-[#be123c] text-white text-xs font-black uppercase tracking-wider border-b-[3px] border-[#881337] shrink-0 shadow-sm">
                     Host Royale →
                   </div>
                 </button>
@@ -1194,7 +1182,7 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
 
               <button
                 onClick={() => setShowStartBattleModal(false)}
-                className="text-slate-400 hover:text-slate-700 text-sm font-bold cursor-pointer"
+                className="text-[#0e5894] hover:text-[#072b4d] text-sm font-black uppercase tracking-wider cursor-pointer"
               >
                 Cancel
               </button>
@@ -1223,6 +1211,7 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
   }
 
   if (screen === 'end') {
+    const winnerLabel = winner === 'Blue Team' ? blueDisplayName : redDisplayName;
     return (
       <div id="game-container" className="w-full min-h-full flex-1 bg-slate-100 dark:bg-black/95 flex items-center justify-center font-sans p-2 sm:p-4 overflow-y-auto relative">
         <div className="absolute top-4 left-4 z-[60] flex items-center gap-2">
@@ -1256,7 +1245,7 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
 
         <div className="bg-white p-10 md:p-16 rounded-[2.5rem] text-center shadow-2xl border-8 border-yellow-400">
           <h2 className={`text-5xl md:text-7xl font-black mb-4 uppercase italic ${winner === 'Blue Team' ? 'text-blue-600' : 'text-red-600'}`}>
-            {winner}
+            {winnerLabel}
           </h2>
           <p className="text-2xl font-black text-slate-800 mb-10 uppercase tracking-widest">Wins the Match!</p>
           <div className="flex flex-col md:flex-row gap-4 justify-center">
@@ -1326,7 +1315,7 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
                   <SumoCharacter team="left" character={leftCharacter} size="icon" />
                 </button>
                 <span className="font-black italic text-xs sm:text-sm md:text-lg lg:text-xl text-white uppercase tracking-wider select-none">
-                  BLUE TEAM
+                  {blueDisplayName}
                 </span>
                 <div className="bg-white text-blue-700 font-black text-xs sm:text-sm md:text-base px-2 py-0.5 sm:px-3 sm:py-0.5 rounded-full shadow-sm tracking-wide">
                   {leftTeam.wins} WINS
@@ -1359,7 +1348,7 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
                   {rightTeam.wins} WINS
                 </div>
                 <span className="font-black italic text-xs sm:text-sm md:text-lg lg:text-xl text-white uppercase tracking-wider select-none">
-                  RED TEAM
+                  {redDisplayName}
                 </span>
                 <button
                   onClick={() => setShowCharacterModal(true)}

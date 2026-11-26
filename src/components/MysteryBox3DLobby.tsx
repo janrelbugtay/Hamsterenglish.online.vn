@@ -419,6 +419,48 @@ function TransparentBannerImage({ src, alt }: { src: string; alt: string }) {
           }
         }
 
+        // Secondary pass in the bottom floor-shadow strip (y >= 88%) to clear soft neutral/warm floor shadows
+        const shadowStartY = Math.floor(h * 0.88);
+        const shadowVisited = new Uint8Array(w * h);
+        let sHead = 0;
+        let sTail = 0;
+        const pushShadow = (x: number, y: number) => {
+          if (x < 0 || x >= w || y < shadowStartY || y >= h) return;
+          const idx = y * w + x;
+          if (isBg[idx] || shadowVisited[idx]) return;
+          const p = idx * 4;
+          const r = data[p];
+          const g = data[p + 1];
+          const b = data[p + 2];
+          const maxC = Math.max(r, g, b);
+          const minC = Math.min(r, g, b);
+          if (minC >= 180 && maxC - minC <= 26) {
+            shadowVisited[idx] = 1;
+            isBg[idx] = 1;
+            queue[sTail++] = x;
+            queue[sTail++] = y;
+          }
+        };
+
+        for (let y = shadowStartY; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const idx = y * w + x;
+            if (!isBg[idx]) continue;
+            if (x > 0) pushShadow(x - 1, y);
+            if (x < w - 1) pushShadow(x + 1, y);
+            if (y > shadowStartY) pushShadow(x, y - 1);
+            if (y < h - 1) pushShadow(x, y + 1);
+          }
+        }
+        while (sHead < sTail) {
+          const x = queue[sHead++];
+          const y = queue[sHead++];
+          pushShadow(x + 1, y);
+          pushShadow(x - 1, y);
+          pushShadow(x, y + 1);
+          pushShadow(x, y - 1);
+        }
+
         let minX = w;
         let minY = h;
         let maxX = 0;

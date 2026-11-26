@@ -424,12 +424,70 @@ function MainScoreboard({
   className = "",
   isCompact = false,
 }: MainScoreboardProps) {
+  const teamCount = teams.length;
+  const isManyTeams = teamCount >= 4;
+  const isCrowdedTeams = teamCount >= 5;
+
+  const cardSizeClass = isCrowdedTeams
+    ? isCompact
+      ? 'px-2.5 py-2 sm:px-3 sm:py-2.5 flex-1 min-w-[125px] max-w-[195px]'
+      : 'px-3 py-2.5 sm:px-3.5 sm:py-3 flex-1 min-w-[135px] max-w-[210px]'
+    : isManyTeams
+    ? isCompact
+      ? 'px-3 py-2 sm:px-3.5 sm:py-2.5 flex-1 min-w-[150px] max-w-[235px]'
+      : 'px-3.5 py-3 sm:px-4 sm:py-3.5 flex-1 min-w-[165px] max-w-[250px]'
+    : isCompact
+    ? 'px-3.5 py-2.5 sm:px-4 sm:py-3 w-[185px] sm:w-[235px] md:w-[265px]'
+    : 'p-4 sm:p-5 w-[215px] sm:w-[260px] md:w-[290px]';
+
+  const avatarSizeClass = isCrowdedTeams
+    ? isCompact
+      ? 'w-10 h-10 sm:w-12 sm:h-12 md:w-13 md:h-13'
+      : 'w-11 h-11 sm:w-13 sm:h-13 md:w-14 md:h-14'
+    : isManyTeams
+    ? isCompact
+      ? 'w-12 h-12 sm:w-14 sm:h-14 md:w-[58px] md:h-[58px]'
+      : 'w-13 h-13 sm:w-15 sm:h-15 md:w-16 md:h-16'
+    : isCompact
+    ? 'w-14 h-14 sm:w-16 sm:h-16 md:w-[68px] md:h-[68px]'
+    : 'w-16 h-16 sm:w-20 sm:h-20';
+
+  const teamNameSizeClass = isCrowdedTeams
+    ? 'text-xs sm:text-sm md:text-base'
+    : isManyTeams
+    ? isCompact
+      ? 'text-xs sm:text-sm md:text-base'
+      : 'text-sm sm:text-base md:text-lg'
+    : isCompact
+    ? 'text-sm sm:text-base md:text-lg'
+    : 'text-base sm:text-lg md:text-xl';
+
+  const scoreValueSizeClass = isCrowdedTeams
+    ? isCompact
+      ? 'text-2xl sm:text-3xl md:text-[32px]'
+      : 'text-2xl sm:text-3xl md:text-4xl'
+    : isManyTeams
+    ? isCompact
+      ? 'text-2xl sm:text-3xl md:text-[36px]'
+      : 'text-3xl sm:text-4xl md:text-[44px]'
+    : isCompact
+    ? 'text-3xl sm:text-4xl md:text-[42px]'
+    : 'text-4xl sm:text-5xl md:text-6xl';
+
   return (
     <div className={`w-full max-w-7xl mx-auto px-2 sm:px-4 ${className}`}>
-      <div className="flex items-center justify-center gap-1.5 sm:gap-2.5">
+      <div className="flex items-center justify-center gap-1.5 sm:gap-2.5 w-full">
         <GoldenLaurelSprig />
 
-        <div className="flex items-stretch justify-center gap-2 sm:gap-3.5 flex-wrap">
+        <div
+          className={`flex items-stretch justify-center ${
+            isCrowdedTeams
+              ? 'gap-1.5 sm:gap-2 flex-nowrap w-full max-w-[1160px]'
+              : isManyTeams
+              ? 'gap-2 sm:gap-3 flex-nowrap w-full max-w-[1040px]'
+              : 'gap-2 sm:gap-3.5 flex-nowrap'
+          }`}
+        >
           {teams.map((t, idx) => {
             const isCurrent = currentTeamIdx === idx;
             const isLeader = teams.length > 1 && t.score > 0 && t.score === highestScore;
@@ -445,13 +503,9 @@ function MainScoreboard({
                 key={t.id}
                 onClick={() => onSelectTeam && onSelectTeam(idx)}
                 title={onSelectTeam ? "Click to set active turn" : undefined}
-                className={`group relative rounded-[22px] sm:rounded-[26px] transition-all duration-300 flex flex-col justify-between overflow-visible select-none ${
+                className={`group relative rounded-[20px] sm:rounded-[24px] transition-all duration-300 flex flex-col justify-between overflow-visible select-none ${
                   onSelectTeam ? 'cursor-pointer hover:scale-[1.02]' : 'cursor-default'
-                } ${
-                  isCompact
-                    ? 'px-3.5 py-2.5 sm:px-4 sm:py-3 w-[185px] sm:w-[235px] md:w-[265px]'
-                    : 'p-4 sm:p-5 w-[215px] sm:w-[260px] md:w-[290px]'
-                } ${
+                } ${cardSizeClass} ${
                   isAffectedReveal
                     ? isPositiveReveal
                       ? 'border-[3px] border-emerald-400 bg-[#122620]/90 backdrop-blur-xl text-white ring-4 ring-emerald-400/50 shadow-[0_0_40px_rgba(16,185,129,0.55)] scale-105 z-20'
@@ -477,7 +531,7 @@ function MainScoreboard({
 
                 {/* Active Turn Indicator or Affected Badge */}
                 {isAffectedReveal ? (
-                  <div className={`absolute -top-3.5 left-1/2 -translate-x-1/2 text-slate-950 font-black text-[10px] uppercase px-3 py-0.5 rounded-full shadow-lg tracking-wider flex items-center gap-1 whitespace-nowrap border ${
+                  <div className={`absolute -top-3.5 left-1/2 -translate-x-1/2 text-slate-950 font-black text-[10px] uppercase px-2.5 sm:px-3 py-0.5 rounded-full shadow-lg tracking-wider flex items-center gap-1 whitespace-nowrap border ${
                     isPositiveReveal
                       ? 'bg-gradient-to-r from-emerald-400 to-teal-300 border-emerald-200'
                       : 'bg-gradient-to-r from-rose-400 to-red-300 border-rose-200'
@@ -486,27 +540,21 @@ function MainScoreboard({
                     {isPositiveReveal ? '▲ POINTS WON!' : '▼ PENALTY!'}
                   </div>
                 ) : isCurrent ? (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-b from-[#fde047] via-[#fbbf24] to-[#f59e0b] text-[#1e1303] text-[10px] font-black uppercase px-3.5 py-0.5 rounded-full shadow-[0_4px_14px_rgba(251,191,36,0.65)] tracking-wider flex items-center gap-1 whitespace-nowrap border border-[#fef08a]">
+                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-b from-[#fde047] via-[#fbbf24] to-[#f59e0b] text-[#1e1303] text-[10px] font-black uppercase px-2.5 sm:px-3.5 py-0.5 rounded-full shadow-[0_4px_14px_rgba(251,191,36,0.65)] tracking-wider flex items-center gap-1 whitespace-nowrap border border-[#fef08a]">
                     <span>⚡</span>
                     <span>ACTIVE TURN</span>
                   </div>
                 ) : null}
 
                 {/* Top Row: Large Circular Hamster Character Avatar + Single Team Name */}
-                <div className="flex items-center gap-3 min-w-0 pt-0.5">
+                <div className={`flex items-center ${isManyTeams ? 'gap-2 sm:gap-2.5' : 'gap-3'} min-w-0 pt-0.5`}>
                   <CuteHamsterAvatar
                     avatarId={t.avatarId || ((idx % 20) + 1)}
-                    className={`${
-                      isCompact
-                        ? 'w-14 h-14 sm:w-16 sm:h-16 md:w-[68px] md:h-[68px]'
-                        : 'w-16 h-16 sm:w-20 sm:h-20'
-                    } shrink-0 !border-[3px] shadow-[0_4px_12px_rgba(0,0,0,0.45)]`}
+                    className={`${avatarSizeClass} shrink-0 !border-[3px] shadow-[0_4px_12px_rgba(0,0,0,0.45)]`}
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <p className={`${
-                        isCompact ? 'text-sm sm:text-base md:text-lg' : 'text-base sm:text-lg md:text-xl'
-                      } font-black tracking-wide truncate text-white leading-tight drop-shadow-[0_2px_4px_rgba(0,0,0,0.6)]`}>
+                    <div className="flex items-center gap-1">
+                      <p className={`${teamNameSizeClass} font-black tracking-wide truncate text-white leading-tight drop-shadow-[0_2px_4px_rgba(0,0,0,0.6)]`}>
                         {displayTeamTitle}
                       </p>
                       {isLeader && (
@@ -524,25 +572,21 @@ function MainScoreboard({
                 </div>
 
                 {/* Horizontal Divider + Large Score Row */}
-                <div className={`${isCompact ? 'mt-2 pt-1.5' : 'mt-2.5 pt-2'} border-t flex items-baseline justify-between ${
+                <div className={`${isCompact || isManyTeams ? 'mt-1.5 pt-1.5' : 'mt-2.5 pt-2'} border-t flex items-baseline justify-between ${
                   isCurrent ? 'border-amber-300/30' : 'border-white/15'
                 }`}>
-                  <span className="text-[11px] sm:text-xs font-extrabold uppercase tracking-wider text-white/85">
+                  <span className="text-[10px] sm:text-xs font-extrabold uppercase tracking-wider text-white/85">
                     SCORE
                   </span>
-                  <div className="flex items-baseline gap-1.5">
-                    <div className={`${
-                      isCompact
-                        ? 'text-3xl sm:text-4xl md:text-[42px]'
-                        : 'text-4xl sm:text-5xl md:text-6xl'
-                    } font-black tracking-tight tabular-nums leading-none ${
+                  <div className="flex items-baseline gap-1">
+                    <div className={`${scoreValueSizeClass} font-black tracking-tight tabular-nums leading-none ${
                       isCurrent
                         ? 'text-[#fbbf24] drop-shadow-[0_2px_12px_rgba(251,191,36,0.55)]'
                         : 'text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]'
                     }`}>
                       <AnimatedScore value={t.score} />
                     </div>
-                    <span className={`text-xs sm:text-sm font-black uppercase ${
+                    <span className={`text-[10px] sm:text-xs font-black uppercase ${
                       isCurrent ? 'text-[#fde68a]' : 'text-white/85'
                     }`}>
                       PTS
@@ -2850,7 +2894,7 @@ export function MysteryBox({
             </header>
 
             {/* 3. TEAM SCOREBOARD (Upper Center Directly Below Nav Bar with Golden Laurels) */}
-            <div className="shrink-0 w-full max-w-6xl mx-auto px-3 sm:px-6 pt-2.5 pb-1 z-20 relative">
+            <div className="shrink-0 w-full max-w-7xl mx-auto px-2 sm:px-5 pt-2.5 pb-1 z-20 relative">
               <MainScoreboard
                 teams={teams}
                 currentTeamIdx={currentTeamIdx}
@@ -3147,8 +3191,8 @@ export function MysteryBox({
                   <div className="w-full min-h-screen flex flex-col justify-between bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-white animate-pop-in">
                     
                     {/* FULL-SCREEN TOP HEADER BAR WITH REDESIGNED LIVE TEAM SCOREBOARD */}
-                    <div className="w-full bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 px-4 sm:px-8 py-3 sm:py-4 shadow-xl border-b-4 border-amber-300 flex flex-wrap items-center justify-between gap-3 shrink-0">
-                      <div className="flex items-center gap-3 sm:gap-4">
+                    <div className="w-full bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 px-4 sm:px-8 py-3 sm:py-4 shadow-xl border-b-4 border-amber-300 flex flex-nowrap items-center justify-between gap-3 shrink-0">
+                      <div className="flex items-center gap-3 sm:gap-4 shrink-0">
                         <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white text-orange-600 font-black text-2xl sm:text-3xl flex items-center justify-center shadow-lg tabular-nums shrink-0">
                           #{activeBoxNum}
                         </div>
@@ -3166,14 +3210,14 @@ export function MysteryBox({
                       </div>
 
                       {/* Live Big Team Scoreboard in Full-Screen Question Header (NO +/- SIGNS) */}
-                      <div className="hidden lg:flex items-center gap-2.5 flex-wrap">
+                      <div className="hidden lg:flex items-center gap-2 flex-nowrap">
                         {teams.map((t, idx) => {
                           const isTurn = idx === currentTeamIdx;
                           const teamPopups = scoreDeltas.filter(d => d.teamId === t.id);
                           return (
                             <div
                               key={t.id}
-                              className={`relative px-4 py-2 rounded-2xl flex items-center gap-2.5 transition-all duration-300 ${
+                              className={`relative ${teams.length >= 4 ? 'px-2.5 py-1.5 gap-1.5' : 'px-4 py-2 gap-2.5'} rounded-2xl flex items-center transition-all duration-300 ${
                                 isTurn
                                   ? 'bg-white text-slate-900 font-black shadow-lg scale-105 ring-4 ring-amber-200'
                                   : 'bg-black/30 text-white/90 font-bold border border-white/20'
@@ -3181,9 +3225,9 @@ export function MysteryBox({
                             >
                               <span className="px-2 py-0.5 rounded-lg bg-black/20 text-xs font-black">#{idx + 1}</span>
                               <div className="text-left">
-                                <span className="text-xs uppercase tracking-wider max-w-[100px] truncate block leading-none">{t.name}</span>
+                                <span className={`text-xs uppercase tracking-wider ${teams.length >= 4 ? 'max-w-[78px]' : 'max-w-[100px]'} truncate block leading-none`}>{t.name}</span>
                               </div>
-                              <span className={`px-2.5 py-1 rounded-xl text-sm sm:text-base font-black tabular-nums ${
+                              <span className={`px-2 py-1 rounded-xl ${teams.length >= 4 ? 'text-xs sm:text-sm' : 'text-sm sm:text-base'} font-black tabular-nums whitespace-nowrap ${
                                 isTurn ? 'bg-amber-500 text-white' : 'bg-white/20 text-amber-300'
                               }`}>
                                 <AnimatedScore value={t.score} /> PTS

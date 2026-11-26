@@ -2886,7 +2886,9 @@ var Editor = {
                             id: t.id || (idx + 1),
                             name: t.name || ('Team ' + (idx + 1)),
                             score: 0,
-                            color: colors[idx % colors.length]
+                            color: colors[idx % colors.length],
+                            avatarId: t.avatarId || (idx + 1),
+                            avatarImage: t.avatarImage || null
                         }));
                         if (typeof window.renderTeams === 'function') window.renderTeams();
                         if (typeof window.renderLobbyTeams === 'function') window.renderLobbyTeams();
@@ -3056,10 +3058,14 @@ var Editor = {
                 const turnClass = isCurrentTurn ? 'ring-8 ring-white ring-offset-4 ring-offset-blue-300 scale-[1.15] z-20' : 'opacity-80 scale-95';
                 
                 const order = (i < middleIndex) ? (i * 10) : (i * 10 + 10);
+                const avatarHtml = t.avatarImage
+                    ? `<img src="${t.avatarImage}" alt="${t.name}" style="width: 6.2vh; height: 6.2vh; border-radius: 9999px; background: #ffffff; border: 3px solid #ffffff; object-fit: contain; flex-shrink: 0; box-shadow: 0 4px 10px rgba(0,0,0,0.28);" />`
+                    : '';
                 
                 html += `
                     <div class="flex items-center gap-1 group shrink-0" style="order: ${order}; margin: 0 15px;">
-                        <div class="team-score px-10 py-6 min-w-[320px] justify-center rounded-full font-black transform transition-all duration-300 flex items-center gap-4 ${turnClass}" style="${bubbleStyle}; font-size: 5vh; line-height: 1.1;">
+                        <div class="team-score px-8 py-5 min-w-[320px] justify-center rounded-full font-black transform transition-all duration-300 flex items-center gap-4 ${turnClass}" style="${bubbleStyle}; font-size: 5vh; line-height: 1.1;">
+                            ${avatarHtml}
                             <span class="truncate max-w-[220px] pb-1 drop-shadow-lg">${t.name}</span>
                             <span class="bg-black/20 px-6 py-2 rounded-full shadow-inner pb-3" id="score-team${t.id}">${t.score}</span>
                         </div>
@@ -3084,12 +3090,13 @@ var Editor = {
             window.teamsData.forEach(t => {
                 const colors = { blue: 'bg-blue-500', red: 'bg-red-500', green: 'bg-green-500', yellow: 'bg-yellow-500', purple: 'bg-purple-500', pink: 'bg-pink-500' };
                 const bg = colors[t.color] || 'bg-blue-500';
+                const avatarEl = t.avatarImage
+                    ? `<img src="${t.avatarImage}" alt="${t.name}" class="w-9 h-9 rounded-full bg-white border-2 border-blue-200 object-contain shadow-sm" />`
+                    : `<div class="w-8 h-8 rounded-full ${bg} flex items-center justify-center text-white font-bold shadow-inner">${t.name.charAt(0).toUpperCase()}</div>`;
                 html += `
                     <div class="bg-white p-3 rounded-xl border-2 flex justify-between items-center group shadow-sm transition-all hover:border-${t.color}-300">
                         <div class="flex items-center gap-3">
-                            <div class="w-8 h-8 rounded-full ${bg} flex items-center justify-center text-white font-bold shadow-inner">
-                                ${t.name.charAt(0).toUpperCase()}
-                            </div>
+                            ${avatarEl}
                             <span class="font-bold text-gray-700 text-lg">${t.name}</span>
                         </div>
                         <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">

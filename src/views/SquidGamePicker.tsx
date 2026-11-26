@@ -8984,7 +8984,7 @@ export default function SquidGamePicker({ onViewChange }: SquidGamePickerProps) 
                 }
             `}} />
 
-            {gameState.msg && gameState.phase !== 'WINNER' && activeGame !== 'redlight' && (
+            {gameState.msg && gameState.phase !== 'WINNER' && activeGame !== 'redlight' && activeGame !== 'coconut' && (
                 <div className="absolute top-24 left-1/2 transform -translate-x-1/2 w-full text-center pointer-events-none z-30 flex flex-col items-center gap-3 px-4">
                     <div className="inline-block bg-slate-900/90 backdrop-blur-md border-b-4 border-rose-600 px-8 py-3 rounded-xl shadow-[0_10px_40px_rgba(244,63,94,0.4)]">
                         <h2 className="text-2xl md:text-4xl text-white tracking-widest uppercase drop-shadow-md font-bold" style={{fontFamily: "'Fredoka', sans-serif"}}>

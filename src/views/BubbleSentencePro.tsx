@@ -12,9 +12,9 @@ import { SetupCurriculumHeader, SmartOptionInput, SmartQuestionInput } from "../
 import { AnswerContentMode, formatOptionContent, parseOptionContent } from "../utils/mediaAndPresets";
 import { fetchAllAvailableFolders, mergeAllFolders } from "../lib/gameStore";
 import { persistUserGameToCloudAndCache } from "../utils/platformCache";
-import { MysteryBox3DLobby, BoxDifficultyMode, ArenaThemeId } from "../components/MysteryBox3DLobby";
+import { MysteryBox3DLobby, BoxDifficultyMode, ArenaThemeId, CUTE_HAMSTER_ICONS } from "../components/MysteryBox3DLobby";
 import { GameModeModal } from "../components/GameModeModal";
-import bubbleIslandHamsterHeader from "../assets/images/bubble_island_hamster_header_1795460011352.jpg";
+import bubbleIslandHamsterHeader from "../assets/images/bubble_island_wide_banner_1795688558867.jpg";
 
 type GameScreen = 'editor' | 'setup' | 'loading' | 'game' | 'study';
 
@@ -63,6 +63,10 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
     'Team 7',
     'Team 8',
   ]);
+  const [teamAvatars, setTeamAvatars] = useState<number[]>([1, 2, 3, 4, 5, 6, 7, 8]);
+  const [selectedQuestionLimit, setSelectedQuestionLimit] = useState<number | null>(null);
+  const [gameTimeMinutes, setGameTimeMinutes] = useState<number>(0);
+  const [soundVolume, setSoundVolume] = useState<number>(75);
   const [difficulty, setDifficulty] = useState<BoxDifficultyMode>('medium');
   const [answerBonusPoints, setAnswerBonusPoints] = useState<boolean>(true);
   const [wrongAnswerPenalty, setWrongAnswerPenalty] = useState<boolean>(true);
@@ -106,25 +110,47 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
+  const totalQuestionCount =
+    activeGame.mode === 'multiple-choice'
+      ? (activeGame.questions?.length || 0)
+      : (activeGame.sentences?.length || 0);
+
+  const effectiveQuestionLimit = Math.max(
+    1,
+    Math.min(
+      Math.max(1, totalQuestionCount),
+      selectedQuestionLimit ?? Math.max(1, totalQuestionCount)
+    )
+  );
+
   const buildIframeLoadPayload = () => {
-    const payloadItems = activeGame.mode === 'multiple-choice'
+    const rawItems = activeGame.mode === 'multiple-choice'
       ? (activeGame.questions && activeGame.questions.length > 0 ? activeGame.questions : activeGame.sentences)
       : activeGame.sentences;
-    const teams = Array.from({ length: numPlayers }).map((_, idx) => ({
-      id: idx + 1,
-      name: (playerNames[idx] || (numPlayers === 1 ? 'Player 1' : `Team ${idx + 1}`)).trim(),
-    }));
+    const payloadItems = rawItems.slice(0, effectiveQuestionLimit);
+    const teams = Array.from({ length: numPlayers }).map((_, idx) => {
+      const avatarId = ((Math.max(1, teamAvatars[idx] || idx + 1) - 1) % CUTE_HAMSTER_ICONS.length) + 1;
+      const hamsterMeta = CUTE_HAMSTER_ICONS[avatarId - 1] || CUTE_HAMSTER_ICONS[0];
+      return {
+        id: idx + 1,
+        name: (playerNames[idx] || (numPlayers === 1 ? 'Player 1' : `Team ${idx + 1}`)).trim(),
+        avatarId,
+        avatarImage: hamsterMeta.imageSrc,
+      };
+    });
     return {
       ...activeGame,
       sentences: payloadItems,
       customSentences: payloadItems,
-      customQuestions: activeGame.questions || [],
+      customQuestions: (activeGame.questions || []).slice(0, effectiveQuestionLimit),
       theme: selectedTheme,
       teams,
       difficulty,
       answerBonusPoints,
       wrongAnswerPenalty,
       isMuted,
+      soundVolume,
+      gameTimeMinutes,
       autoStart: true,
     };
   };
@@ -145,7 +171,7 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [activeGame, selectedTheme, numPlayers, playerNames, difficulty, answerBonusPoints, wrongAnswerPenalty, isMuted]);
+  }, [activeGame, selectedTheme, numPlayers, playerNames, teamAvatars, effectiveQuestionLimit, gameTimeMinutes, soundVolume, difficulty, answerBonusPoints, wrongAnswerPenalty, isMuted]);
 
   useEffect(() => {
     setFolders(mergeAllFolders());
@@ -198,11 +224,6 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
     setScreen('game');
   };
 
-  const totalQuestionCount =
-    activeGame.mode === 'multiple-choice'
-      ? (activeGame.questions?.length || 0)
-      : (activeGame.sentences?.length || 0);
-
   return (
     <div id="game-container" className="w-full h-full flex flex-col relative bg-slate-50 dark:bg-slate-900 overflow-hidden -mx-4 md:-mx-8 -my-4 md:-my-8">
       
@@ -253,6 +274,10 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
         <div className="absolute inset-0 z-40 overflow-y-auto">
           <MysteryBox3DLobby
             questionCount={totalQuestionCount}
+            selectedQuestionLimit={effectiveQuestionLimit}
+            onSelectQuestionLimit={(limit) => setSelectedQuestionLimit(limit)}
+            gameTimeMinutes={gameTimeMinutes}
+            onSelectGameTime={(mins) => setGameTimeMinutes(mins)}
             numPlayers={numPlayers}
             onSelectNumPlayers={(count) => setNumPlayers(count)}
             playerNames={playerNames}
@@ -263,6 +288,26 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
                 return next;
               });
             }}
+            teamAvatars={teamAvatars}
+            onChangeTeamAvatar={(teamIdx, avatarId) => {
+              setTeamAvatars((prev) => {
+                const next = [...prev];
+                const existingOwner = next.findIndex((id, i) => i < numPlayers && id === avatarId);
+                if (existingOwner !== -1 && existingOwner !== teamIdx) {
+                  next[existingOwner] = next[teamIdx];
+                }
+                next[teamIdx] = avatarId;
+                return next;
+              });
+            }}
+            onRandomizeTeamAvatars={() => {
+              const pool = Array.from({ length: 20 }, (_, i) => i + 1);
+              for (let i = pool.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [pool[i], pool[j]] = [pool[j], pool[i]];
+              }
+              setTeamAvatars(pool.slice(0, 8));
+            }}
             difficulty={difficulty}
             onSelectDifficulty={(mode) => setDifficulty(mode)}
             answerBonusPoints={answerBonusPoints}
@@ -271,6 +316,12 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
             onTogglePenalty={() => setWrongAnswerPenalty((v) => !v)}
             isMuted={isMuted}
             onToggleMute={() => setIsMuted((v) => !v)}
+            soundVolume={soundVolume}
+            onChangeSoundVolume={(vol) => {
+              setSoundVolume(vol);
+              if (vol > 0 && isMuted) setIsMuted(false);
+              if (vol === 0 && !isMuted) setIsMuted(true);
+            }}
             selectedTheme={selectedTheme}
             onSelectTheme={(themeId) => setSelectedTheme(themeId)}
             onStartGame={startGame}
@@ -282,8 +333,9 @@ export function BubbleSentencePro({ onViewChange, initialGame }: { onViewChange:
             onOpenGameSwitcher={() => setShowModeModal(true)}
             onOpenQuizEditor={() => setScreen('editor')}
             headerBannerSrc={bubbleIslandHamsterHeader}
-            headerBannerAlt="Bubble Island - Cute Goggles Hamster Blowing Bubbles"
+            headerBannerAlt="Bubble Island 3D - Explorer Hamster and Tropical Bubble Treasure Chest"
             modeHeaderTitle="BUBBLE MODE"
+            optionsSubtitle="Choose your Bubble Island 3D mode, bonus rules, and sound settings"
             startButtonText="START BUBBLE ISLAND"
           />
 
