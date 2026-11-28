@@ -17,6 +17,7 @@ import {
   Award,
   Presentation,
   CornerDownLeft,
+  Box,
 } from "lucide-react";
 
 import { useAuth } from "../contexts/AuthContext";
@@ -85,6 +86,12 @@ export function Navigation({
             icon: Shield,
             view: "admin-dashboard" as ViewState,
           },
+          {
+            id: "ai-3d-character-studio",
+            label: "AI 3D Character Studio",
+            icon: Box,
+            view: "ai-3d-character-studio" as ViewState,
+          },
         ]
       : []),
   ];
@@ -133,7 +140,8 @@ export function Navigation({
               currentView === item.view ||
               (item.id === "class-rewards" &&
                 (currentView === "class-rewards" || currentView === "class-record")) ||
-              (item.id === "admin-dashboard" && currentView === "admin-dashboard");
+              (item.id === "admin-dashboard" && currentView === "admin-dashboard") ||
+              (item.id === "ai-3d-character-studio" && currentView === "ai-3d-character-studio");
 
             return (
               <button
@@ -156,6 +164,7 @@ export function Navigation({
                       "class-rewards",
                       "class-record",
                       "admin-dashboard",
+                      "ai-3d-character-studio",
                     ];
                     if (user.isAnonymous && googleProtectedViews.includes(item.view)) {
                       if (openGoogleAuthModal) {

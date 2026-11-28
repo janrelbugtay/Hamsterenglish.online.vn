@@ -12,12 +12,13 @@ import { OptionContentMode, parseOptionContent, formatOptionContent } from "../u
 import { persistUserGameToCloudAndCache } from "../utils/platformCache";
 import {
   MysteryBox3DLobby,
-  CuteHamsterAvatar,
   CUTE_HAMSTER_ICONS,
   BoxDifficultyMode,
   ArenaThemeId,
 } from "../components/MysteryBox3DLobby";
-import sumoShowdownBannerImg from "../assets/images/sumo_showdown_3d_wide_banner_1795689361276.jpg";
+import sumoTagsBannerImg from "../assets/images/sumo_tags_big_characters_banner_1795709069467.jpg";
+import sumoNormalModeIconImg from "../assets/images/sumo_normal_mode_3d_icon_1795710725199.jpg";
+import sumoMultiplayerPhonesQrIconImg from "../assets/images/sumo_multiplayer_phones_qr_3d_icon_1795710726085.jpg";
 import {
   SumoStadiumEnvironment,
   SumoCharacter,
@@ -264,6 +265,7 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
       });
 
       if (!initialGame.editMode && hasLoadedQuestions) {
+        setShowStartBattleModal(true);
         setScreen('menu');
       } else {
         setScreen('setup');
@@ -376,7 +378,7 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
     playerNames[1] && playerNames[1].trim() ? playerNames[1].trim() : 'Team 2';
 
   const [questionMode, setQuestionMode] = useState<'single' | 'split'>('single');
-  const [showStartBattleModal, setShowStartBattleModal] = useState(false);
+  const [showStartBattleModal, setShowStartBattleModal] = useState(true);
   const questionModeRef = useRef<'single' | 'split'>('single');
   const leftQuestionsRef = useRef<any[]>([]);
   const rightQuestionsRef = useRef<any[]>([]);
@@ -980,10 +982,10 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
     return (
       <div id="game-container" className="w-full min-h-full flex-1 relative select-none flex flex-col">
         <MysteryBox3DLobby
-          headerBannerSrc={sumoShowdownBannerImg}
-          headerBannerAlt="Sumo Showdown - Sumo Hamster and Yokozuna Panda"
+          headerBannerSrc={sumoTagsBannerImg}
+          headerBannerAlt="Sumo Tags 3D"
           showModeAndTheme={false}
-          optionsSubtitle="Adjust Sumo Showdown sound volume, audio effects, and study options"
+          optionsSubtitle="Adjust Sumo Tags sound volume, audio effects, and study options"
           fixedTeamCount={2}
           numPlayers={2}
           onSelectNumPlayers={() => {}}
@@ -1042,7 +1044,7 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
           }}
           selectedTheme={selectedTheme}
           onSelectTheme={(t) => setSelectedTheme(t)}
-          onStartGame={() => setShowStartBattleModal(true)}
+          onStartGame={() => startGame(false, 'single')}
           onOpenStudy={() => {
             setStudyIndex(0);
             setStudySelectedOption(null);
@@ -1053,10 +1055,10 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
           onOpenQuizEditor={() => setScreen('setup')}
         />
 
-        {/* Sumo Battle Mode Selection Modal (Single Question vs Split Questions vs Multiplayer Royale) */}
+        {/* Initial Battle Mode Selection Modal: Normal Mode (Single Questions) vs Multiplayer QR Mode */}
         {showStartBattleModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#072647]/65 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-gradient-to-b from-[#e4f3ff] via-[#cde8ff] to-[#b5dcff] rounded-[2.4rem] p-6 sm:p-8 md:p-10 max-w-2xl w-full text-center shadow-[0_24px_50px_rgba(9,63,120,0.45),inset_0_4px_0_rgba(255,255,255,0.95)] border-[5px] border-white relative">
+            <div className="bg-gradient-to-b from-[#e4f3ff] via-[#cde8ff] to-[#b5dcff] rounded-[2.4rem] p-6 sm:p-8 md:p-10 max-w-xl w-full text-center shadow-[0_24px_50px_rgba(9,63,120,0.45),inset_0_4px_0_rgba(255,255,255,0.95)] border-[5px] border-white relative">
               <button
                 onClick={() => setShowStartBattleModal(false)}
                 className="absolute top-5 right-5 w-10 h-10 rounded-full bg-white/80 hover:bg-white text-[#0d3b66] flex items-center justify-center shadow-sm cursor-pointer transition-transform hover:scale-105"
@@ -1065,87 +1067,37 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
                 <X size={22} strokeWidth={3} />
               </button>
 
-              {/* Selected Hamster Team Avatars Preview */}
-              <div className="flex justify-center items-center gap-4 mb-3">
-                <div className="flex items-center gap-2 bg-white/85 px-3.5 py-1.5 rounded-2xl border-2 border-[#38a3f1] shadow-sm">
-                  <div className="w-8 h-8 rounded-full overflow-hidden bg-white border border-sky-200">
-                    <CuteHamsterAvatar avatarId={teamAvatars[0] || 1} className="w-full h-full" />
-                  </div>
-                  <span className="font-black text-xs sm:text-sm text-[#072b4d] uppercase">
-                    {blueDisplayName}
-                  </span>
-                </div>
-                <span className="font-black text-sm text-[#0e5894]">VS</span>
-                <div className="flex items-center gap-2 bg-white/85 px-3.5 py-1.5 rounded-2xl border-2 border-[#f43f5e] shadow-sm">
-                  <div className="w-8 h-8 rounded-full overflow-hidden bg-white border border-rose-200">
-                    <CuteHamsterAvatar avatarId={teamAvatars[1] || 2} className="w-full h-full" />
-                  </div>
-                  <span className="font-black text-xs sm:text-sm text-[#072b4d] uppercase">
-                    {redDisplayName}
-                  </span>
-                </div>
-              </div>
-
               <h2
-                className="text-2xl sm:text-3xl md:text-4xl font-black text-[#072b4d] uppercase tracking-tight mb-1.5"
+                className="text-2xl sm:text-3xl md:text-4xl font-black text-[#072b4d] uppercase tracking-tight mb-6"
                 style={{ fontFamily: "'Fredoka', 'Nunito', sans-serif" }}
               >
                 CHOOSE BATTLE MODE
               </h2>
-              <p className="text-[#0e5894] text-xs sm:text-sm font-extrabold mb-6">
-                Choose how questions will appear in this Sumo Showdown battle:
-              </p>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 text-left">
-                {/* SINGLE QUESTION MODE BUTTON */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                {/* NORMAL MODE (SINGLE QUESTIONS) */}
                 <button
-                  onClick={() => startGame(false, 'single')}
-                  className="group p-5 rounded-3xl border-[3px] border-white bg-white/90 hover:bg-white transition-all shadow-[0_6px_0_#7cb8e8,0_10px_20px_rgba(12,74,138,0.18)] hover:scale-[1.02] active:translate-y-0.5 cursor-pointer flex flex-col justify-between"
+                  onClick={() => setShowStartBattleModal(false)}
+                  className="group p-5 sm:p-6 rounded-3xl border-[3px] border-white bg-white hover:bg-white transition-all shadow-[0_6px_0_#7cb8e8,0_10px_20px_rgba(12,74,138,0.18)] hover:scale-[1.02] active:translate-y-0.5 cursor-pointer flex flex-col items-center justify-between gap-4"
                 >
-                  <div>
-                    <div className="flex items-center gap-2.5 mb-2">
-                      <span className="w-10 h-10 rounded-2xl bg-gradient-to-b from-[#ffb338] to-[#ea580c] text-white flex items-center justify-center text-xl shadow-sm">
-                        🎯
-                      </span>
-                      <span className="font-black text-base sm:text-lg text-[#072b4d] uppercase">
-                        Single Question
-                      </span>
+                  <div className="flex flex-col items-center gap-2.5">
+                    <div className="w-36 h-36 sm:w-40 sm:h-40 flex items-center justify-center overflow-hidden">
+                      <img
+                        src={sumoNormalModeIconImg}
+                        alt="Normal Mode"
+                        className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-200 select-none pointer-events-none"
+                      />
                     </div>
-                    <p className="text-xs text-slate-600 font-bold leading-relaxed">
-                      Both teams race to answer{' '}
-                      <strong className="text-[#072b4d]">1 shared question</strong> centered in the middle of the sumo arena.
-                    </p>
+                    <span className="font-black text-xl sm:text-2xl text-[#072b4d] uppercase tracking-tight">
+                      Normal Mode
+                    </span>
                   </div>
-                  <div className="mt-4 inline-flex items-center justify-center w-full py-2.5 rounded-xl bg-gradient-to-b from-[#33b6ff] via-[#1393eb] to-[#0b74c4] text-white text-xs font-black uppercase tracking-wider border-b-[3px] border-[#064a80] shadow-sm">
-                    Start Single Battle →
+                  <div className="inline-flex items-center justify-center w-full py-3 rounded-2xl bg-gradient-to-b from-[#33b6ff] via-[#1393eb] to-[#0b74c4] text-white text-sm font-black uppercase tracking-wider border-b-[4px] border-[#064a80] shadow-sm">
+                    Select →
                   </div>
                 </button>
 
-                {/* SPLIT QUESTION MODE BUTTON */}
-                <button
-                  onClick={() => startGame(false, 'split')}
-                  className="group p-5 rounded-3xl border-[3px] border-white bg-white/90 hover:bg-white transition-all shadow-[0_6px_0_#7cb8e8,0_10px_20px_rgba(12,74,138,0.18)] hover:scale-[1.02] active:translate-y-0.5 cursor-pointer flex flex-col justify-between"
-                >
-                  <div>
-                    <div className="flex items-center gap-2.5 mb-2">
-                      <span className="w-10 h-10 rounded-2xl bg-gradient-to-b from-[#38bdf8] to-[#0284c7] text-white flex items-center justify-center text-xl shadow-sm">
-                        ⚡
-                      </span>
-                      <span className="font-black text-base sm:text-lg text-[#072b4d] uppercase">
-                        Split Questions
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-600 font-bold leading-relaxed">
-                      Each team gets their own{' '}
-                      <strong className="text-[#072b4d]">independent question deck</strong> appearing on their side of the ring.
-                    </p>
-                  </div>
-                  <div className="mt-4 inline-flex items-center justify-center w-full py-2.5 rounded-xl bg-gradient-to-b from-[#ffb338] via-[#f59e0b] to-[#d97706] text-[#451a03] text-xs font-black uppercase tracking-wider border-b-[3px] border-[#92400e] shadow-sm">
-                    Start Split Battle →
-                  </div>
-                </button>
-
-                {/* MULTIPLAYER SUMO ROYALE: DOJO SHOWDOWN (QR & LINK) */}
+                {/* MULTIPLAYER QR MODE */}
                 <button
                   onClick={() => {
                     setShowStartBattleModal(false);
@@ -1153,39 +1105,25 @@ export function Sumo({ onViewChange, initialGame }: { onViewChange: (view: ViewS
                     setRoyaleInitialCode(undefined);
                     setScreen('royale');
                   }}
-                  className="sm:col-span-2 group p-5 rounded-3xl border-[3px] border-white bg-white/90 hover:bg-white transition-all shadow-[0_6px_0_#7cb8e8,0_10px_20px_rgba(12,74,138,0.18)] hover:scale-[1.01] active:translate-y-0.5 cursor-pointer flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+                  className="group p-5 sm:p-6 rounded-3xl border-[3px] border-white bg-white hover:bg-white transition-all shadow-[0_6px_0_#7cb8e8,0_10px_20px_rgba(12,74,138,0.18)] hover:scale-[1.02] active:translate-y-0.5 cursor-pointer flex flex-col items-center justify-between gap-4"
                 >
-                  <div>
-                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                      <span className="w-9 h-9 rounded-2xl bg-gradient-to-b from-[#f43f5e] to-[#be123c] text-white flex items-center justify-center text-lg shadow-sm">
-                        🏆
-                      </span>
-                      <span className="font-black text-base sm:text-lg text-[#072b4d] uppercase">
-                        Sumo Royale: Dojo Showdown
-                      </span>
-                      <span className="bg-[#f43f5e] text-white font-black text-[10px] px-2.5 py-0.5 rounded-full uppercase">
-                        Multiplayer QR &amp; Game ID
-                      </span>
+                  <div className="flex flex-col items-center gap-2.5">
+                    <div className="w-36 h-36 sm:w-40 sm:h-40 flex items-center justify-center overflow-hidden">
+                      <img
+                        src={sumoMultiplayerPhonesQrIconImg}
+                        alt="Multiplayer QR Mode with Phones"
+                        className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-200 select-none pointer-events-none"
+                      />
                     </div>
-                    <p className="text-xs text-slate-600 font-bold leading-relaxed">
-                      Students join on their own devices via{' '}
-                      <strong className="text-[#072b4d]">QR Code or Link</strong> in{' '}
-                      <strong className="text-[#072b4d]">Solo (1v1 VS)</strong> or{' '}
-                      <strong className="text-[#072b4d]">Teams</strong> mode with Starting Energy lives!
-                    </p>
+                    <span className="font-black text-xl sm:text-2xl text-[#072b4d] uppercase tracking-tight">
+                      Multiplayer QR
+                    </span>
                   </div>
-                  <div className="inline-flex items-center px-5 py-2.5 rounded-xl bg-gradient-to-b from-[#f43f5e] via-[#e11d48] to-[#be123c] text-white text-xs font-black uppercase tracking-wider border-b-[3px] border-[#881337] shrink-0 shadow-sm">
-                    Host Royale →
+                  <div className="inline-flex items-center justify-center w-full py-3 rounded-2xl bg-gradient-to-b from-[#f43f5e] via-[#e11d48] to-[#be123c] text-white text-sm font-black uppercase tracking-wider border-b-[4px] border-[#881337] shadow-sm">
+                    Host QR →
                   </div>
                 </button>
               </div>
-
-              <button
-                onClick={() => setShowStartBattleModal(false)}
-                className="text-[#0e5894] hover:text-[#072b4d] text-sm font-black uppercase tracking-wider cursor-pointer"
-              >
-                Cancel
-              </button>
             </div>
           </div>
         )}

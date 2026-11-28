@@ -293,39 +293,11 @@ export function normalizeGameQuestionsForHomework(rawQuestions: any[], gameTitle
         }
         correctAnswer = options[answerIndex] || options[0];
       } else {
-        // Fill-in-the-blank or open-ended question (e.g. Mystery Box FIB or Speaking Prompt)
-        const rawCandidate = String(
-          q.answer || q.correctAnswer || q.correct || q.back || options[0] || ''
-        ).trim();
-        const targetAns = isPlaceholderOptionText(rawCandidate) ? '' : rawCandidate;
-
-        if (targetAns) {
-          const otherAnswers = allSingleAnswers.filter(
-            (a) => a.toLowerCase() !== targetAns.toLowerCase()
-          );
-          const isTag =
-            targetAns.endsWith('?') ||
-            gameTitle.toLowerCase().includes('tag') ||
-            questionText.includes('____?');
-          const fallbackDistractors = isTag
-            ? ["isn't it?", "don't they?", "can't she?", "wasn't he?"]
-            : ['None of these', 'Not applicable', 'Another answer'];
-          const distractors = Array.from(new Set([...otherAnswers, ...fallbackDistractors]))
-            .filter((d) => d.toLowerCase() !== targetAns.toLowerCase())
-            .slice(0, 3);
-          const rawOpts = [targetAns, ...distractors];
-          const rot = idx % rawOpts.length;
-          options = [...rawOpts.slice(rot), ...rawOpts.slice(0, rot)];
-          answerIndex = options.indexOf(targetAns);
-          if (answerIndex < 0) answerIndex = 0;
-          correctAnswer = targetAns;
-        } else {
-          // Open-ended / speaking question with no fixed option list (e.g. "Do you have a pet?", "What makes you happy?")
-          options = [];
-          answerIndex = 0;
-          correctAnswer = 'Answered';
-          isOpenEnded = true;
-        }
+        // Single-answer or open-ended question: do not display the single answer as an option in Study Mode
+        options = [];
+        answerIndex = 0;
+        correctAnswer = 'Answered';
+        isOpenEnded = true;
       }
 
       return {

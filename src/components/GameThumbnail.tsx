@@ -369,6 +369,12 @@ function extractGameContent(game: any, gameType: string, info: any) {
     validSentences.length
   );
 
+  const firstQuestionNonEmptyOpts = Array.isArray(firstQuestionObj?.options)
+    ? firstQuestionObj.options.filter((o: any) => typeof o === 'string' && o.trim() !== '')
+    : [];
+  const isSingleAnswerFirstQuestion =
+    Boolean(firstQuestionObj) && firstQuestionNonEmptyOpts.length <= 1;
+
   const mode = game?.mode || (validSentences.length > 0 && extractedOptions.length === 0 ? 'word' : 'multiple-choice');
 
   return {
@@ -379,6 +385,7 @@ function extractGameContent(game: any, gameType: string, info: any) {
     firstSentenceText,
     sentenceWords,
     options,
+    isSingleAnswerFirstQuestion,
     answerIndex: Math.min(Math.max(0, answerIndex), Math.max(0, options.length - 1)),
     feudAnswers,
     rawCards,
@@ -404,6 +411,7 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
     firstSentenceText,
     sentenceWords,
     options,
+    isSingleAnswerFirstQuestion,
     answerIndex,
     feudAnswers,
     customImage,
@@ -917,20 +925,22 @@ export const GameThumbnail = React.memo(({ gameType, info = {}, game, compact = 
           <p data-quiz-question="true" className="text-[11px] font-extrabold text-slate-900 line-clamp-1 leading-tight mb-1">
             {firstQuestion}
           </p>
-          <div data-quiz-question="true" className="flex items-center gap-1 overflow-hidden">
-            {options.slice(0, 3).map((opt, idx) => (
-              <span
-                key={idx}
-                className={`text-[9px] font-bold px-1.5 py-0.5 rounded truncate ${
-                  idx === answerIndex
-                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                    : 'bg-slate-100 text-slate-700'
-                }`}
-              >
-                {opt}
-              </span>
-            ))}
-          </div>
+          {!isSingleAnswerFirstQuestion && (
+            <div data-quiz-question="true" className="flex items-center gap-1 overflow-hidden">
+              {options.slice(0, 3).map((opt, idx) => (
+                <span
+                  key={idx}
+                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded truncate ${
+                    idx === answerIndex
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                      : 'bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  {opt}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* 4 Interactive-style Mystery Boxes at Bottom */}

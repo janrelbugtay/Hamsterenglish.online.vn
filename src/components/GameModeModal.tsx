@@ -345,8 +345,35 @@ export const PLAYABLE_GAME_OPTIONS: GameOptionConfig[] = [
   },
 ];
 
+export function hasSingleAnswerQuestions(gameData: any): boolean {
+  if (!gameData || typeof gameData !== 'object') return false;
+  const rawQuestions =
+    Array.isArray(gameData.customQuestions) && gameData.customQuestions.length > 0
+      ? gameData.customQuestions
+      : Array.isArray(gameData.questions) && gameData.questions.length > 0
+      ? gameData.questions
+      : null;
+
+  if (!rawQuestions || rawQuestions.length === 0) return false;
+
+  return rawQuestions.some((q: any) => {
+    if (!q || typeof q !== 'object') return false;
+    const opts = Array.isArray(q.options)
+      ? q.options
+          .map((o: any) => (typeof o === 'string' ? o : o?.text || ''))
+          .filter((s: string) => s.trim() !== '')
+      : Array.isArray(q.answers)
+      ? q.answers
+          .map((a: any) => (typeof a === 'string' ? a : a?.text || ''))
+          .filter((s: string) => s.trim() !== '')
+      : [];
+    return opts.length <= 1;
+  });
+}
+
 export function detectOriginalGameMode(gameData: any): PlayableGameMode {
   if (!gameData) return 'mystery-box';
+  if (hasSingleAnswerQuestions(gameData)) return 'mystery-box';
 
   const candidates = [gameData.gameType, gameData.originalGameType].filter(Boolean);
   for (const rawCandidate of candidates) {
@@ -594,13 +621,20 @@ export function GameModeModal({
     };
   }, []);
 
-  const originalModeId = useMemo(() => detectOriginalGameMode(gameData), [gameData]);
+  const isSingleAnswerOnly = useMemo(() => hasSingleAnswerQuestions(gameData), [gameData]);
+  const originalModeId = useMemo(
+    () => (isSingleAnswerOnly ? 'mystery-box' : detectOriginalGameMode(gameData)),
+    [gameData, isSingleAnswerOnly]
+  );
 
   const publishedOptions = useMemo(() => {
+    if (isSingleAnswerOnly) {
+      return PLAYABLE_GAME_OPTIONS.filter((opt) => opt.id === 'mystery-box');
+    }
     return PLAYABLE_GAME_OPTIONS.filter(
       (opt) => opt.id === originalModeId || isGameModePublished(opt.id, livePublishedGames)
     );
-  }, [livePublishedGames, originalModeId]);
+  }, [livePublishedGames, originalModeId, isSingleAnswerOnly]);
 
   const normalizedQuestions = useMemo(() => {
     if (!gameData) return [];
@@ -650,7 +684,10 @@ export function GameModeModal({
           : 0;
 
       if (options.length === 0) {
-        options = ['Yes', 'No'];
+        const singleFallback = String(
+          q.answer || q.correctAnswerText || q.correctAnswer || q.backText || q.back || ''
+        ).trim();
+        options = singleFallback ? [singleFallback] : [''];
         answerIndex = 0;
       } else if (options.length === 1) {
         answerIndex = 0;
@@ -660,16 +697,21 @@ export function GameModeModal({
         answerIndex = 0;
       }
 
-      const cleanOptions = options.map((opt: string) => {
-        const parsedOpt = splitEmbeddedMediaValue(opt);
-        return parsedOpt.text || opt;
-      });
+      const cleanOptions = options
+        .map((opt: string) => {
+          const parsedOpt = splitEmbeddedMediaValue(opt);
+          return parsedOpt.text || opt;
+        })
+        .filter((s: string) => s.trim() !== '');
+
+      const primaryAnswer = cleanOptions[answerIndex] || cleanOptions[0] || '';
 
       const feudAnswers =
         Array.isArray(q.answers) && q.answers.some((a: any) => a?.text)
           ? q.answers
-          : [
-              { text: cleanOptions[answerIndex], points: 50, aliases: [cleanOptions[answerIndex].toLowerCase()] },
+          : primaryAnswer
+          ? [
+              { text: primaryAnswer, points: 50, aliases: [primaryAnswer.toLowerCase()] },
               ...cleanOptions
                 .filter((_: string, i: number) => i !== answerIndex)
                 .map((optText: string, i: number) => ({
@@ -677,7 +719,8 @@ export function GameModeModal({
                   points: Math.max(10, 30 - i * 10),
                   aliases: [optText.toLowerCase()],
                 })),
-            ];
+            ]
+          : [];
 
       const image =
         q.image ||
@@ -914,10 +957,12 @@ export function GameModeModal({
   };
 
   const handlePlayInterchangeable = (targetType: PlayableGameMode) => {
+    const effectiveTarget: PlayableGameMode = isSingleAnswerOnly ? 'mystery-box' : targetType;
     const supportsSingleAnswer =
-      targetType === 'mystery-box' ||
-      targetType === 'flashcards-match' ||
-      targetType === 'family-feud';
+      isSingleAnswerOnly ||
+      effectiveTarget === 'mystery-box' ||
+      effectiveTarget === 'flashcards-match' ||
+      effectiveTarget === 'family-feud';
     const finalQuestions: any[] = normalizedQuestions.map((q: any) => {
       if (supportsSingleAnswer) return q;
       if (Array.isArray(q.options) && q.options.length === 1) {
@@ -1013,8 +1058,8 @@ export function GameModeModal({
       className: gameData.className || gameData.classLevel || '',
       classLevel: gameData.classLevel || gameData.className || '',
       originalGameType: originalModeId,
-      gameType: targetType,
-      mode: targetType === 'bubble-sentence-pro' ? 'multiple-choice' : gameData.mode || 'word',
+      gameType: effectiveTarget,
+      mode: effectiveTarget === 'bubble-sentence-pro' ? 'multiple-choice' : gameData.mode || 'word',
       customQuestions: finalQuestions,
       questions: finalQuestions,
       customSentences: finalQuestions,
@@ -1023,7 +1068,7 @@ export function GameModeModal({
       editMode: false,
     };
 
-    onSelectMode(targetType, adaptedGame);
+    onSelectMode(effectiveTarget, adaptedGame);
     onClose();
   };
 
@@ -1167,7 +1212,9 @@ export function GameModeModal({
               {q.text}
             </h4>
 
-            {questionDisplayFormat === 'multiple-choice' && Array.isArray(q.options) && (
+            {questionDisplayFormat === 'multiple-choice' &&
+              Array.isArray(q.options) &&
+              q.options.length > 1 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                 {q.options.map((optText: string, optIdx: number) => {
                   const isCorrectOpt = optIdx === q.answerIndex;
@@ -1301,7 +1348,9 @@ export function GameModeModal({
               {activeSlideQuestion.text}
             </h2>
 
-            {questionDisplayFormat === 'multiple-choice' && (
+            {questionDisplayFormat === 'multiple-choice' &&
+              Array.isArray(activeSlideQuestion.options) &&
+              activeSlideQuestion.options.length > 1 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-3xl">
                 {activeSlideQuestion.options.map((optText: string, idx: number) => {
                   const isCorrect = idx === activeSlideQuestion.answerIndex;
@@ -1379,9 +1428,13 @@ export function GameModeModal({
             const studyAccuracy =
               studyTotalAnswered > 0 ? Math.round((studyCorrectCount / studyTotalAnswered) * 100) : 0;
             const currentStudyQ = normalizedQuestions[studyIndex];
+            const studyNonEmptyOptions = Array.isArray(currentStudyQ?.options)
+              ? currentStudyQ.options.filter((o: string) => o && o.trim() !== '')
+              : [];
+            const isCurrentSingleAnswer = studyNonEmptyOptions.length <= 1;
 
             const handleStudyOptionClick = (optIdx: number) => {
-              if (studySelectedOption !== null || !currentStudyQ) return;
+              if (studySelectedOption !== null || !currentStudyQ || isCurrentSingleAnswer) return;
               setStudySelectedOption(optIdx);
               const isCorrect = optIdx === currentStudyQ.answerIndex;
               setStudyHistory((prev) => ({
@@ -1448,20 +1501,25 @@ export function GameModeModal({
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <div className="hidden md:flex items-center gap-2 text-emerald-300 font-bold text-sm">
-                      Score:{' '}
-                      <span className="font-black text-white">
-                        {studyCorrectCount}/{studyTotalAnswered}
-                      </span>{' '}
-                      ({studyAccuracy}%)
-                    </div>
+                    {!isSingleAnswerOnly && !isCurrentSingleAnswer && (
+                      <div className="hidden md:flex items-center gap-2 text-emerald-300 font-bold text-sm">
+                        Score:{' '}
+                        <span className="font-black text-white">
+                          {studyCorrectCount}/{studyTotalAnswered}
+                        </span>{' '}
+                        ({studyAccuracy}%)
+                      </div>
+                    )}
                     <button
                       type="button"
                       onClick={() => {
                         const nextMuted = !isStudyMuted;
                         setIsStudyMuted(nextMuted);
                         if (!nextMuted && currentStudyQ) {
-                          speakQuestionAloud(currentStudyQ, studySelectedOption !== null);
+                          speakQuestionAloud(
+                            currentStudyQ,
+                            !isCurrentSingleAnswer && studySelectedOption !== null
+                          );
                         } else if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
                           window.speechSynthesis.cancel();
                         }
@@ -1502,107 +1560,111 @@ export function GameModeModal({
                         )}
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-4xl mb-8">
-                        {currentStudyQ.options.map((opt: string, i: number) => {
-                          if (!opt || opt.trim() === '') return null;
-                          const letter = ['A', 'B', 'C', 'D', 'E', 'F'][i] || i + 1;
-                          const isSelected = studySelectedOption === i;
-                          const isCorrectAnswer = i === currentStudyQ.answerIndex;
-                          const hasAnswered = studySelectedOption !== null;
+                      {!isCurrentSingleAnswer && (
+                        <>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-4xl mb-8">
+                            {currentStudyQ.options.map((opt: string, i: number) => {
+                              if (!opt || opt.trim() === '') return null;
+                              const letter = ['A', 'B', 'C', 'D', 'E', 'F'][i] || i + 1;
+                              const isSelected = studySelectedOption === i;
+                              const isCorrectAnswer = i === currentStudyQ.answerIndex;
+                              const hasAnswered = studySelectedOption !== null;
 
-                          let btnStyle =
-                            'bg-white/10 hover:bg-white/20 border-white/20 text-white hover:border-amber-400';
+                              let btnStyle =
+                                'bg-white/10 hover:bg-white/20 border-white/20 text-white hover:border-amber-400';
 
-                          if (hasAnswered) {
-                            if (isCorrectAnswer) {
-                              btnStyle =
-                                'bg-emerald-500 border-emerald-300 text-white shadow-[0_0_30px_rgba(16,185,129,0.5)] scale-[1.02] z-10';
-                            } else if (isSelected && !isCorrectAnswer) {
-                              btnStyle = 'bg-rose-500 border-rose-300 text-white';
-                            } else {
-                              btnStyle = 'bg-white/5 border-white/10 text-white/40 opacity-40';
-                            }
-                          }
+                              if (hasAnswered) {
+                                if (isCorrectAnswer) {
+                                  btnStyle =
+                                    'bg-emerald-500 border-emerald-300 text-white shadow-[0_0_30px_rgba(16,185,129,0.5)] scale-[1.02] z-10';
+                                } else if (isSelected && !isCorrectAnswer) {
+                                  btnStyle = 'bg-rose-500 border-rose-300 text-white';
+                                } else {
+                                  btnStyle = 'bg-white/5 border-white/10 text-white/40 opacity-40';
+                                }
+                              }
 
-                          return (
-                            <button
-                              key={i}
-                              type="button"
-                              onClick={() => handleStudyOptionClick(i)}
-                              disabled={hasAnswered}
-                              className={`p-5 sm:p-6 rounded-2xl text-lg sm:text-2xl font-bold border-2 transition-all duration-300 flex items-center justify-between text-left gap-4 cursor-pointer ${btnStyle}`}
-                            >
-                              <div className="flex items-center gap-3.5 flex-1">
-                                <span
-                                  className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-lg shrink-0 ${
-                                    hasAnswered && isCorrectAnswer
-                                      ? 'bg-white text-emerald-600'
-                                      : hasAnswered && isSelected && !isCorrectAnswer
-                                      ? 'bg-white text-rose-600'
-                                      : 'bg-white/15 text-white'
-                                  }`}
+                              return (
+                                <button
+                                  key={i}
+                                  type="button"
+                                  onClick={() => handleStudyOptionClick(i)}
+                                  disabled={hasAnswered}
+                                  className={`p-5 sm:p-6 rounded-2xl text-lg sm:text-2xl font-bold border-2 transition-all duration-300 flex items-center justify-between text-left gap-4 cursor-pointer ${btnStyle}`}
                                 >
-                                  {letter}
-                                </span>
-                                <span className="flex-1 break-words" data-no-translate="true">
-                                  {opt}
-                                </span>
-                              </div>
-                              {hasAnswered && isCorrectAnswer && (
-                                <span className="flex items-center gap-1 bg-white text-emerald-600 px-3 py-1 rounded-xl font-black text-xs shrink-0">
-                                  <Check size={16} strokeWidth={3} /> CORRECT
-                                </span>
-                              )}
-                              {hasAnswered && isSelected && !isCorrectAnswer && (
-                                <span className="flex items-center gap-1 bg-white text-rose-600 px-3 py-1 rounded-xl font-black text-xs shrink-0">
-                                  <X size={16} strokeWidth={3} /> WRONG
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
+                                  <div className="flex items-center gap-3.5 flex-1">
+                                    <span
+                                      className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-lg shrink-0 ${
+                                        hasAnswered && isCorrectAnswer
+                                          ? 'bg-white text-emerald-600'
+                                          : hasAnswered && isSelected && !isCorrectAnswer
+                                          ? 'bg-white text-rose-600'
+                                          : 'bg-white/15 text-white'
+                                      }`}
+                                    >
+                                      {letter}
+                                    </span>
+                                    <span className="flex-1 break-words" data-no-translate="true">
+                                      {opt}
+                                    </span>
+                                  </div>
+                                  {hasAnswered && isCorrectAnswer && (
+                                    <span className="flex items-center gap-1 bg-white text-emerald-600 px-3 py-1 rounded-xl font-black text-xs shrink-0">
+                                      <Check size={16} strokeWidth={3} /> CORRECT
+                                    </span>
+                                  )}
+                                  {hasAnswered && isSelected && !isCorrectAnswer && (
+                                    <span className="flex items-center gap-1 bg-white text-rose-600 px-3 py-1 rounded-xl font-black text-xs shrink-0">
+                                      <X size={16} strokeWidth={3} /> WRONG
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
 
-                      {studySelectedOption !== null && (
-                        <div className="w-full max-w-4xl flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20">
-                          <div>
-                            {studySelectedOption === currentStudyQ.answerIndex ? (
-                              <div className="text-emerald-300 font-black text-lg">
-                                🎉 Spot On! Correct Answer!
+                          {studySelectedOption !== null && (
+                            <div className="w-full max-w-4xl flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20">
+                              <div>
+                                {studySelectedOption === currentStudyQ.answerIndex ? (
+                                  <div className="text-emerald-300 font-black text-lg">
+                                    🎉 Spot On! Correct Answer!
+                                  </div>
+                                ) : (
+                                  <div className="text-rose-200 font-bold text-base">
+                                    Correct Answer:{' '}
+                                    <span
+                                      className="font-black text-emerald-300 underline"
+                                      data-no-translate="true"
+                                    >
+                                      {currentStudyQ.options[currentStudyQ.answerIndex]}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
-                            ) : (
-                              <div className="text-rose-200 font-bold text-base">
-                                Correct Answer:{' '}
-                                <span
-                                  className="font-black text-emerald-300 underline"
-                                  data-no-translate="true"
+                              <div className="flex items-center gap-3">
+                                {studySelectedOption !== currentStudyQ.answerIndex && (
+                                  <button
+                                    type="button"
+                                    onClick={handleStudyRetry}
+                                    className="px-5 py-2.5 bg-white/15 hover:bg-white/25 rounded-xl font-bold text-white transition-all cursor-pointer flex items-center gap-2"
+                                  >
+                                    <RefreshCw size={16} /> Retry
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={handleStudyNext}
+                                  className="px-6 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl font-black text-base shadow-lg transition-all cursor-pointer"
                                 >
-                                  {currentStudyQ.options[currentStudyQ.answerIndex]}
-                                </span>
+                                  {studyIndex < normalizedQuestions.length - 1
+                                    ? 'Next Question →'
+                                    : 'Finish Study 🏆'}
+                                </button>
                               </div>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3">
-                            {studySelectedOption !== currentStudyQ.answerIndex && (
-                              <button
-                                type="button"
-                                onClick={handleStudyRetry}
-                                className="px-5 py-2.5 bg-white/15 hover:bg-white/25 rounded-xl font-bold text-white transition-all cursor-pointer flex items-center gap-2"
-                              >
-                                <RefreshCw size={16} /> Retry
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={handleStudyNext}
-                              className="px-6 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl font-black text-base shadow-lg transition-all cursor-pointer"
-                            >
-                              {studyIndex < normalizedQuestions.length - 1
-                                ? 'Next Question →'
-                                : 'Finish Study 🏆'}
-                            </button>
-                          </div>
-                        </div>
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   ) : (
@@ -1628,7 +1690,7 @@ export function GameModeModal({
                       let dotClass = 'bg-white/15 text-white/60';
                       if (dotIdx === studyIndex) {
                         dotClass = 'bg-amber-400 text-slate-900 scale-110 font-black';
-                      } else if (historyItem) {
+                      } else if (historyItem && !isSingleAnswerOnly) {
                         dotClass = historyItem.isCorrect
                           ? 'bg-emerald-500 text-white'
                           : 'bg-rose-500 text-white';
@@ -1722,33 +1784,35 @@ export function GameModeModal({
         {activeHubView === 'questions' && (
           <div className="max-w-7xl w-full mx-auto flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Segmented Switcher: Question Only vs Multiple Choice */}
-              <div className="inline-flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200/70 dark:border-slate-700">
-                <button
-                  type="button"
-                  onClick={() => setQuestionDisplayFormat('prompt-only')}
-                  className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-extrabold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
-                    questionDisplayFormat === 'prompt-only'
-                      ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs'
-                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
-                  }`}
-                >
-                  <HelpCircle size={15} />
-                  <span>Question Only</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setQuestionDisplayFormat('multiple-choice')}
-                  className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-extrabold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
-                    questionDisplayFormat === 'multiple-choice'
-                      ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs'
-                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
-                  }`}
-                >
-                  <ListChecks size={15} />
-                  <span>Multiple Choice</span>
-                </button>
-              </div>
+              {/* Segmented Switcher: Question Only vs Multiple Choice (hidden for single-answer questions) */}
+              {!isSingleAnswerOnly && (
+                <div className="inline-flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200/70 dark:border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setQuestionDisplayFormat('prompt-only')}
+                    className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-extrabold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+                      questionDisplayFormat === 'prompt-only'
+                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                    }`}
+                  >
+                    <HelpCircle size={15} />
+                    <span>Question Only</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuestionDisplayFormat('multiple-choice')}
+                    className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-extrabold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+                      questionDisplayFormat === 'multiple-choice'
+                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                    }`}
+                  >
+                    <ListChecks size={15} />
+                    <span>Multiple Choice</span>
+                  </button>
+                </div>
+              )}
 
               {/* Global Show / Hide All Answers Toggle */}
               <button

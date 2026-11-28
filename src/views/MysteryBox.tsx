@@ -863,7 +863,7 @@ export function MysteryBox({
   const [studySingleRevealed, setStudySingleRevealed] = useState(false);
   const [studyHistory, setStudyHistory] = useState<Record<number, { selected: number; isCorrect: boolean }>>({});
 
-  // Rich Multi-Layered Web Audio SFX + Direct YouTube Soundtrack Engine
+  // Rich Multi-Layered Web Audio SFX + Direct YouTube Soundtrack Engine (In-Game & After-Game Music Only)
   // In-game BGM: https://www.youtube.com/watch?v=ldjZKkcu5_k
   // End-game sound: https://www.youtube.com/watch?v=BVQ_JHmvhCM
   const MYSTERY_BGM_VIDEO_ID = 'ldjZKkcu5_k';
@@ -871,13 +871,16 @@ export function MysteryBox({
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const hasAnnouncedGameOverRef = useRef<boolean>(false);
-  const [ytActiveTrack, setYtActiveTrack] = useState<'bgm' | 'end' | null>(null);
-  const [ytTrackNonce, setYtTrackNonce] = useState(0);
-  const ytAudioIframeRef = useRef<HTMLIFrameElement | null>(null);
-  const danceIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const ytPlayerRef = useRef<any>(null);
+  const ytReadyRef = useRef<boolean>(false);
+  const ytInitializingRef = useRef<boolean>(false);
+  const ytPlayingRef = useRef<boolean>(false);
   const ytTrackRef = useRef<'bgm' | 'end' | null>(null);
+  const ytLoadedVideoIdRef = useRef<string | null>(null);
   const ytFailedRef = useRef<boolean>(false);
-  const ytSyncTimersRef = useRef<number[]>([]);
+  const ytRetryTimersRef = useRef<number[]>([]);
+  const synthBgmTimerRef = useRef<number | null>(null);
+  const synthBgmStepRef = useRef<number>(0);
   const soundPopoverRef = useRef<HTMLDivElement | null>(null);
 
   const isMutedRef = useRef<boolean>(isMuted);
@@ -900,140 +903,516 @@ export function MysteryBox({
     return clamped;
   };
 
-  const clearYtSyncTimers = () => {
-    ytSyncTimersRef.current.forEach((id) => window.clearTimeout(id));
-    ytSyncTimersRef.current = [];
+  const clearYtRetryTimers = () => {
+    ytRetryTimersRef.current.forEach((id) => window.clearTimeout(id));
+    ytRetryTimersRef.current = [];
   };
 
-  const sendYtCommand = (func: string, args: unknown[] = []) => {
+  const postYouTubeIframeCommand = (func: string, args: any[] = []) => {
+    if (typeof document === 'undefined') return;
+    const iframeEl = document.getElementById('mystery-yt-audio-iframe') as HTMLIFrameElement | null;
+    const win = iframeEl?.contentWindow;
+    if (!win) return;
     try {
-      const win = ytAudioIframeRef.current?.contentWindow;
-      if (!win) return;
-      win.postMessage(
-        JSON.stringify({ event: 'command', func, args }),
-        '*'
-      );
+      win.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*');
+      win.postMessage(JSON.stringify({ event: 'command', func, args }), '*');
     } catch {
       // ignore cross-origin postMessage errors
     }
   };
 
-  const registerYtListening = () => {
+  // Upbeat Web Audio Game Show Theme Sequencer (automatically plays whenever YouTube embed is blocked/unavailable)
+  const stopSynthBgmLoop = () => {
+    if (synthBgmTimerRef.current !== null && typeof window !== 'undefined') {
+      window.clearInterval(synthBgmTimerRef.current);
+      synthBgmTimerRef.current = null;
+    }
+  };
+
+  const playSynthBgmStep = () => {
+    if (
+      screenRef.current !== 'game' ||
+      manualGameEndedRef.current ||
+      hasAnnouncedGameOverRef.current ||
+      isMutedRef.current ||
+      soundVolumeRef.current <= 0
+    ) {
+      return;
+    }
+    // Whenever the YouTube track is actively streaming, stay completely silent so they never overlap
+    if (ytPlayingRef.current && !ytFailedRef.current) {
+      return;
+    }
+
+    const ctx = ensureAudioContext();
+    if (!ctx || ctx.state === 'suspended') return;
+
+    const effectiveVol = getEffectiveYouTubeVolume('bgm', soundVolumeRef.current) / 100;
+    if (effectiveVol <= 0) return;
+
+    const now = ctx.currentTime;
+    const step = synthBgmStepRef.current % 32;
+    synthBgmStepRef.current = (synthBgmStepRef.current + 1) % 32;
+
+    // 1. Bouncy Game Show Walking Bassline (C major / G7 / F7 television quiz show groove)
+    const bassLine = [
+      130.81, 0, 164.81, 0, 196.0, 0, 220.0, 196.0,
+      130.81, 0, 164.81, 0, 196.0, 0, 146.83, 164.81,
+      174.61, 0, 220.0, 0, 261.63, 0, 220.0, 174.61,
+      196.0, 0, 146.83, 0, 196.0, 220.0, 246.94, 196.0,
+    ];
+    const bassFreq = bassLine[step];
+    if (bassFreq > 0) {
+      const bOsc = ctx.createOscillator();
+      const bFilter = ctx.createBiquadFilter();
+      const bGain = ctx.createGain();
+      bOsc.type = 'triangle';
+      bOsc.frequency.setValueAtTime(bassFreq, now);
+      bFilter.type = 'lowpass';
+      bFilter.frequency.setValueAtTime(520, now);
+      bGain.gain.setValueAtTime(Math.max(0.001, 0.11 * effectiveVol), now);
+      bGain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+      bOsc.connect(bFilter);
+      bFilter.connect(bGain);
+      bGain.connect(ctx.destination);
+      bOsc.start(now);
+      bOsc.stop(now + 0.135);
+    }
+
+    // 2. Crisp Brass/Marimba TV Game Show Lead Melody
+    const leadMelody = [
+      523.25, 0, 659.25, 783.99, 880.0, 783.99, 659.25, 523.25,
+      587.33, 0, 659.25, 587.33, 523.25, 0, 392.0, 0,
+      698.46, 0, 880.0, 1046.5, 880.0, 698.46, 659.25, 523.25,
+      587.33, 659.25, 698.46, 659.25, 587.33, 0, 783.99, 0,
+    ];
+    const leadFreq = leadMelody[step];
+    if (leadFreq > 0) {
+      const lOsc = ctx.createOscillator();
+      const lGain = ctx.createGain();
+      lOsc.type = 'sine';
+      lOsc.frequency.setValueAtTime(leadFreq, now);
+      lGain.gain.setValueAtTime(0.001, now);
+      lGain.gain.linearRampToValueAtTime(Math.max(0.001, 0.095 * effectiveVol), now + 0.012);
+      lGain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+      lOsc.connect(lGain);
+      lGain.connect(ctx.destination);
+      lOsc.start(now);
+      lOsc.stop(now + 0.135);
+
+      // Harmonic overtone sparkle
+      const hOsc = ctx.createOscillator();
+      const hGain = ctx.createGain();
+      hOsc.type = 'triangle';
+      hOsc.frequency.setValueAtTime(leadFreq * 2, now);
+      hGain.gain.setValueAtTime(Math.max(0.001, 0.032 * effectiveVol), now);
+      hGain.gain.exponentialRampToValueAtTime(0.0008, now + 0.09);
+      hOsc.connect(hGain);
+      hGain.connect(ctx.destination);
+      hOsc.start(now);
+      hOsc.stop(now + 0.095);
+    }
+
+    // 3. Light Game-Show Offbeat Chime Chord Pulse
+    if (step % 4 === 2) {
+      const chordFreqs = step < 16 ? [523.25, 659.25] : [587.33, 783.99];
+      chordFreqs.forEach((cf) => {
+        const cOsc = ctx.createOscillator();
+        const cGain = ctx.createGain();
+        cOsc.type = 'sine';
+        cOsc.frequency.setValueAtTime(cf, now);
+        cGain.gain.setValueAtTime(Math.max(0.001, 0.035 * effectiveVol), now);
+        cGain.gain.exponentialRampToValueAtTime(0.0008, now + 0.08);
+        cOsc.connect(cGain);
+        cGain.connect(ctx.destination);
+        cOsc.start(now);
+        cOsc.stop(now + 0.085);
+      });
+    }
+  };
+
+  const startSynthBgmLoop = (resetStep = false) => {
+    if (typeof window === 'undefined') return;
+    if (resetStep) synthBgmStepRef.current = 0;
+    if (synthBgmTimerRef.current !== null) return;
+    ensureAudioContext();
+    synthBgmTimerRef.current = window.setInterval(() => {
+      playSynthBgmStep();
+    }, 145);
+  };
+
+  // Classic Super Mario Game Over / Finale Jingle fallback for BVQ_JHmvhCM
+  const playSynthEndGameTheme = () => {
+    const volScale = Math.max(0, Math.min(1, soundVolumeRef.current / 100));
+    if (isMutedRef.current || volScale <= 0) return;
+    const ctx = ensureAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    // Classic Mario Game Over melody notes: C5, G4, E4, A4, B4, A4, Ab4, Bb4, Ab4, E4, D4, G4
+    const notes: Array<{ f: number; b: number; t: number; d: number }> = [
+      { f: 523.25, b: 261.63, t: 0.0, d: 0.16 },
+      { f: 392.0, b: 196.0, t: 0.24, d: 0.16 },
+      { f: 329.63, b: 164.81, t: 0.48, d: 0.22 },
+      { f: 440.0, b: 220.0, t: 0.74, d: 0.20 },
+      { f: 493.88, b: 246.94, t: 0.96, d: 0.20 },
+      { f: 440.0, b: 220.0, t: 1.18, d: 0.20 },
+      { f: 415.3, b: 207.65, t: 1.40, d: 0.22 },
+      { f: 466.16, b: 233.08, t: 1.64, d: 0.22 },
+      { f: 415.3, b: 207.65, t: 1.88, d: 0.22 },
+      { f: 392.0, b: 196.0, t: 2.12, d: 0.15 },
+      { f: 349.23, b: 174.61, t: 2.28, d: 0.15 },
+      { f: 392.0, b: 196.0, t: 2.44, d: 0.65 },
+    ];
+
+    notes.forEach(({ f, b, t, d }) => {
+      const lead = ctx.createOscillator();
+      const leadGain = ctx.createGain();
+      lead.type = 'square';
+      lead.frequency.setValueAtTime(f, now + t);
+      leadGain.gain.setValueAtTime(0.001, now + t);
+      leadGain.gain.linearRampToValueAtTime(Math.max(0.001, 0.16 * volScale), now + t + 0.015);
+      leadGain.gain.exponentialRampToValueAtTime(0.001, now + t + d);
+      lead.connect(leadGain);
+      leadGain.connect(ctx.destination);
+      lead.start(now + t);
+      lead.stop(now + t + d + 0.01);
+
+      const bass = ctx.createOscillator();
+      const bassGain = ctx.createGain();
+      bass.type = 'triangle';
+      bass.frequency.setValueAtTime(b, now + t);
+      bassGain.gain.setValueAtTime(0.001, now + t);
+      bassGain.gain.linearRampToValueAtTime(Math.max(0.001, 0.14 * volScale), now + t + 0.015);
+      bassGain.gain.exponentialRampToValueAtTime(0.001, now + t + d);
+      bass.connect(bassGain);
+      bassGain.connect(ctx.destination);
+      bass.start(now + t);
+      bass.stop(now + t + d + 0.01);
+    });
+  };
+
+  const pauseMysteryYouTube = () => {
+    clearYtRetryTimers();
+    ytPlayingRef.current = false;
+    stopSynthBgmLoop();
     try {
-      const win = ytAudioIframeRef.current?.contentWindow;
-      if (!win) return;
-      win.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*');
+      if (ytReadyRef.current && ytPlayerRef.current && typeof ytPlayerRef.current.pauseVideo === 'function') {
+        ytPlayerRef.current.pauseVideo();
+      }
+      postYouTubeIframeCommand('pauseVideo');
     } catch {
       // ignore
     }
   };
 
-  const pauseMysteryYouTube = () => {
-    clearYtSyncTimers();
-    sendYtCommand('pauseVideo');
-  };
-
   const syncMysteryYouTubeVolume = (nextVol: number, forceResume = false) => {
-    if (isMutedRef.current || nextVol <= 0) {
-      sendYtCommand('mute');
-      sendYtCommand('pauseVideo');
-      return;
-    }
-    const targetVol = getEffectiveYouTubeVolume(ytTrackRef.current, nextVol);
-    sendYtCommand('unMute');
-    sendYtCommand('setVolume', [targetVol]);
-    if (forceResume && screenRef.current === 'game' && ytTrackRef.current) {
-      sendYtCommand('playVideo');
+    try {
+      if (isMutedRef.current || nextVol <= 0) {
+        pauseMysteryYouTube();
+        return;
+      }
+      if (
+        screenRef.current === 'game' &&
+        !manualGameEndedRef.current &&
+        !hasAnnouncedGameOverRef.current
+      ) {
+        startSynthBgmLoop(false);
+      }
+      const targetVol = getEffectiveYouTubeVolume(ytTrackRef.current, nextVol);
+      postYouTubeIframeCommand('unMute');
+      postYouTubeIframeCommand('setVolume', [targetVol]);
+
+      const player = ytPlayerRef.current;
+      if (!ytReadyRef.current || !player) return;
+      if (typeof player.unMute === 'function') player.unMute();
+      if (typeof player.setVolume === 'function') player.setVolume(targetVol);
+      if (forceResume && screenRef.current === 'game' && ytTrackRef.current && typeof player.playVideo === 'function') {
+        player.playVideo();
+        postYouTubeIframeCommand('playVideo');
+      }
+    } catch {
+      // ignore
     }
   };
 
-  const handleYtAudioIframeLoad = () => {
-    clearYtSyncTimers();
-    const pushSync = () => {
-      if (screenRef.current !== 'game' || isMutedRef.current || soundVolumeRef.current <= 0) return;
-      registerYtListening();
-      syncMysteryYouTubeVolume(soundVolumeRef.current, true);
+  const ensureMysteryYouTubePlayer = () => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (ytPlayerRef.current || ytInitializingRef.current) return;
+    ytInitializingRef.current = true;
+
+    const mountPlayer = () => {
+      const win = window as any;
+      if (!win.YT || !win.YT.Player) {
+        ytInitializingRef.current = false;
+        return;
+      }
+
+      const initialVideoId =
+        ytTrackRef.current === 'end' ? MYSTERY_END_VIDEO_ID : MYSTERY_BGM_VIDEO_ID;
+      ytLoadedVideoIdRef.current = initialVideoId;
+
+      let hostEl = document.getElementById('mystery-yt-audio-host');
+      if (!hostEl) {
+        hostEl = document.createElement('div');
+        hostEl.id = 'mystery-yt-audio-host';
+        hostEl.setAttribute('aria-hidden', 'true');
+        hostEl.style.position = 'fixed';
+        hostEl.style.width = '320px';
+        hostEl.style.height = '240px';
+        hostEl.style.bottom = '0px';
+        hostEl.style.right = '0px';
+        hostEl.style.opacity = '0.002';
+        hostEl.style.pointerEvents = 'none';
+        hostEl.style.zIndex = '10';
+        const iframeEl = document.createElement('iframe');
+        iframeEl.id = 'mystery-yt-audio-iframe';
+        iframeEl.width = '320';
+        iframeEl.height = '240';
+        iframeEl.setAttribute(
+          'allow',
+          'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share'
+        );
+        iframeEl.setAttribute('referrerPolicy', 'strict-origin-when-cross-origin');
+        iframeEl.style.border = '0';
+        const originParam = window.location.origin
+          ? `&origin=${encodeURIComponent(window.location.origin)}`
+          : '';
+        iframeEl.src = `https://www.youtube.com/embed/${initialVideoId}?enablejsapi=1&autoplay=0&controls=0&disablekb=1&fs=0&modestbranding=1&playsinline=1&rel=0${originParam}`;
+        hostEl.appendChild(iframeEl);
+        document.body.appendChild(hostEl);
+      }
+
+      try {
+        ytPlayerRef.current = new win.YT.Player('mystery-yt-audio-iframe', {
+          events: {
+            onReady: (ev: any) => {
+              ytReadyRef.current = true;
+              ytInitializingRef.current = false;
+              try {
+                const desiredTrack = ytTrackRef.current;
+                const shouldPlay =
+                  screenRef.current === 'game' &&
+                  desiredTrack !== null &&
+                  !isMutedRef.current &&
+                  soundVolumeRef.current > 0;
+                const targetVideoId =
+                  desiredTrack === 'end' ? MYSTERY_END_VIDEO_ID : MYSTERY_BGM_VIDEO_ID;
+                const targetVol = getEffectiveYouTubeVolume(desiredTrack, soundVolumeRef.current);
+                ev.target.setVolume(targetVol);
+                if (shouldPlay) {
+                  ev.target.unMute();
+                  if (ytLoadedVideoIdRef.current !== targetVideoId) {
+                    ytLoadedVideoIdRef.current = targetVideoId;
+                    ev.target.loadVideoById({ videoId: targetVideoId, startSeconds: 0 });
+                  } else {
+                    ev.target.playVideo();
+                  }
+                } else {
+                  ev.target.pauseVideo();
+                }
+              } catch {
+                // ignore
+              }
+            },
+            onStateChange: (ev: any) => {
+              // YT.PlayerState.PLAYING === 1, ENDED === 0
+              if (ev.data === 1) {
+                ytPlayingRef.current = true;
+                ytFailedRef.current = false;
+                if (screenRef.current !== 'game' || isMutedRef.current || soundVolumeRef.current <= 0) {
+                  try {
+                    ev.target.pauseVideo();
+                  } catch {
+                    // ignore
+                  }
+                  ytPlayingRef.current = false;
+                }
+              } else if (ev.data === 0) {
+                ytPlayingRef.current = false;
+                // Seamlessly loop in-game BGM when it ends
+                if (
+                  ytTrackRef.current === 'bgm' &&
+                  screenRef.current === 'game' &&
+                  !manualGameEndedRef.current &&
+                  !hasAnnouncedGameOverRef.current &&
+                  !isMutedRef.current &&
+                  soundVolumeRef.current > 0
+                ) {
+                  try {
+                    ev.target.seekTo(0, true);
+                    ev.target.playVideo();
+                  } catch {
+                    // ignore
+                  }
+                }
+              } else if (ev.data === 2 || ev.data === -1) {
+                ytPlayingRef.current = false;
+              }
+            },
+            onError: () => {
+              ytFailedRef.current = true;
+              ytPlayingRef.current = false;
+              ytInitializingRef.current = false;
+              if (ytTrackRef.current === 'end') {
+                stopSynthBgmLoop();
+                playSynthEndGameTheme();
+              } else if (
+                ytTrackRef.current === 'bgm' &&
+                screenRef.current === 'game' &&
+                !isMutedRef.current &&
+                soundVolumeRef.current > 0
+              ) {
+                startSynthBgmLoop(false);
+              }
+            },
+          },
+        });
+      } catch {
+        ytInitializingRef.current = false;
+        ytFailedRef.current = true;
+        ytPlayingRef.current = false;
+      }
     };
-    pushSync();
-    ytSyncTimersRef.current = [
-      window.setTimeout(pushSync, 350),
-      window.setTimeout(pushSync, 900),
-      window.setTimeout(pushSync, 1650),
-    ];
+
+    const win = window as any;
+    if (win.YT && win.YT.Player) {
+      mountPlayer();
+    } else {
+      const existingScript = document.querySelector('script[src*="youtube.com/iframe_api"]');
+      const prevCallback = win.onYouTubeIframeAPIReady;
+      win.onYouTubeIframeAPIReady = () => {
+        if (typeof prevCallback === 'function') {
+          try {
+            prevCallback();
+          } catch {
+            // ignore
+          }
+        }
+        mountPlayer();
+      };
+      if (!existingScript) {
+        const tag = document.createElement('script');
+        tag.src = 'https://www.youtube.com/iframe_api';
+        tag.async = true;
+        document.head.appendChild(tag);
+      } else {
+        let attempts = 0;
+        const poll = setInterval(() => {
+          attempts += 1;
+          if (win.YT && win.YT.Player) {
+            clearInterval(poll);
+            mountPlayer();
+          } else if (attempts > 40) {
+            clearInterval(poll);
+            ytInitializingRef.current = false;
+          }
+        }, 150);
+      }
+    }
   };
 
   const playMysteryYouTubeTrack = (track: 'bgm' | 'end', forceRestart = false) => {
-    const trackChanged = ytTrackRef.current !== track;
     ytTrackRef.current = track;
     ytFailedRef.current = false;
-    setYtActiveTrack(track);
+    clearYtRetryTimers();
+    const videoId = track === 'end' ? MYSTERY_END_VIDEO_ID : MYSTERY_BGM_VIDEO_ID;
 
     if (isMutedRef.current || soundVolumeRef.current <= 0) {
       pauseMysteryYouTube();
       return;
     }
 
-    if (forceRestart || trackChanged) {
-      setYtTrackNonce((n) => n + 1);
+    ensureAudioContext();
+    if (track === 'bgm') {
+      startSynthBgmLoop(forceRestart);
     } else {
-      syncMysteryYouTubeVolume(soundVolumeRef.current, true);
+      stopSynthBgmLoop();
     }
-  };
 
-  // Listen for YouTube embed postMessage readiness / error events for immediate volume & fallback sync
-  useEffect(() => {
-    const handleYouTubeMessage = (event: MessageEvent) => {
-      if (typeof event.origin !== 'string' || !event.origin.includes('youtube.com')) return;
-      if (event.source !== ytAudioIframeRef.current?.contentWindow) return;
+    if (!ytPlayerRef.current) {
+      ensureMysteryYouTubePlayer();
+    }
+
+    const targetVol = getEffectiveYouTubeVolume(track, soundVolumeRef.current);
+
+    const triggerPlayback = (isInitial: boolean) => {
+      if (screenRef.current !== 'game' || ytTrackRef.current !== track) return;
+      if (isMutedRef.current || soundVolumeRef.current <= 0) return;
       try {
-        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        if (!data || typeof data !== 'object') return;
-        if (data.event === 'onReady' || data.event === 'infoDelivery') {
-          if (screenRef.current === 'game' && !isMutedRef.current && soundVolumeRef.current > 0) {
-            const targetVol = getEffectiveYouTubeVolume(ytTrackRef.current, soundVolumeRef.current);
-            sendYtCommand('unMute');
-            sendYtCommand('setVolume', [targetVol]);
-          }
-        } else if (data.event === 'onError') {
-          ytFailedRef.current = true;
-          if (ytTrackRef.current === 'end') {
-            playSound('jackpot');
-            setTimeout(() => playSound('win'), 360);
+        const player = ytPlayerRef.current;
+        if (ytReadyRef.current && player) {
+          if (typeof player.unMute === 'function') player.unMute();
+          if (typeof player.setVolume === 'function') player.setVolume(targetVol);
+          if (ytLoadedVideoIdRef.current !== videoId) {
+            ytLoadedVideoIdRef.current = videoId;
+            ytPlayingRef.current = false;
+            if (typeof player.loadVideoById === 'function') {
+              player.loadVideoById({ videoId, startSeconds: 0 });
+            }
+          } else {
+            if (isInitial && forceRestart && typeof player.seekTo === 'function') {
+              player.seekTo(0, true);
+            }
+            if (typeof player.playVideo === 'function') {
+              player.playVideo();
+            }
           }
         }
+        postYouTubeIframeCommand('unMute');
+        postYouTubeIframeCommand('setVolume', [targetVol]);
+        postYouTubeIframeCommand('playVideo');
       } catch {
-        // ignore non-JSON YouTube messages
+        ytFailedRef.current = true;
+        ytPlayingRef.current = false;
       }
     };
-    window.addEventListener('message', handleYouTubeMessage);
-    return () => {
-      window.removeEventListener('message', handleYouTubeMessage);
-      clearYtSyncTimers();
-    };
-  }, []);
 
-  const triggerDanceIframePlay = () => {
-    try {
-      const win = danceIframeRef.current?.contentWindow;
-      if (!win) return;
-      win.postMessage(JSON.stringify({ event: 'command', func: 'mute', args: [] }), '*');
-      win.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*');
-    } catch {
-      // ignore
+    triggerPlayback(true);
+
+    // Retry postMessage handshake and verify end-game fallback if YouTube embed is blocked
+    const retryDelays = [160, 450, 950];
+    ytRetryTimersRef.current = retryDelays.map((delay) =>
+      window.setTimeout(() => {
+        if (!ytPlayingRef.current && !ytFailedRef.current) {
+          triggerPlayback(false);
+        }
+      }, delay)
+    );
+
+    if (track === 'end') {
+      const endFallbackTimer = window.setTimeout(() => {
+        if (ytTrackRef.current === 'end' && !ytPlayingRef.current) {
+          playSynthEndGameTheme();
+        }
+      }, 500);
+      ytRetryTimersRef.current.push(endFallbackTimer);
     }
   };
 
-  // Ensure pre-warmed dancing hamster video is actively playing the instant Reveal opens
+  // Pre-warm hidden YouTube audio player on mount & clean up on unmount
   useEffect(() => {
-    if (screen !== 'game' || activeBoxNum === null || modalStep !== 'reveal') return;
-    triggerDanceIframePlay();
-    const t1 = window.setTimeout(triggerDanceIframePlay, 250);
-    const t2 = window.setTimeout(triggerDanceIframePlay, 750);
+    ensureMysteryYouTubePlayer();
     return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
+      clearYtRetryTimers();
+      stopSynthBgmLoop();
+      try {
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
+          ytPlayerRef.current.destroy();
+        }
+      } catch {
+        // ignore
+      }
+      ytPlayerRef.current = null;
+      ytReadyRef.current = false;
+      ytInitializingRef.current = false;
+      ytPlayingRef.current = false;
+      const hostEl = document.getElementById('mystery-yt-audio-host');
+      if (hostEl && hostEl.parentNode) {
+        hostEl.parentNode.removeChild(hostEl);
+      }
     };
-  }, [screen, activeBoxNum, modalStep]);
+  }, []);
 
   // Close top-bar quick volume popover on outside click
   useEffect(() => {
@@ -1051,7 +1430,6 @@ export function MysteryBox({
   useEffect(() => {
     if (screen !== 'game') {
       ytTrackRef.current = null;
-      setYtActiveTrack(null);
       pauseMysteryYouTube();
       return;
     }
@@ -1061,7 +1439,8 @@ export function MysteryBox({
       return;
     }
 
-    if (manualGameEnded) {
+    if (manualGameEnded || hasAnnouncedGameOverRef.current) {
+      stopSynthBgmLoop();
       if (ytTrackRef.current === 'end') {
         syncMysteryYouTubeVolume(soundVolume, false);
       }
@@ -1071,6 +1450,7 @@ export function MysteryBox({
     if (ytTrackRef.current !== 'bgm') {
       playMysteryYouTubeTrack('bgm', false);
     } else {
+      startSynthBgmLoop(false);
       syncMysteryYouTubeVolume(soundVolume, false);
     }
   }, [screen, isMuted, soundVolume, manualGameEnded, activeBoxNum]);
@@ -1091,7 +1471,8 @@ export function MysteryBox({
       }
       ensureAudioContext();
       if (screenRef.current === 'game') {
-        const desiredTrack = ytTrackRef.current || (manualGameEndedRef.current ? 'end' : 'bgm');
+        const isEnded = manualGameEndedRef.current || hasAnnouncedGameOverRef.current;
+        const desiredTrack = ytTrackRef.current || (isEnded ? 'end' : 'bgm');
         if (wasMuted || ytTrackRef.current !== desiredTrack) {
           playMysteryYouTubeTrack(desiredTrack, wasMuted);
         } else {
@@ -1115,7 +1496,8 @@ export function MysteryBox({
       }
       ensureAudioContext();
       if (screenRef.current === 'game') {
-        const desiredTrack = ytTrackRef.current || (manualGameEndedRef.current ? 'end' : 'bgm');
+        const isEnded = manualGameEndedRef.current || hasAnnouncedGameOverRef.current;
+        const desiredTrack = ytTrackRef.current || (isEnded ? 'end' : 'bgm');
         playMysteryYouTubeTrack(desiredTrack, true);
       }
     }
@@ -2350,9 +2732,13 @@ export function MysteryBox({
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="hidden md:flex items-center gap-2 text-emerald-300 font-bold text-sm">
-                Score: <span className="font-black text-white">{studyCorrectCount}/{studyTotalAnswered}</span> ({studyAccuracy}%)
-              </div>
+              {!activeQuiz.questions.some(
+                (q) => (q?.options || []).filter((o) => o && o.trim() !== '').length <= 1
+              ) && (
+                <div className="hidden md:flex items-center gap-2 text-emerald-300 font-bold text-sm">
+                  Score: <span className="font-black text-white">{studyCorrectCount}/{studyTotalAnswered}</span> ({studyAccuracy}%)
+                </div>
+              )}
               <button 
                 onClick={() => setIsMuted(!isMuted)} 
                 className="p-2.5 bg-white/15 hover:bg-white/25 text-white rounded-xl transition-colors cursor-pointer"
@@ -2400,67 +2786,11 @@ export function MysteryBox({
                   const studyNonEmptyIndices = (studyQ?.options || [])
                     .map((o, idx) => (o && o.trim() !== '' ? idx : -1))
                     .filter((idx) => idx !== -1);
-                  const isSingleStudyQ = studyNonEmptyIndices.length === 1;
-                  const studyEffectiveAnswerIdx = isSingleStudyQ ? studyNonEmptyIndices[0] : (studyQ?.answerIndex ?? 0);
-                  const singleStudyRaw = isSingleStudyQ ? (studyQ?.options?.[studyEffectiveAnswerIdx] || '') : '';
-                  const singleStudyParsed = parseOptionContent(singleStudyRaw);
+                  const isSingleStudyQ = studyNonEmptyIndices.length <= 1;
+                  const studyEffectiveAnswerIdx = isSingleStudyQ ? (studyNonEmptyIndices[0] ?? 0) : (studyQ?.answerIndex ?? 0);
 
                   if (isSingleStudyQ) {
-                    const hasJudged = studySelectedOption !== null;
-                    return (
-                      <div className="w-full max-w-3xl mx-auto flex flex-col items-center gap-6 mb-8">
-                        {!studySingleRevealed && !hasJudged ? (
-                          <button
-                            onClick={() => {
-                              playSound('select');
-                              playSound('suspense');
-                              setStudySingleRevealed(true);
-                            }}
-                            className="px-10 py-5 rounded-3xl bg-gradient-to-b from-amber-300 via-amber-400 to-orange-500 hover:brightness-110 active:translate-y-0.5 text-slate-950 font-black text-2xl sm:text-3xl shadow-[0_8px_0_#b45309,0_16px_35px_rgba(245,158,11,0.4)] border-4 border-amber-200 flex items-center gap-3 cursor-pointer transition-all"
-                          >
-                            <Eye className="w-7 h-7 stroke-[2.8]" />
-                            Show Answer
-                          </button>
-                        ) : (
-                          <>
-                            <div className="w-full p-6 sm:p-8 rounded-3xl bg-emerald-500 border-4 border-emerald-300 text-white shadow-[0_15px_45px_rgba(16,185,129,0.45)] flex flex-col items-center text-center gap-3 animate-pop-in">
-                              <span className="px-4 py-1 rounded-full bg-white text-emerald-700 font-black text-xs sm:text-sm uppercase tracking-widest shadow">
-                                Answer
-                              </span>
-                              {singleStudyParsed.imageUrl && (
-                                <img
-                                  src={singleStudyParsed.imageUrl}
-                                  alt={singleStudyParsed.text || 'Answer'}
-                                  className="max-h-44 rounded-2xl object-contain bg-white p-2 shadow"
-                                />
-                              )}
-                              {singleStudyParsed.text && (
-                                <p className="text-2xl sm:text-4xl font-black leading-snug break-words">
-                                  {singleStudyParsed.text}
-                                </p>
-                              )}
-                            </div>
-
-                            {!hasJudged && (
-                              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full animate-pop-in">
-                                <button
-                                  onClick={() => handleStudySingleJudge(true)}
-                                  className="w-full sm:w-auto min-w-[210px] px-8 py-4 rounded-2xl bg-gradient-to-b from-emerald-400 to-emerald-600 hover:brightness-110 text-white font-black text-xl shadow-[0_6px_0_#047857] border-2 border-emerald-200 flex items-center justify-center gap-2.5 cursor-pointer transition-all"
-                                >
-                                  <Check className="w-6 h-6 stroke-[3]" /> Correct
-                                </button>
-                                <button
-                                  onClick={() => handleStudySingleJudge(false)}
-                                  className="w-full sm:w-auto min-w-[210px] px-8 py-4 rounded-2xl bg-gradient-to-b from-rose-500 to-rose-700 hover:brightness-110 text-white font-black text-xl shadow-[0_6px_0_#9f1239] border-2 border-rose-300 flex items-center justify-center gap-2.5 cursor-pointer transition-all"
-                                >
-                                  <X className="w-6 h-6 stroke-[3]" /> Incorrect
-                                </button>
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    );
+                    return null;
                   }
 
                   return (
@@ -2525,7 +2855,8 @@ export function MysteryBox({
                   const studyNonEmpty = (studyQ?.options || [])
                     .map((o, idx) => (o && o.trim() !== '' ? idx : -1))
                     .filter((idx) => idx !== -1);
-                  const effAnsIdx = studyNonEmpty.length === 1 ? studyNonEmpty[0] : (studyQ?.answerIndex ?? 0);
+                  if (studyNonEmpty.length <= 1) return null;
+                  const effAnsIdx = studyQ?.answerIndex ?? 0;
                   const wasCorrect = studySelectedOption === effAnsIdx;
                   return (
                     <div className="w-full max-w-4xl flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 animate-pop-in">
@@ -2632,10 +2963,6 @@ export function MysteryBox({
             ? 'text-xl sm:text-3xl md:text-4xl lg:text-[44px]'
             : 'text-2xl sm:text-4xl md:text-[46px] lg:text-[52px]';
 
-        const ytOrigin =
-          typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : '';
-        const danceVideoId = 'dQtvgrl5lx8';
-        const danceEmbedUrl = `https://www.youtube.com/embed/${danceVideoId}?autoplay=1&mute=1&loop=1&playlist=${danceVideoId}&enablejsapi=1&controls=0&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3&disablekb=1&origin=${ytOrigin}`;
         const isWinReveal =
           modalStep === 'reveal' &&
           Boolean(currentOutcome) &&
@@ -2643,72 +2970,8 @@ export function MysteryBox({
           currentOutcome.category !== 'trap' &&
           (outcomeBeforeAfter?.delta ?? 0) >= 0;
 
-        const shouldMountYtAudio = ytActiveTrack !== null && !isMuted && soundVolume > 0;
-        const ytAudioVideoId =
-          ytActiveTrack === 'end' ? MYSTERY_END_VIDEO_ID : MYSTERY_BGM_VIDEO_ID;
-        const ytAudioEmbedUrl =
-          ytActiveTrack === 'end'
-            ? `https://www.youtube.com/embed/${ytAudioVideoId}?autoplay=1&mute=0&enablejsapi=1&controls=0&playsinline=1&rel=0&origin=${ytOrigin}`
-            : `https://www.youtube.com/embed/${ytAudioVideoId}?autoplay=1&mute=0&loop=1&playlist=${ytAudioVideoId}&enablejsapi=1&controls=0&playsinline=1&rel=0&origin=${ytOrigin}`;
-
         return (
           <div className={`h-screen max-h-screen w-full relative overflow-hidden flex flex-col justify-between select-none ${celebration === 'lose' ? 'animate-shake' : ''}`}>
-            {/* In-viewport hidden 240x135 YouTube Soundtrack Player (stays inside viewport so Chrome never throttles playback) */}
-            {shouldMountYtAudio && (
-              <div
-                className="fixed bottom-0 left-0 w-[240px] h-[135px] opacity-[0.005] pointer-events-none -z-10 overflow-hidden"
-                aria-hidden="true"
-              >
-                <iframe
-                  key={`${ytActiveTrack}-${ytTrackNonce}`}
-                  ref={ytAudioIframeRef}
-                  src={ytAudioEmbedUrl}
-                  title={ytActiveTrack === 'end' ? 'Mystery Box End Game Sound' : 'Mystery Box In-Game Music'}
-                  width={240}
-                  height={135}
-                  className="w-[240px] h-[135px] border-0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  referrerPolicy="strict-origin-when-cross-origin"
-                  onLoad={handleYtAudioIframeLoad}
-                />
-              </div>
-            )}
-
-            {/* sRGB SVG Chroma-Key Filter: removes bright green-screen RGB(21,255,11) cleanly to full transparency */}
-            <svg
-              className="fixed w-0 h-0 pointer-events-none overflow-hidden"
-              aria-hidden="true"
-              focusable="false"
-            >
-              <defs>
-                <filter
-                  id="mystery-chroma-key-green"
-                  colorInterpolationFilters="sRGB"
-                  x="-10%"
-                  y="-10%"
-                  width="120%"
-                  height="120%"
-                >
-                  <feColorMatrix
-                    in="SourceGraphic"
-                    type="matrix"
-                    values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  3.85 -7.69 3.85 2.15 0"
-                    result="keyed"
-                  />
-                  <feMorphology
-                    in="keyed"
-                    operator="erode"
-                    radius="0.85"
-                    result="tightMatte"
-                  />
-                  <feComposite
-                    in="SourceGraphic"
-                    in2="tightMatte"
-                    operator="in"
-                  />
-                </filter>
-              </defs>
-            </svg>
 
             {/* Full-Screen 16:9 3D Magical Treasure Cave Environment Backdrop */}
             <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-[#18112c]">
@@ -3332,18 +3595,18 @@ export function MysteryBox({
                                   </p>
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 w-full max-w-2xl">
                                     <button
-                                      onClick={() => handleManualJudge(true)}
-                                      className="py-5 sm:py-6 px-8 rounded-3xl bg-gradient-to-b from-emerald-400 via-emerald-500 to-emerald-600 hover:brightness-110 active:translate-y-1 text-white font-black text-2xl sm:text-3xl border-4 border-emerald-200 shadow-[0_8px_0_#047857,0_16px_35px_rgba(16,185,129,0.45)] flex items-center justify-center gap-3 cursor-pointer transition-all hover:scale-[1.02]"
-                                    >
-                                      <Check className="w-8 h-8 stroke-[3.5]" />
-                                      <span>Correct</span>
-                                    </button>
-                                    <button
                                       onClick={() => handleManualJudge(false)}
                                       className="py-5 sm:py-6 px-8 rounded-3xl bg-gradient-to-b from-rose-500 via-rose-600 to-red-700 hover:brightness-110 active:translate-y-1 text-white font-black text-2xl sm:text-3xl border-4 border-rose-300 shadow-[0_8px_0_#9f1239,0_16px_35px_rgba(244,63,94,0.45)] flex items-center justify-center gap-3 cursor-pointer transition-all hover:scale-[1.02]"
                                     >
                                       <X className="w-8 h-8 stroke-[3.5]" />
                                       <span>Incorrect</span>
+                                    </button>
+                                    <button
+                                      onClick={() => handleManualJudge(true)}
+                                      className="py-5 sm:py-6 px-8 rounded-3xl bg-gradient-to-b from-emerald-400 via-emerald-500 to-emerald-600 hover:brightness-110 active:translate-y-1 text-white font-black text-2xl sm:text-3xl border-4 border-emerald-200 shadow-[0_8px_0_#047857,0_16px_35px_rgba(16,185,129,0.45)] flex items-center justify-center gap-3 cursor-pointer transition-all hover:scale-[1.02]"
+                                    >
+                                      <Check className="w-8 h-8 stroke-[3.5]" />
+                                      <span>Correct</span>
                                     </button>
                                   </div>
                                 </div>
@@ -3520,7 +3783,7 @@ export function MysteryBox({
                           </div>
                         ) : isSingleAnswerQuestion ? (
                           <div className="text-center text-sm sm:text-base font-bold text-slate-300">
-                            Click <span className="text-emerald-400 font-black">Correct</span> or <span className="text-rose-400 font-black">Incorrect</span> above to continue.
+                            Click <span className="text-rose-400 font-black">Incorrect</span> or <span className="text-emerald-400 font-black">Correct</span> above to continue.
                           </div>
                         ) : (
                           /* Teacher Manual Judgement Fallback for Multiple Choice */
@@ -3945,19 +4208,14 @@ export function MysteryBox({
                 );
               })()}
 
-              {/* 6. REVEAL STAGE WITH LIVE SCOREBOARD AT TOP & MYSTERY BOX OUTCOME (Persistent in-viewport wrapper keeps dancing iframe active with zero reload) */}
-              <div
-                onClick={modalStep === 'reveal' && currentOutcome ? handleCloseReveal : undefined}
-                className={
-                  modalStep === 'reveal' && currentOutcome
-                    ? 'w-full max-w-5xl my-auto flex flex-col items-center gap-4 sm:gap-5 cursor-pointer select-none px-2 sm:px-4'
-                    : 'fixed bottom-0 right-0 w-[196px] h-[264px] opacity-[0.005] -z-10 pointer-events-none overflow-hidden'
-                }
-                title={modalStep === 'reveal' ? 'Click anywhere to skip to next turn immediately' : undefined}
-                aria-hidden={modalStep !== 'reveal'}
-              >
-                {/* MAIN SCOREBOARD AT TOP SHOWING LIVE SCORE UPDATING (100% CENTERED) */}
-                {modalStep === 'reveal' && currentOutcome && (
+              {/* 6. REVEAL STAGE WITH LIVE SCOREBOARD AT TOP & MYSTERY BOX OUTCOME */}
+              {modalStep === 'reveal' && currentOutcome && (
+                <div
+                  onClick={handleCloseReveal}
+                  className="w-full max-w-5xl my-auto flex flex-col items-center gap-4 sm:gap-5 cursor-pointer select-none px-2 sm:px-4"
+                  title="Click anywhere to skip to next turn immediately"
+                >
+                  {/* MAIN SCOREBOARD AT TOP SHOWING LIVE SCORE UPDATING (100% CENTERED) */}
                   <div className="w-full animate-pop-in">
                     <div className="flex items-center justify-center gap-2 mb-2 text-center">
                       <Trophy className="w-5 h-5 text-amber-400" />
@@ -3974,18 +4232,10 @@ export function MysteryBox({
                       activeRevealDelta={outcomeBeforeAfter?.delta}
                     />
                   </div>
-                )}
 
-                {/* REVEALED MYSTERY BOX OUTCOME CARD (Persistent non-transformed parent keeps SVG-filtered iframe painting cleanly) */}
-                <div
-                  className={
-                    modalStep === 'reveal' && currentOutcome
-                      ? 'bg-slate-900 border-4 border-amber-400 rounded-3xl sm:rounded-[2.5rem] p-4 sm:p-6 lg:p-7 shadow-[0_25px_90px_rgba(0,0,0,0.85)] text-center text-white relative overflow-hidden w-full'
-                      : ''
-                  }
-                >
-                  {/* Top Outcome Header Banner */}
-                  {modalStep === 'reveal' && currentOutcome && (
+                  {/* REVEALED MYSTERY BOX OUTCOME CARD */}
+                  <div className="bg-slate-900 border-4 border-amber-400 rounded-3xl sm:rounded-[2.5rem] p-4 sm:p-6 lg:p-7 shadow-[0_25px_90px_rgba(0,0,0,0.85)] text-center text-white relative overflow-hidden w-full">
+                    {/* Top Outcome Header Banner */}
                     <div className="flex items-center justify-between gap-2 mb-3 sm:mb-4">
                       <span className="px-3.5 py-1 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-300 text-xs sm:text-sm font-black uppercase tracking-widest">
                         ✨ MYSTERY BOX #{activeBoxNum} REVEALED
@@ -3995,17 +4245,9 @@ export function MysteryBox({
                         Live Scoreboard Updating...
                       </span>
                     </div>
-                  )}
 
-                  {/* Outcome Banner + Properly Scaled Chroma-Keyed Dancing Hamster Row */}
-                  <div
-                    className={
-                      modalStep === 'reveal' && currentOutcome
-                        ? 'flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-5 mb-4 sm:mb-5'
-                        : ''
-                    }
-                  >
-                    {modalStep === 'reveal' && currentOutcome && (
+                    {/* Outcome Banner */}
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-5 mb-4 sm:mb-5">
                       <div className={`w-full flex-1 bg-gradient-to-r ${currentOutcome.color} rounded-3xl p-5 sm:p-7 shadow-2xl flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-5 border-4 border-white/90 text-white animate-pop-in`}>
                         <span className="text-5xl sm:text-7xl drop-shadow-md animate-bounce shrink-0">{currentOutcome.icon}</span>
                         <div className="text-center sm:text-left min-w-0">
@@ -4013,48 +4255,9 @@ export function MysteryBox({
                           <p className="text-sm sm:text-lg lg:text-xl font-bold text-white/95">{outcomeSummary || currentOutcome.subtitle}</p>
                         </div>
                       </div>
-                    )}
-
-                    {/* Persistent Pre-Warmed Chroma-Keyed Dancing Hamster (212x377 exact 9:16 iframe with zero CSS transform so Chrome paints SVG filter reliably) */}
-                    <div
-                      className={
-                        isWinReveal
-                          ? 'relative shrink-0 w-[196px] h-[264px] overflow-hidden bg-transparent pointer-events-none'
-                          : 'fixed bottom-0 right-0 w-[196px] h-[264px] opacity-[0.005] -z-10 pointer-events-none overflow-hidden'
-                      }
-                      aria-hidden={!isWinReveal}
-                    >
-                      <div
-                        className="absolute inset-3 rounded-full blur-2xl opacity-45 pointer-events-none"
-                        style={{
-                          background:
-                            'radial-gradient(circle, rgba(251,191,36,0.75) 0%, rgba(16,185,129,0.28) 58%, rgba(0,0,0,0) 80%)',
-                        }}
-                      />
-                      <iframe
-                        ref={danceIframeRef}
-                        src={danceEmbedUrl}
-                        title="Mystery Box Win Dancing Animation"
-                        width={212}
-                        height={377}
-                        className="absolute border-0 block bg-transparent"
-                        style={{
-                          width: '212px',
-                          height: '377px',
-                          left: '-8px',
-                          top: '-56px',
-                          filter: 'url(#mystery-chroma-key-green)',
-                          backgroundColor: 'transparent',
-                        }}
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                        referrerPolicy="strict-origin-when-cross-origin"
-                        onLoad={triggerDanceIframePlay}
-                      />
                     </div>
-                  </div>
 
-                  {/* Live Auto-Advancing Status Bar */}
-                  {modalStep === 'reveal' && currentOutcome && (
+                    {/* Live Auto-Advancing Status Bar */}
                     <div className="max-w-md mx-auto flex flex-col items-center gap-2">
                       <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-white/10">
                         <div
@@ -4072,13 +4275,13 @@ export function MysteryBox({
                         Scores updated live on main board! Auto-switching to <span className="text-amber-300 font-black">{teams[(currentTeamIdx + 1) % teams.length]?.name}&apos;s Turn</span>...
                       </p>
                     </div>
-                  )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
-          {/* GAME OVER / WINNER ANNOUNCEMENT MODAL (CHROMA-KEYED VICTORY DANCE, PODIUM LEADERBOARD & MEDALS) */}
+          {/* GAME OVER / WINNER ANNOUNCEMENT MODAL (PODIUM LEADERBOARD & MEDALS) */}
           {isGameOver && (() => {
             const sortedTeams = [...teams].sort((a, b) => b.score - a.score);
             const topScore = sortedTeams[0]?.score ?? 0;
@@ -4089,47 +4292,14 @@ export function MysteryBox({
             return (
               <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-5 bg-slate-950/85 backdrop-blur-md overflow-y-auto">
                 <div
-                  className="border-[4px] border-[#fbbf24] rounded-3xl sm:rounded-[2.5rem] p-5 sm:p-7 md:p-8 max-w-4xl w-full shadow-[0_25px_80px_rgba(0,0,0,0.85),0_0_45px_rgba(251,191,36,0.42)] my-auto text-white relative overflow-hidden"
+                  className="border-[4px] border-[#fbbf24] rounded-3xl sm:rounded-[2.5rem] p-5 sm:p-7 md:p-8 max-w-2xl w-full shadow-[0_25px_80px_rgba(0,0,0,0.85),0_0_45px_rgba(251,191,36,0.42)] my-auto text-white relative overflow-hidden"
                   style={{
                     background:
                       'linear-gradient(180deg, #2b1d52 0%, #1d1238 55%, #140c29 100%)',
                   }}
                 >
-                  <div className="flex flex-col md:flex-row items-center md:items-stretch gap-6 md:gap-8">
-                    {/* Left Column: Properly Scaled Chroma-Keyed Transparent 9:16 Victory Dancing Animation (zero CSS transform for reliable Chrome rendering) */}
-                    <div className="flex flex-col items-center justify-center shrink-0">
-                      <div className="relative w-[208px] h-[296px] overflow-hidden bg-transparent pointer-events-none">
-                        <div
-                          className="absolute inset-4 rounded-full blur-2xl opacity-50 pointer-events-none"
-                          style={{
-                            background:
-                              'radial-gradient(circle, rgba(251,191,36,0.75) 0%, rgba(168,85,247,0.3) 60%, rgba(0,0,0,0) 80%)',
-                          }}
-                        />
-                        <iframe
-                          src={danceEmbedUrl}
-                          title="Mystery Box Victory Dance"
-                          width={224}
-                          height={398}
-                          className="absolute border-0 block bg-transparent"
-                          style={{
-                            width: '224px',
-                            height: '398px',
-                            left: '-8px',
-                            top: '-51px',
-                            filter: 'url(#mystery-chroma-key-green)',
-                            backgroundColor: 'transparent',
-                          }}
-                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                          referrerPolicy="strict-origin-when-cross-origin"
-                        />
-                      </div>
-                      <span className="mt-2 text-xs font-black uppercase tracking-widest text-[#fde047] drop-shadow">
-                        {isTie ? '🎉 CELEBRATION DANCE!' : '🎉 VICTORY DANCE!'}
-                      </span>
-                    </div>
-
-                    {/* Right Column: Winner Header, Leaderboard & Controls */}
+                  <div className="flex flex-col items-center gap-6">
+                    {/* Winner Header, Leaderboard & Controls */}
                     <div className="flex-1 min-w-0 w-full flex flex-col justify-between text-center">
                       <div>
                         {/* Winning Hamster Character & Golden Trophy Header */}

@@ -1751,6 +1751,10 @@ const UsersManagement = ({ users, onSync, isSyncing, initialFilter = 'all', game
 // --- MAIN APP COMPONENT ---
 export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, data?: any) => void }) {
   const { user: currentUser } = useAuth();
+  const isStrictAdmin = Boolean(
+    currentUser?.email &&
+      currentUser.email.toLowerCase().trim() === SUPER_ADMIN_EMAIL.toLowerCase()
+  );
   const [currentRoute, setCurrentRoute] = useState('dashboard');
   const [usersFilter, setUsersFilter] = useState<'all' | 'threats' | 'suspicious' | 'safe' | 'guests'>('all');
   const [isSidebarOpen, setSidebarOpen] = useState(true);
@@ -2130,10 +2134,10 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
 
   // Navigation config with dedicated User Activity & Games tab
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard Overview', icon: Activity, count: null },
+    { id: 'dashboard', label: 'Dashboard Overview', icon: Activity, count: null, isAlert: false },
     { id: 'users', label: 'User & Threat Management', icon: Users, count: sidebarThreatCount > 0 ? sidebarThreatCount : users.length, isAlert: sidebarThreatCount > 0 },
-    { id: 'user-activity', label: 'User Activity & Games', icon: Gamepad2, count: games.length },
-    { id: 'settings', label: 'Platform Settings', icon: Settings, count: null },
+    { id: 'user-activity', label: 'User Activity & Games', icon: Gamepad2, count: games.length, isAlert: false },
+    { id: 'settings', label: 'Platform Settings', icon: Settings, count: null, isAlert: false },
   ];
 
   const handleNavClick = (id: string) => {
@@ -2148,6 +2152,29 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
     'user-activity': 'User Activity & Games',
     'settings': 'Platform Settings',
   };
+
+  if (!isStrictAdmin) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-slate-950 text-slate-100 p-6">
+        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center space-y-4 shadow-2xl">
+          <div className="w-12 h-12 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-400 flex items-center justify-center mx-auto">
+            <Lock size={22} />
+          </div>
+          <h2 className="text-lg font-black text-white">Restricted Super Admin Area</h2>
+          <p className="text-xs text-slate-400">
+            The Admin Console and FORM3D AI 3D Character Studio are strictly restricted to authorized administrator accounts.
+          </p>
+          <button
+            type="button"
+            onClick={() => onViewChange('home')}
+            className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors cursor-pointer"
+          >
+            Return to Home Studio
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full w-full bg-slate-100/90 dark:bg-slate-950 font-sans overflow-hidden text-slate-800 dark:text-slate-200">
@@ -2300,7 +2327,6 @@ export function AdminDashboard({ onViewChange }: { onViewChange: (view: any, dat
 
         {/* Scrollable View Area */}
         <div className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8 custom-scrollbar relative">
-           
           {loading ? (
             <div className="flex items-center justify-center h-64">
               <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400 font-medium">

@@ -536,7 +536,7 @@ export default function App() {
       setCurrentView("homework");
       return;
     }
-    if (view === "admin-dashboard" && !isAdmin) {
+    if ((view === "admin-dashboard" || view === "ai-3d-character-studio") && !isAdmin) {
       setCurrentView("home");
       return;
     }
@@ -621,7 +621,7 @@ export default function App() {
 
   const renderView = () => {
     // Views that require user authentication or cloud save: Class rewards, My Games, Generator, Admin
-    const googleRequiredViews = ["games", "class-rewards", "class-record", "generator", "admin-dashboard"];
+    const googleRequiredViews = ["games", "class-rewards", "class-record", "generator", "admin-dashboard", "ai-3d-character-studio"];
 
     if ((!user || user.isAnonymous) && googleRequiredViews.includes(currentView)) {
       const getFeatureInfo = () => {
@@ -806,6 +806,25 @@ export default function App() {
             onClearSearch={() => setHeaderSearchQuery("")}
           />
         );
+      case "ai-3d-character-studio":
+        return isAdmin ? (
+          <div className="w-full h-full flex flex-col bg-[#0b0c10]">
+            <iframe
+              src="/form3d-studio.html?v=20261126_10"
+              title="FORM3D – AI 3D Character Studio"
+              className="w-full flex-1 border-0 bg-[#0b0c10]"
+              allow="clipboard-read; clipboard-write"
+            />
+          </div>
+        ) : (
+          <Home
+            onViewChange={handleViewChange}
+            openAuthModal={() => setIsAuthModalOpen(true)}
+            openGoogleAuthModal={openGoogleAuthModal}
+            searchQuery={headerSearchQuery}
+            onClearSearch={() => setHeaderSearchQuery("")}
+          />
+        );
       case "user-dashboard":
         return <UserDashboard />;
       case "media-studio":
@@ -900,7 +919,7 @@ export default function App() {
   ].includes(currentView);
   const isClass = currentView === "class-record" || currentView === "class-rewards";
   const isAutoFullscreenView = isGame || isClass || isTabLaunchPending || Boolean(newTabPickerGame);
-  const isAdminView = currentView === "admin-dashboard" && isAdmin;
+  const isAdminView = (currentView === "admin-dashboard" || currentView === "ai-3d-character-studio") && isAdmin;
 
   return (
     <div className="flex h-screen w-full bg-slate-50 dark:bg-slate-900 font-sans text-slate-800 dark:text-slate-200 overflow-hidden">

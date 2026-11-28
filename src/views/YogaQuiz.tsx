@@ -36,9 +36,7 @@ import {
   Flag,
   Clock,
   Pause,
-  Sliders,
-  Eye,
-  EyeOff
+  Sliders
 } from 'lucide-react';
 import Confetti from 'react-confetti';
 import { useWindowSize } from 'react-use';
@@ -136,42 +134,42 @@ export const CLASSIC_YOGA_POSES: StandingPoseConfig[] = [
   { id: 'power-fist', type: 'emoji', value: '💪', name: 'Hero Flex', shortHint: 'Strong superhero double bicep flex', category: 'both', family: 'fist-family' },
 ];
 
-// One-Hand, Two-Hand & Custom 3D Emoji On-Head Gestures for Camera Mode (rotates fresh distinct poses on every question!)
+// One-Hand, Two-Hand & On-Head Gestures for Camera Mode (rotates fresh distinct poses on every question!)
 export const CAMERA_HAND_POSES: StandingPoseConfig[] = [
-  // Two-Hand On-Head Unified 3D Emoji Poses (7)
-  { id: 'bunny-ears', type: 'image', value: '/src/assets/images/emoji_bunny_ears_1795109899253.jpg', name: 'Bunny Ears', shortHint: 'Put 2 fingers on BOTH sides of your head like the Bunny Emoji!', category: 'hand', family: 'finger-2', twoHands: true, headPose: true },
-  { id: 'deer-antlers', type: 'image', value: '/src/assets/images/emoji_deer_antlers_1795109899579.jpg', name: 'Deer Antlers', shortHint: 'Spread 5 fingers wide on BOTH sides of your head like the Antler Emoji!', category: 'hand', family: 'open-palm', twoHands: true, headPose: true },
-  { id: 'bull-horns', type: 'image', value: '/src/assets/images/emoji_bull_horns_1795109899793.jpg', name: 'Bull Horns', shortHint: 'Point 1 index finger up on BOTH sides of your head like the Horns Emoji!', category: 'hand', family: 'finger-1', twoHands: true, headPose: true },
-  { id: 'royal-crown', type: 'image', value: '/src/assets/images/emoji_royal_crown_1795109906854.jpg', name: 'Crown on Head', shortHint: 'Arch BOTH hands together high above your head like the Royal Crown Emoji!', category: 'hand', family: 'crown', twoHands: true, headPose: true },
-  { id: 'cat-ears', type: 'image', value: '/src/assets/images/emoji_cat_ears_1795109900070.jpg', name: 'Cat Ears', shortHint: 'Hold Rock-On horns on BOTH sides of your head like the Cat Ears Emoji!', category: 'hand', family: 'rock', twoHands: true, headPose: true },
-  { id: 'hero-goggles', type: 'image', value: '/src/assets/images/emoji_hero_goggles_1795109899965.jpg', name: 'Hero Goggles', shortHint: 'Make OK circles with BOTH hands over your eyes like the Goggles Emoji!', category: 'hand', family: 'ok', twoHands: true, headPose: true },
-  { id: 'bear-ears', type: 'image', value: '/src/assets/images/emoji_bear_ears_1795109899605.jpg', name: 'Bear Ears', shortHint: 'Put BOTH closed fists on top of your head like the Bear Ears Emoji!', category: 'hand', family: 'fist', twoHands: true, headPose: true },
+  // Two-Hand On-Head Poses (7)
+  { id: 'bunny-ears', type: 'image', value: '/src/assets/images/emoji_bunny_ears_1795109899253.jpg', name: 'Bunny Ears', shortHint: '✌️ 2 fingers on both sides of head', category: 'hand', family: 'finger-2', twoHands: true, headPose: true },
+  { id: 'deer-antlers', type: 'image', value: '/src/assets/images/emoji_deer_antlers_1795109899579.jpg', name: 'Deer Antlers', shortHint: '🖐️ 5 fingers on both sides of head', category: 'hand', family: 'open-palm', twoHands: true, headPose: true },
+  { id: 'bull-horns', type: 'image', value: '/src/assets/images/emoji_bull_horns_1795109899793.jpg', name: 'Bull Horns', shortHint: '☝️ 1 finger up on both sides of head', category: 'hand', family: 'finger-1', twoHands: true, headPose: true },
+  { id: 'royal-crown', type: 'image', value: '/src/assets/images/emoji_royal_crown_1795109906854.jpg', name: 'Crown', shortHint: '🙌 Both hands arched above head', category: 'hand', family: 'crown', twoHands: true, headPose: true },
+  { id: 'cat-ears', type: 'image', value: '/src/assets/images/emoji_cat_ears_1795109900070.jpg', name: 'Cat Ears', shortHint: '🤘 Rock horns on both sides of head', category: 'hand', family: 'rock', twoHands: true, headPose: true },
+  { id: 'hero-goggles', type: 'image', value: '/src/assets/images/emoji_hero_goggles_1795109899965.jpg', name: 'Goggles', shortHint: '👌 OK circles over both eyes', category: 'hand', family: 'ok', twoHands: true, headPose: true },
+  { id: 'bear-ears', type: 'image', value: '/src/assets/images/emoji_bear_ears_1795109899605.jpg', name: 'Bear Ears', shortHint: '✊ Closed fists on both sides of head', category: 'hand', family: 'fist', twoHands: true, headPose: true },
   // One-Hand Poses (11)
   { id: '1-finger', type: 'emoji', value: '☝️', name: '1 Finger', shortHint: 'Hold up 1 index finger', category: 'hand', family: 'finger-1' },
-  { id: '2-finger', type: 'emoji', value: '✌️', name: '2 Fingers', shortHint: 'Hold up 2 fingers (peace sign)', category: 'hand', family: 'finger-2' },
+  { id: '2-finger', type: 'emoji', value: '✌️', name: '2 Fingers', shortHint: 'Hold up 2 fingers', category: 'hand', family: 'finger-2' },
   { id: '3-finger', type: 'emoji', value: '🤟', name: '3 Fingers', shortHint: 'Hold up 3 fingers', category: 'hand', family: 'rock' },
   { id: 'fist', type: 'emoji', value: '✊', name: 'Fist', shortHint: 'Make a closed fist', category: 'hand', family: 'fist' },
   { id: 'rock', type: 'emoji', value: '🤘', name: 'Rock On', shortHint: 'Index & pinky fingers up', category: 'hand', family: 'rock' },
   { id: '5-finger', type: 'emoji', value: '🖐️', name: '5 Fingers', shortHint: 'Open all 5 fingers wide', category: 'hand', family: 'open-palm' },
-  { id: 'thumbs-up', type: 'emoji', value: '👍', name: 'Thumbs Up', shortHint: 'Show a clear thumbs up', category: 'hand', family: 'thumb' },
-  { id: 'thumbs-down', type: 'emoji', value: '👎', name: 'Thumbs Down', shortHint: 'Point thumb downward with fingers curled', category: 'hand', family: 'thumb-down' },
+  { id: 'thumbs-up', type: 'emoji', value: '👍', name: 'Thumbs Up', shortHint: 'Show a thumbs up', category: 'hand', family: 'thumb' },
+  { id: 'thumbs-down', type: 'emoji', value: '👎', name: 'Thumbs Down', shortHint: 'Point thumb downward', category: 'hand', family: 'thumb-down' },
   { id: 'ok-sign', type: 'emoji', value: '👌', name: 'OK Sign', shortHint: 'Touch thumb & index in a circle', category: 'hand', family: 'ok' },
   { id: '4-finger', type: 'emoji', value: '🖖', name: '4 Fingers', shortHint: 'Hold up 4 fingers', category: 'hand', family: 'finger-4' },
   { id: 'shaka', type: 'emoji', value: '🤙', name: 'Shaka', shortHint: 'Thumb and pinky extended', category: 'hand', family: 'shaka' },
   // Two-Hand Poses (13)
-  { id: 'two-open-hands', type: 'emoji', value: '🙌', name: 'Two Hands Up', shortHint: 'Raise BOTH open palms high!', category: 'hand', family: 'open-palm', twoHands: true },
-  { id: 'namaste-hands', type: 'emoji', value: '🙏', name: 'Prayer Hands', shortHint: 'Press BOTH palms together in front of you', category: 'hand', family: 'namaste', twoHands: true },
-  { id: 'heart-hands', type: 'emoji', value: '🫶', name: 'Heart Hands', shortHint: 'Touch BOTH thumbs & index fingers into a heart', category: 'hand', family: 'heart', twoHands: true },
-  { id: 'x-hands', type: 'emoji', value: '🙅', name: 'X-Cross Hands', shortHint: 'Cross BOTH wrists with fingers fanned wide like an X!', category: 'hand', family: 'x-cross', twoHands: true },
-  { id: 'two-peace', type: 'emoji', value: '✌️✌️', name: 'Double Peace', shortHint: 'Show Peace Sign with BOTH hands!', category: 'hand', family: 'finger-2', twoHands: true },
-  { id: 'two-fists', type: 'emoji', value: '✊✊', name: 'Double Fists', shortHint: 'Raise BOTH closed fists together!', category: 'hand', family: 'fist', twoHands: true },
-  { id: 'two-thumbs-up', type: 'emoji', value: '👍👍', name: 'Double Thumbs', shortHint: 'Show Thumbs Up with BOTH hands!', category: 'hand', family: 'thumb', twoHands: true },
-  { id: 'two-thumbs-down', type: 'emoji', value: '👎👎', name: 'Double Down', shortHint: 'Show Thumbs Down with BOTH hands!', category: 'hand', family: 'thumb-down', twoHands: true },
-  { id: 'two-point-up', type: 'emoji', value: '☝️☝️', name: 'Double 1 Finger', shortHint: 'Point 1 index finger up with BOTH hands!', category: 'hand', family: 'finger-1', twoHands: true },
-  { id: 'two-rock', type: 'emoji', value: '🤘🤘', name: 'Double Rock', shortHint: 'Shoot Web / Rock On with BOTH hands!', category: 'hand', family: 'rock', twoHands: true },
-  { id: 'two-ok', type: 'emoji', value: '👌👌', name: 'Double OK', shortHint: 'Make the OK Sign with BOTH hands!', category: 'hand', family: 'ok', twoHands: true },
-  { id: 'two-shaka', type: 'emoji', value: '🤙🤙', name: 'Double Shaka', shortHint: 'Show Shaka with BOTH hands!', category: 'hand', family: 'shaka', twoHands: true },
-  { id: 'two-4-finger', type: 'emoji', value: '🖖🖖', name: 'Double 4 Fingers', shortHint: 'Hold up 4 fingers on BOTH hands!', category: 'hand', family: 'finger-4', twoHands: true },
+  { id: 'two-open-hands', type: 'emoji', value: '🙌', name: 'Two Hands Up', shortHint: 'Raise both open palms', category: 'hand', family: 'open-palm', twoHands: true },
+  { id: 'namaste-hands', type: 'emoji', value: '🙏', name: 'Prayer Hands', shortHint: 'Press both palms together', category: 'hand', family: 'namaste', twoHands: true },
+  { id: 'heart-hands', type: 'emoji', value: '🫶', name: 'Heart Hands', shortHint: 'Make a heart with both hands', category: 'hand', family: 'heart', twoHands: true },
+  { id: 'x-hands', type: 'emoji', value: '🙅', name: 'X-Cross Hands', shortHint: 'Cross both arms in an X', category: 'hand', family: 'x-cross', twoHands: true },
+  { id: 'two-peace', type: 'emoji', value: '✌️✌️', name: 'Double Peace', shortHint: 'Peace sign with both hands', category: 'hand', family: 'finger-2', twoHands: true },
+  { id: 'two-fists', type: 'emoji', value: '✊✊', name: 'Double Fists', shortHint: 'Closed fists with both hands', category: 'hand', family: 'fist', twoHands: true },
+  { id: 'two-thumbs-up', type: 'emoji', value: '👍👍', name: 'Double Thumbs', shortHint: 'Thumbs up with both hands', category: 'hand', family: 'thumb', twoHands: true },
+  { id: 'two-thumbs-down', type: 'emoji', value: '👎👎', name: 'Double Down', shortHint: 'Thumbs down with both hands', category: 'hand', family: 'thumb-down', twoHands: true },
+  { id: 'two-point-up', type: 'emoji', value: '☝️☝️', name: 'Double 1 Finger', shortHint: '1 finger up on both hands', category: 'hand', family: 'finger-1', twoHands: true },
+  { id: 'two-rock', type: 'emoji', value: '🤘🤘', name: 'Double Rock', shortHint: 'Rock on with both hands', category: 'hand', family: 'rock', twoHands: true },
+  { id: 'two-ok', type: 'emoji', value: '👌👌', name: 'Double OK', shortHint: 'OK sign with both hands', category: 'hand', family: 'ok', twoHands: true },
+  { id: 'two-shaka', type: 'emoji', value: '🤙🤙', name: 'Double Shaka', shortHint: 'Shaka with both hands', category: 'hand', family: 'shaka', twoHands: true },
+  { id: 'two-4-finger', type: 'emoji', value: '🖖🖖', name: 'Double 4 Fingers', shortHint: '4 fingers on both hands', category: 'hand', family: 'finger-4', twoHands: true },
 ];
 
 export const AVAILABLE_POSES: StandingPoseConfig[] = [
@@ -182,6 +180,76 @@ export const AVAILABLE_POSES: StandingPoseConfig[] = [
 export const DEFAULT_CLASSIC_POSE_VALUES = CLASSIC_YOGA_POSES.map(p => p.value);
 export const DEFAULT_CAMERA_HAND_VALUES = CAMERA_HAND_POSES.map(p => p.value);
 export const DEFAULT_CAMERA_COMBINATION_VALUES = DEFAULT_CAMERA_HAND_VALUES;
+
+export const HEAD_POSE_VISUAL_META: Record<
+  string,
+  {
+    handEmoji: string;
+    centerEmoji: string;
+    gestureLabel: string;
+    bgClass: string;
+    pillClass: string;
+  }
+> = {
+  'bunny-ears': {
+    handEmoji: '✌️',
+    centerEmoji: '🐰',
+    gestureLabel: '✌️ + ✌️',
+    bgClass: 'from-pink-100 via-rose-50 to-pink-200 border-rose-300',
+    pillClass: 'bg-rose-600 text-white',
+  },
+  'deer-antlers': {
+    handEmoji: '🖐️',
+    centerEmoji: '🦌',
+    gestureLabel: '🖐️ + 🖐️',
+    bgClass: 'from-amber-100 via-orange-50 to-amber-200 border-amber-400',
+    pillClass: 'bg-amber-700 text-white',
+  },
+  'bull-horns': {
+    handEmoji: '☝️',
+    centerEmoji: '🐂',
+    gestureLabel: '☝️ + ☝️',
+    bgClass: 'from-red-100 via-orange-50 to-red-200 border-red-300',
+    pillClass: 'bg-red-600 text-white',
+  },
+  'royal-crown': {
+    handEmoji: '🙌',
+    centerEmoji: '👑',
+    gestureLabel: '🙌 Top',
+    bgClass: 'from-yellow-100 via-amber-50 to-yellow-200 border-amber-400',
+    pillClass: 'bg-amber-600 text-white',
+  },
+  'cat-ears': {
+    handEmoji: '🤘',
+    centerEmoji: '🐱',
+    gestureLabel: '🤘 + 🤘',
+    bgClass: 'from-purple-100 via-fuchsia-50 to-purple-200 border-purple-300',
+    pillClass: 'bg-purple-600 text-white',
+  },
+  'hero-goggles': {
+    handEmoji: '👌',
+    centerEmoji: '🥽',
+    gestureLabel: '👌 Eyes',
+    bgClass: 'from-sky-100 via-cyan-50 to-sky-200 border-sky-400',
+    pillClass: 'bg-sky-600 text-white',
+  },
+  'bear-ears': {
+    handEmoji: '✊',
+    centerEmoji: '🐻',
+    gestureLabel: '✊ + ✊',
+    bgClass: 'from-orange-100 via-amber-50 to-orange-200 border-orange-300',
+    pillClass: 'bg-orange-700 text-white',
+  },
+};
+
+export function resolveHeadPoseId(poseId?: string | null, poseValue?: string | null): string | null {
+  if (poseId && HEAD_POSE_VISUAL_META[poseId]) return poseId;
+  if (poseValue) {
+    const found = CAMERA_HAND_POSES.find(p => p.headPose && (p.value === poseValue || p.id === poseValue));
+    if (found && HEAD_POSE_VISUAL_META[found.id]) return found.id;
+  }
+  return null;
+}
 
 export const getPoseName = (poseId?: string | null, poseValue?: string | null): string => {
   if (poseId) {
@@ -224,6 +292,11 @@ export const getPoseName = (poseId?: string | null, poseValue?: string | null): 
  * so image paths are never printed as raw URL text.
  */
 export const getPoseInlineBadge = (poseId?: string | null, poseValue?: string | null): string => {
+  const headId = resolveHeadPoseId(poseId, poseValue);
+  if (headId && HEAD_POSE_VISUAL_META[headId]) {
+    const meta = HEAD_POSE_VISUAL_META[headId];
+    return `${meta.centerEmoji}${meta.handEmoji}`;
+  }
   if (poseValue && !isImageUrl(poseValue)) return poseValue;
   const found = poseId
     ? AVAILABLE_POSES.find(p => p.id === poseId)
@@ -261,8 +334,96 @@ function FloatingScoreBadge({ delta, idKey }: { delta: number; idKey: number }) 
 }
 
 /**
+ * Crystal-Clear Head Pose Diagram:
+ * Shows the character head + clear left & right hand gestures positioned on the head
+ * so students immediately see which finger gesture to make and where to hold their hands.
+ */
+function HeadPoseDiagram({
+  headId,
+  size = 'md',
+}: {
+  headId: string;
+  size?: 'xs' | 'sm' | 'md' | 'lg';
+}) {
+  const meta = HEAD_POSE_VISUAL_META[headId] || HEAD_POSE_VISUAL_META['bunny-ears'];
+
+  if (size === 'xs') {
+    return (
+      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg bg-white/90 text-slate-900 font-black text-xs shadow-2xs select-none shrink-0">
+        <span>{meta.handEmoji}</span>
+        <span>{meta.centerEmoji}</span>
+        <span>{meta.handEmoji}</span>
+      </span>
+    );
+  }
+
+  const boxClass =
+    size === 'sm'
+      ? 'w-20 h-14 sm:w-22 sm:h-15 rounded-2xl'
+      : size === 'lg'
+      ? 'w-32 h-22 sm:w-36 sm:h-24 rounded-3xl'
+      : 'w-24 h-16 sm:w-28 sm:h-18 rounded-2xl';
+
+  const centerSize =
+    size === 'sm'
+      ? 'text-2xl sm:text-3xl'
+      : size === 'lg'
+      ? 'text-4xl sm:text-5xl'
+      : 'text-3xl sm:text-4xl';
+
+  const handSize =
+    size === 'sm'
+      ? 'text-base sm:text-lg'
+      : size === 'lg'
+      ? 'text-2xl sm:text-3xl'
+      : 'text-xl sm:text-2xl';
+
+  const isGoggles = headId === 'hero-goggles';
+  const isCrown = headId === 'royal-crown';
+
+  return (
+    <div
+      className={`relative flex flex-col items-center justify-center bg-gradient-to-b ${meta.bgClass} border-2 shadow-sm select-none shrink-0 overflow-hidden px-1.5 py-1 ${boxClass}`}
+    >
+      {isCrown ? (
+        /* Crown: Hands arched at top + Crown on head */
+        <div className="flex flex-col items-center justify-center leading-none">
+          <div className="flex items-center justify-center gap-0.5 -mb-1">
+            <span className={`${handSize} drop-shadow-xs`}>🙌</span>
+            <span className={`${handSize} drop-shadow-xs`}>👑</span>
+          </div>
+          <span className={`${centerSize} leading-none drop-shadow-xs`}>😄</span>
+        </div>
+      ) : isGoggles ? (
+        /* Goggles: OK hands placed right over the eyes like goggles */
+        <div className="relative flex items-center justify-center leading-none">
+          <span className={`${centerSize} leading-none drop-shadow-xs`}>😎</span>
+          <div className="absolute inset-0 flex items-center justify-center gap-1 pointer-events-none">
+            <span className={`${handSize} -translate-y-0.5 -scale-x-100 drop-shadow-sm`}>👌</span>
+            <span className={`${handSize} -translate-y-0.5 drop-shadow-sm`}>👌</span>
+          </div>
+        </div>
+      ) : (
+        /* Ears / Antlers / Horns: Left hand + Animal head + Right hand on top corners */
+        <div className="flex items-center justify-center gap-0.5 leading-none">
+          <span className={`${handSize} -translate-y-1.5 -rotate-12 -scale-x-100 drop-shadow-xs`}>
+            {meta.handEmoji}
+          </span>
+          <span className={`${centerSize} leading-none drop-shadow-xs`}>
+            {meta.centerEmoji}
+          </span>
+          <span className={`${handSize} -translate-y-1.5 rotate-12 drop-shadow-xs`}>
+            {meta.handEmoji}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * Clean Pose & Hand Emoji Display.
- * Displays pure vibrant emojis or custom 3D emoji character illustrations.
+ * Displays pure vibrant emojis or clear Head + 2-Hand Gesture diagrams.
  */
 function StandingPoseFigure({
   poseId,
@@ -271,11 +432,18 @@ function StandingPoseFigure({
 }: {
   poseId: string;
   emoji: string;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'xs' | 'sm' | 'md' | 'lg';
 }) {
+  const headId = resolveHeadPoseId(poseId, emoji);
+  if (headId) {
+    return <HeadPoseDiagram headId={headId} size={size} />;
+  }
+
   if (isImageUrl(emoji)) {
     const dimClass =
-      size === 'sm'
+      size === 'xs'
+        ? 'w-6 h-6'
+        : size === 'sm'
         ? 'w-11 h-11 sm:w-12 sm:h-12'
         : size === 'lg'
         ? 'w-20 h-20 sm:w-24 sm:h-24'
@@ -294,7 +462,9 @@ function StandingPoseFigure({
 
   const isDoubleGlyph = Array.from(emoji.replace(/\uFE0F/g, '')).length >= 2;
   const textClass =
-    size === 'sm'
+    size === 'xs'
+      ? 'text-base'
+      : size === 'sm'
       ? isDoubleGlyph
         ? 'text-lg sm:text-xl tracking-tight'
         : 'text-2xl sm:text-3xl'
@@ -328,7 +498,6 @@ export type YogaSensitivityPreset = 'relaxed' | 'standard' | 'strict';
 export interface YogaCalibrationConfig {
   holdSpeed: YogaHoldSpeedPreset;
   sensitivity: YogaSensitivityPreset;
-  showSkeletonGuide: boolean;
 }
 
 const YOGA_CALIBRATION_STORAGE_KEY = 'yogaCalibration_v1';
@@ -336,7 +505,6 @@ const YOGA_CALIBRATION_STORAGE_KEY = 'yogaCalibration_v1';
 const DEFAULT_YOGA_CALIBRATION: YogaCalibrationConfig = {
   holdSpeed: 'balanced',
   sensitivity: 'standard',
-  showSkeletonGuide: true,
 };
 
 function loadYogaCalibration(): YogaCalibrationConfig {
@@ -353,7 +521,6 @@ function loadYogaCalibration(): YogaCalibrationConfig {
         parsed?.sensitivity === 'relaxed' || parsed?.sensitivity === 'standard' || parsed?.sensitivity === 'strict'
           ? parsed.sensitivity
           : 'standard',
-      showSkeletonGuide: typeof parsed?.showSkeletonGuide === 'boolean' ? parsed.showSkeletonGuide : true,
     };
   } catch {
     return DEFAULT_YOGA_CALIBRATION;
@@ -380,73 +547,6 @@ const SENSITIVITY_CONFIG: Record<
   standard: { threshold: 0.68, minFrames: 2, fingerOffset: 0 },
   strict: { threshold: 0.76, minFrames: 3, fingerOffset: 0.05 },
 };
-
-const HAND_SKELETON_CONNECTIONS: Array<[number, number]> = [
-  [0, 1], [1, 2], [2, 3], [3, 4],
-  [0, 5], [5, 6], [6, 7], [7, 8],
-  [5, 9], [9, 10], [10, 11], [11, 12],
-  [9, 13], [13, 14], [14, 15], [15, 16],
-  [13, 17], [17, 18], [18, 19], [19, 20],
-  [0, 17],
-];
-
-const FINGERTIP_INDICES = new Set([4, 8, 12, 16, 20]);
-
-/**
- * Draws a crisp 21-point anatomical hand skeleton overlay over the superhero gauntlets
- * so students and teachers can verify landmark alignment in real time.
- */
-function drawHandSkeletonGuide(
-  ctx: CanvasRenderingContext2D,
-  hands: Array<Array<{ x: number; y: number; z?: number }>>,
-  cw: number,
-  ch: number,
-  videoW: number,
-  videoH: number,
-  isTwoPlayers: boolean
-) {
-  if (!hands || hands.length === 0) return;
-  for (const lm of hands) {
-    if (!lm || lm.length < 21) continue;
-    const centerX = lm[9]?.x ?? lm[0]?.x ?? 0.5;
-    const strokeCol = isTwoPlayers
-      ? centerX < 0.5
-        ? 'rgba(56, 189, 248, 0.85)'
-        : 'rgba(253, 224, 71, 0.85)'
-      : 'rgba(45, 212, 191, 0.88)';
-    const pts = lm.map(p => toPx(p, cw, ch, videoW, videoH));
-
-    ctx.save();
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = strokeCol;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    for (const [a, b] of HAND_SKELETON_CONNECTIONS) {
-      const pa = pts[a];
-      const pb = pts[b];
-      if (!pa || !pb) continue;
-      ctx.moveTo(pa.x, pa.y);
-      ctx.lineTo(pb.x, pb.y);
-    }
-    ctx.stroke();
-
-    for (let i = 0; i < pts.length; i++) {
-      const p = pts[i];
-      const isTip = FINGERTIP_INDICES.has(i);
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, isTip ? 4.2 : 2.2, 0, Math.PI * 2);
-      ctx.fillStyle = isTip ? '#ffffff' : strokeCol;
-      ctx.fill();
-      if (isTip) {
-        ctx.lineWidth = 1.4;
-        ctx.strokeStyle = strokeCol;
-        ctx.stroke();
-      }
-    }
-    ctx.restore();
-  }
-}
 
 /**
  * Draws a vibrant AR Head/Animal/Hero Costume overlay directly over the student's two hands
@@ -3042,10 +3142,6 @@ function YogaLobbyPoseTester({
           videoH,
         });
 
-        if (cal.showSkeletonGuide) {
-          drawHandSkeletonGuide(ctx, mirroredHands, cw, ch, videoW, videoH, false);
-        }
-
         // Draw live AR Head Costume overlay when practicing a head pose with 2 hands
         drawHeadPoseArEffect(
           ctx,
@@ -3131,14 +3227,9 @@ function YogaLobbyPoseTester({
     <div className="p-4 sm:p-5 rounded-3xl bg-white/90 border-2 border-teal-200 border-b-4 border-b-teal-300 shadow-sm space-y-4 text-left">
       {/* Header Row */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h3 className="text-sm sm:text-base font-black uppercase tracking-wider text-teal-950 flex items-center gap-2">
-            <span>🙌 Pose Guide &amp; Camera Test</span>
-          </h3>
-          <p className="text-xs font-semibold text-slate-600">
-            {activePoses.length} poses enabled · Test your hands live before the match begins
-          </p>
-        </div>
+        <h3 className="text-sm sm:text-base font-black uppercase tracking-wider text-teal-950 flex items-center gap-2">
+          <span>🙌 Pose Guide &amp; Camera Test</span>
+        </h3>
 
         <button
           type="button"
@@ -3150,7 +3241,7 @@ function YogaLobbyPoseTester({
           }`}
         >
           {isTesting ? <CameraOff size={16} /> : <Camera size={16} />}
-          <span>{isTesting ? 'Stop Camera Test' : 'Test Camera & Poses'}</span>
+          <span>{isTesting ? 'Stop Camera Test' : 'Test Camera'}</span>
         </button>
       </div>
 
@@ -3173,7 +3264,7 @@ function YogaLobbyPoseTester({
               />
               {!isCamReady && !camErr && (
                 <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 text-xs font-bold text-teal-200 animate-pulse">
-                  Starting hand camera...
+                  Starting camera...
                 </div>
               )}
               {camErr && (
@@ -3192,50 +3283,21 @@ function YogaLobbyPoseTester({
               {/* Bottom Anchored Live Feedback Readout */}
               <div className="mt-auto relative z-10 m-2.5 p-2.5 rounded-xl bg-slate-950/85 backdrop-blur-md border border-white/15 space-y-1.5">
                 <div className="flex items-center justify-between gap-2 text-xs font-black">
-                  <span className="flex items-center gap-1.5 truncate">
+                  <span className="flex items-center gap-2 truncate">
                     {liveState.matchedTarget ? (
                       <span className="text-emerald-300 flex items-center gap-1.5">
                         <CheckCircle2 size={14} />
-                        {isImageUrl(selectedPose.value) ? (
-                          <img
-                            src={selectedPose.value}
-                            alt={selectedPose.name}
-                            referrerPolicy="no-referrer"
-                            className="w-5 h-5 rounded-md object-cover inline-block shrink-0"
-                          />
-                        ) : (
-                          <span>{selectedPose.value}</span>
-                        )}
-                        <span>Matched {selectedPose.name}!</span>
+                        <StandingPoseFigure poseId={selectedPose.id} emoji={selectedPose.value} size="xs" />
+                        <span>{selectedPose.name}</span>
                       </span>
-                    ) : detectedName ? (
+                    ) : detectedName && detectedPoseObj ? (
                       <span className="text-slate-100 flex items-center gap-1.5">
-                        <span>Seeing:</span>
-                        {detectedPoseObj && isImageUrl(detectedPoseObj.value) ? (
-                          <img
-                            src={detectedPoseObj.value}
-                            alt={detectedName}
-                            referrerPolicy="no-referrer"
-                            className="w-5 h-5 rounded-md object-cover inline-block shrink-0"
-                          />
-                        ) : (
-                          <span>{detectedPoseObj?.value || '✋'}</span>
-                        )}
+                        <StandingPoseFigure poseId={detectedPoseObj.id} emoji={detectedPoseObj.value} size="xs" />
                         <span>{detectedName}</span>
                       </span>
                     ) : (
-                      <span className="text-slate-300 flex items-center gap-1.5">
-                        <span>Target:</span>
-                        {isImageUrl(selectedPose.value) ? (
-                          <img
-                            src={selectedPose.value}
-                            alt={selectedPose.name}
-                            referrerPolicy="no-referrer"
-                            className="w-5 h-5 rounded-md object-cover inline-block shrink-0"
-                          />
-                        ) : (
-                          <span>{selectedPose.value}</span>
-                        )}
+                      <span className="text-slate-200 flex items-center gap-1.5">
+                        <StandingPoseFigure poseId={selectedPose.id} emoji={selectedPose.value} size="xs" />
                         <span>{selectedPose.name}</span>
                       </span>
                     )}
@@ -3252,38 +3314,24 @@ function YogaLobbyPoseTester({
                     style={{ width: `${Math.max(confPct > 15 ? confPct : 0, liveState.holdProgress)}%` }}
                   />
                 </div>
-
-                {liveState.coachingHint && !liveState.matchedTarget && (
-                  <p className="text-[11px] font-bold text-amber-200 leading-tight">
-                    {liveState.coachingHint}
-                  </p>
-                )}
               </div>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center p-5 text-center gap-2.5">
+            <div className="flex-1 flex flex-col items-center justify-center p-5 text-center gap-3">
               <StandingPoseFigure poseId={selectedPose.id} emoji={selectedPose.value} size="lg" />
               <div className="text-base font-black text-white">{selectedPose.name}</div>
-              <p className="text-xs font-semibold text-slate-300 max-w-xs">{selectedPose.shortHint}</p>
-              <span className="text-[11px] font-bold text-teal-300 uppercase tracking-wider">
-                {selectedPose.headPose
-                  ? '2 Hands • On Head Pose'
-                  : selectedPose.twoHands
-                  ? '2 Hands Pose'
-                  : '1 Hand Pose'}
-              </span>
               <button
                 type="button"
                 onClick={startTestCamera}
-                className="mt-1 px-4 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-black text-xs cursor-pointer transition-colors flex items-center gap-1.5"
+                className="px-4 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-black text-xs cursor-pointer transition-colors flex items-center gap-1.5"
               >
-                <Camera size={14} /> Start Live Pose Test
+                <Camera size={14} /> Test Camera
               </button>
             </div>
           )}
         </div>
 
-        {/* Right: Unified Combined Pose Guide + Quick Filters */}
+        {/* Right: Pose Guide + Quick Filters */}
         <div className="lg:col-span-7 flex flex-col gap-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="inline-flex rounded-xl bg-teal-100/80 p-1 border border-teal-200 flex-wrap">
@@ -3296,7 +3344,7 @@ function YogaLobbyPoseTester({
                     : 'text-teal-800 hover:text-teal-950'
                 }`}
               >
-                All Poses ({CAMERA_HAND_POSES.length})
+                All ({CAMERA_HAND_POSES.length})
               </button>
               <button
                 type="button"
@@ -3332,12 +3380,9 @@ function YogaLobbyPoseTester({
                 1-Hand ({CAMERA_HAND_POSES.filter(p => !p.twoHands).length})
               </button>
             </div>
-            <span className="text-[11px] font-bold text-slate-500">
-              Combined pose list · Click any pose or show it to camera
-            </span>
           </div>
 
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-[215px] overflow-y-auto pr-1 custom-scrollbar">
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 max-h-[225px] overflow-y-auto pr-1 custom-scrollbar">
             {filteredPoses.map(pose => {
               const isSelected = pose.id === selectedPose.id;
               return (
@@ -3348,30 +3393,18 @@ function YogaLobbyPoseTester({
                     setSelectedPoseId(pose.id);
                     testerHoldRef.current.progress = 0;
                   }}
-                  title={pose.shortHint}
-                  className={`p-2 rounded-2xl border-2 flex flex-col items-center justify-center text-center transition-all cursor-pointer relative ${
+                  className={`p-2.5 rounded-2xl border-2 flex flex-col items-center justify-center text-center transition-all cursor-pointer relative gap-1.5 ${
                     isSelected
                       ? pose.headPose
-                        ? 'border-rose-500 bg-rose-50 shadow-sm'
+                        ? 'border-rose-500 bg-rose-50/80 shadow-sm'
                         : pose.twoHands
-                        ? 'border-purple-500 bg-purple-50 shadow-sm'
-                        : 'border-teal-500 bg-teal-50 shadow-sm'
+                        ? 'border-purple-500 bg-purple-50/80 shadow-sm'
+                        : 'border-teal-500 bg-teal-50/80 shadow-sm'
                       : 'border-slate-200 bg-slate-50/70 hover:border-teal-300 hover:bg-white'
                   }`}
                 >
-                  <span
-                    className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded text-white mb-0.5 ${
-                      pose.headPose
-                        ? 'bg-rose-500'
-                        : pose.twoHands
-                        ? 'bg-purple-500'
-                        : 'bg-teal-600'
-                    }`}
-                  >
-                    {pose.headPose ? 'ON HEAD' : pose.twoHands ? '2 HANDS' : '1 HAND'}
-                  </span>
                   <StandingPoseFigure poseId={pose.id} emoji={pose.value} size="sm" />
-                  <span className="text-[11px] font-black text-slate-900 truncate w-full mt-0.5">
+                  <span className="text-xs font-black text-slate-900 truncate w-full">
                     {pose.name}
                   </span>
                 </button>
@@ -3381,8 +3414,8 @@ function YogaLobbyPoseTester({
         </div>
       </div>
 
-      {/* Inline Calibration Strip */}
-      <div className="pt-3 border-t border-teal-100 grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* Inline Calibration Strip (Hold Speed + Sensitivity only) */}
+      <div className="pt-3 border-t border-teal-100 grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <span className="block text-[11px] font-black uppercase tracking-wider text-slate-600 mb-1">
             Hold Speed
@@ -3433,24 +3466,6 @@ function YogaLobbyPoseTester({
               </button>
             ))}
           </div>
-        </div>
-
-        <div>
-          <span className="block text-[11px] font-black uppercase tracking-wider text-slate-600 mb-1">
-            Skeleton Guide
-          </span>
-          <button
-            type="button"
-            onClick={() => onUpdateCalibration({ showSkeletonGuide: !calibration.showSkeletonGuide })}
-            className={`w-full py-1.5 px-3 rounded-xl text-xs font-black cursor-pointer transition-all border flex items-center justify-center gap-1.5 ${
-              calibration.showSkeletonGuide
-                ? 'bg-emerald-50 border-emerald-400 text-emerald-900'
-                : 'bg-slate-100 border-slate-200 text-slate-600'
-            }`}
-          >
-            {calibration.showSkeletonGuide ? <Eye size={14} /> : <EyeOff size={14} />}
-            <span>{calibration.showSkeletonGuide ? 'Overlay ON' : 'Overlay OFF'}</span>
-          </button>
         </div>
       </div>
     </div>
@@ -4698,10 +4713,6 @@ function YogaGame({
           videoH,
         });
 
-        if (cal.showSkeletonGuide) {
-          drawHandSkeletonGuide(ctx, mirroredHands, cw, ch, videoW, videoH, isTwoPlayers);
-        }
-
         if (
           gameStateRef.current !== 'playing' ||
           playModeRef.current !== 'camera' ||
@@ -5348,16 +5359,11 @@ function YogaGame({
               {/* Hand Gesture Selection */}
               <div>
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                  <div>
-                    <label className="block text-teal-800 font-black text-lg">
-                      🙌 Hand Gestures for Camera Mode (1-Hand & 2-Hand Poses)
-                    </label>
-                    <p className="text-xs text-slate-500 font-semibold">
-                      Every question automatically rotates to a fresh, different set of one-hand & two-hand poses!
-                    </p>
-                  </div>
+                  <label className="block text-teal-800 font-black text-lg">
+                    🙌 Hand Gestures
+                  </label>
                   <span className="text-xs font-bold text-teal-600 bg-teal-50 px-3 py-1 rounded-full border border-teal-200">
-                    {activePoses.length} Active Gestures
+                    {activePoses.length} Active
                   </span>
                 </div>
 
@@ -5367,25 +5373,25 @@ function YogaGame({
                     onClick={() => applyPosePreset('hand')}
                     className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-black text-xs cursor-pointer shadow-xs"
                   >
-                    🙌 All Poses ({CAMERA_HAND_POSES.length})
+                    🙌 All ({CAMERA_HAND_POSES.length})
                   </button>
                   <button
                     onClick={() => applyPosePreset('head-poses')}
                     className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs cursor-pointer shadow-xs"
                   >
-                    🐰 Head &amp; Animal Poses Only ({CAMERA_HAND_POSES.filter(p => p.headPose).length})
+                    🐰 Head Poses ({CAMERA_HAND_POSES.filter(p => p.headPose).length})
                   </button>
                   <button
                     onClick={() => applyPosePreset('two-hands')}
                     className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs cursor-pointer shadow-xs"
                   >
-                    🫶 All Two-Hand Poses ({CAMERA_HAND_POSES.filter(p => p.twoHands).length})
+                    🫶 2-Hand ({CAMERA_HAND_POSES.filter(p => p.twoHands).length})
                   </button>
                   <button
                     onClick={() => applyPosePreset('one-hand')}
                     className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-black text-xs cursor-pointer shadow-xs"
                   >
-                    ☝️ One-Hand Poses Only ({CAMERA_HAND_POSES.filter(p => !p.twoHands).length})
+                    ☝️ 1-Hand ({CAMERA_HAND_POSES.filter(p => !p.twoHands).length})
                   </button>
                 </div>
 
@@ -5396,8 +5402,7 @@ function YogaGame({
                       <button
                         key={pose.id}
                         onClick={() => togglePose(pose.value)}
-                        title={pose.shortHint}
-                        className={`rounded-2xl flex flex-col items-center justify-center border-3 transition-all relative overflow-hidden p-2 pt-3 cursor-pointer ${
+                        className={`rounded-2xl flex flex-col items-center justify-center border-3 transition-all relative overflow-hidden p-2.5 gap-1 cursor-pointer ${
                           isSelected
                             ? pose.headPose
                               ? 'border-rose-500 bg-rose-50/90 shadow-sm'
@@ -5407,17 +5412,8 @@ function YogaGame({
                             : 'border-slate-200 bg-slate-50 opacity-55 grayscale hover:grayscale-0 hover:opacity-90'
                         }`}
                       >
-                        {pose.headPose ? (
-                          <span className="absolute top-1 left-1.5 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-rose-600 text-white">
-                            On Head
-                          </span>
-                        ) : pose.twoHands ? (
-                          <span className="absolute top-1 left-1.5 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-purple-600 text-white">
-                            2 Hands
-                          </span>
-                        ) : null}
                         <StandingPoseFigure poseId={pose.id} emoji={pose.value} size="sm" />
-                        <span className="text-[10px] font-black text-teal-900 truncate max-w-full mt-1">
+                        <span className="text-[11px] font-black text-teal-900 truncate max-w-full">
                           {pose.name}
                         </span>
                         {isSelected && (
@@ -5453,23 +5449,9 @@ function YogaGame({
 
               {/* Hand Tracking & Calibration Controls */}
               <div className="p-4 rounded-2xl bg-slate-50 border-2 border-slate-200 space-y-4">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-teal-900 font-black text-lg">
-                    <Sliders size={20} className="text-teal-600" />
-                    <span>Hand Tracking &amp; Calibration</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => updateCalibration({ showSkeletonGuide: !calibration.showSkeletonGuide })}
-                    className={`px-3.5 py-1.5 rounded-xl font-black text-xs cursor-pointer border transition-all flex items-center gap-1.5 ${
-                      calibration.showSkeletonGuide
-                        ? 'bg-emerald-600 text-white border-emerald-700'
-                        : 'bg-white text-slate-700 border-slate-300'
-                    }`}
-                  >
-                    {calibration.showSkeletonGuide ? <Eye size={14} /> : <EyeOff size={14} />}
-                    <span>Skeleton Guide {calibration.showSkeletonGuide ? 'ON' : 'OFF'}</span>
-                  </button>
+                <div className="flex items-center gap-2 text-teal-900 font-black text-lg">
+                  <Sliders size={20} className="text-teal-600" />
+                  <span>Hand Tracking &amp; Calibration</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -6827,44 +6809,39 @@ function YogaGame({
                         </span>
                       ) : null}
 
-                      {/* Gesture Emoji / Custom 3D Emoji Illustration: BIGGER & DISTINCT 2-HAND / ON-HEAD STYLING */}
-                      <div
-                        className={`mt-1.5 inline-flex flex-col items-center justify-center px-3 py-2 sm:px-3.5 sm:py-2.5 border-2 rounded-2xl shadow-xs shrink-0 select-none group-hover:scale-110 transition-transform ${
-                          opt.isHeadPose
-                            ? 'bg-gradient-to-b from-rose-50 to-pink-100/90 border-rose-300'
-                            : opt.isTwoHands
-                            ? 'bg-gradient-to-b from-purple-50 to-indigo-100/90 border-purple-300'
-                            : 'bg-gradient-to-b from-teal-50 to-teal-100/90 border-teal-200/90'
-                        }`}
-                      >
-                        {isImageUrl(opt.poseValue) ? (
-                          <img
-                            src={opt.poseValue}
-                            alt={getPoseName(opt.poseId, opt.poseValue)}
-                            referrerPolicy="no-referrer"
-                            className="w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 object-cover rounded-2xl shadow-md border border-white/60"
-                          />
-                        ) : (
-                          <span
-                            className={`${
-                              Array.from(opt.poseValue.replace(/\uFE0F/g, '')).length >= 2
-                                ? 'text-2xl sm:text-3xl md:text-4xl tracking-tight'
-                                : 'text-3xl sm:text-4xl md:text-5xl'
-                            } leading-none whitespace-nowrap`}
-                          >
-                            {opt.poseValue}
-                          </span>
-                        )}
-                        {opt.isHeadPose ? (
-                          <span className="mt-1 text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-rose-700 leading-none">
-                            2 HANDS • ON HEAD
-                          </span>
-                        ) : opt.isTwoHands ? (
-                          <span className="mt-1 text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-purple-700 leading-none">
-                            2 HANDS
-                          </span>
-                        ) : null}
-                      </div>
+                      {/* Gesture Emoji / Head Pose Diagram */}
+                      {resolveHeadPoseId(opt.poseId, opt.poseValue) ? (
+                        <div className="mt-1.5 shrink-0 select-none group-hover:scale-110 transition-transform">
+                          <StandingPoseFigure poseId={opt.poseId} emoji={opt.poseValue} size="md" />
+                        </div>
+                      ) : (
+                        <div
+                          className={`mt-1.5 inline-flex flex-col items-center justify-center px-3 py-2 sm:px-3.5 sm:py-2.5 border-2 rounded-2xl shadow-xs shrink-0 select-none group-hover:scale-110 transition-transform ${
+                            opt.isTwoHands
+                              ? 'bg-gradient-to-b from-purple-50 to-indigo-100/90 border-purple-300'
+                              : 'bg-gradient-to-b from-teal-50 to-teal-100/90 border-teal-200/90'
+                          }`}
+                        >
+                          {isImageUrl(opt.poseValue) ? (
+                            <img
+                              src={opt.poseValue}
+                              alt={getPoseName(opt.poseId, opt.poseValue)}
+                              referrerPolicy="no-referrer"
+                              className="w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 object-cover rounded-2xl shadow-md border border-white/60"
+                            />
+                          ) : (
+                            <span
+                              className={`${
+                                Array.from(opt.poseValue.replace(/\uFE0F/g, '')).length >= 2
+                                  ? 'text-2xl sm:text-3xl md:text-4xl tracking-tight'
+                                  : 'text-3xl sm:text-4xl md:text-5xl'
+                              } leading-none whitespace-nowrap`}
+                            >
+                              {opt.poseValue}
+                            </span>
+                          )}
+                        </div>
+                      )}
 
                       {/* Live Camera Hold-to-Select Bar on the Card */}
                       {(p1Locking || p2Locking) && (

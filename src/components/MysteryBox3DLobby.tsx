@@ -410,7 +410,7 @@ function TransparentBannerImage({ src, alt }: { src: string; alt: string }) {
           const b = data[p + 2];
           const maxC = Math.max(r, g, b);
           const minC = Math.min(r, g, b);
-          if (minC > 232 && maxC - minC < 26) {
+          if (minC >= 246 && maxC - minC <= 12) {
             isBg[idx] = 1;
             push(x + 1, y);
             push(x - 1, y);
@@ -419,8 +419,8 @@ function TransparentBannerImage({ src, alt }: { src: string; alt: string }) {
           }
         }
 
-        // Secondary pass in the bottom floor-shadow strip (y >= 88%) to clear soft neutral/warm floor shadows
-        const shadowStartY = Math.floor(h * 0.88);
+        // Secondary pass in the bottom floor-shadow strip (y >= 90%) to clear soft neutral floor shadows
+        const shadowStartY = Math.floor(h * 0.9);
         const shadowVisited = new Uint8Array(w * h);
         let sHead = 0;
         let sTail = 0;
@@ -434,7 +434,7 @@ function TransparentBannerImage({ src, alt }: { src: string; alt: string }) {
           const b = data[p + 2];
           const maxC = Math.max(r, g, b);
           const minC = Math.min(r, g, b);
-          if (minC >= 180 && maxC - minC <= 26) {
+          if (minC >= 195 && maxC - minC <= 18) {
             shadowVisited[idx] = 1;
             isBg[idx] = 1;
             queue[sTail++] = x;
@@ -482,9 +482,11 @@ function TransparentBannerImage({ src, alt }: { src: string; alt: string }) {
                 const r = data[p];
                 const g = data[p + 1];
                 const b = data[p + 2];
+                const maxC = Math.max(r, g, b);
+                const minC = Math.min(r, g, b);
                 const brightness = (r + g + b) / 3;
-                if (brightness > 220) {
-                  data[p + 3] = Math.max(40, Math.round(255 * (1 - (brightness - 220) / 40)));
+                if (brightness > 240 && maxC - minC <= 12) {
+                  data[p + 3] = Math.max(70, Math.round(255 * (1 - (brightness - 240) / 18)));
                 }
               }
               if (x < minX) minX = x;
@@ -543,7 +545,7 @@ function TransparentBannerImage({ src, alt }: { src: string; alt: string }) {
       src={processedSrc}
       alt={alt}
       referrerPolicy="no-referrer"
-      className="w-full h-auto max-h-[205px] sm:max-h-[240px] object-contain block drop-shadow-[0_10px_18px_rgba(9,54,107,0.32)]"
+      className="w-full h-auto max-h-[225px] sm:max-h-[260px] object-contain block drop-shadow-[0_10px_18px_rgba(9,54,107,0.32)]"
     />
   );
 }

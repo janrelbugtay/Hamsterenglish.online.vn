@@ -123,12 +123,40 @@ export function hasTabLaunchUrlParams(): boolean {
   }
 }
 
+function gameHasSingleAnswerQuestions(gameData: any): boolean {
+  if (!gameData || typeof gameData !== 'object') return false;
+  const rawQuestions =
+    Array.isArray(gameData.customQuestions) && gameData.customQuestions.length > 0
+      ? gameData.customQuestions
+      : Array.isArray(gameData.questions) && gameData.questions.length > 0
+      ? gameData.questions
+      : null;
+
+  if (!rawQuestions || rawQuestions.length === 0) return false;
+
+  return rawQuestions.some((q: any) => {
+    if (!q || typeof q !== 'object') return false;
+    const opts = Array.isArray(q.options)
+      ? q.options
+          .map((o: any) => (typeof o === 'string' ? o : o?.text || ''))
+          .filter((s: string) => s.trim() !== '')
+      : Array.isArray(q.answers)
+      ? q.answers
+          .map((a: any) => (typeof a === 'string' ? a : a?.text || ''))
+          .filter((s: string) => s.trim() !== '')
+      : [];
+    return opts.length <= 1;
+  });
+}
+
 export function openGameInNewTab(game: any, targetMode?: string): void {
   if (typeof window === 'undefined' || !game) return;
 
   cleanupOldLaunchKeys();
 
-  const resolvedMode = targetMode || game.gameType || 'mystery-box';
+  const resolvedMode = gameHasSingleAnswerQuestions(game)
+    ? 'mystery-box'
+    : targetMode || game.gameType || 'mystery-box';
   const gameToLaunch = {
     ...game,
     gameType: resolvedMode,
@@ -355,7 +383,9 @@ export function resolveLaunchedGameFromUrl(): Promise<{
 
       if (!loadedGame) return null;
 
-      const finalMode = loadedMode || loadedGame.gameType || 'mystery-box';
+      const finalMode = gameHasSingleAnswerQuestions(loadedGame)
+        ? 'mystery-box'
+        : loadedMode || loadedGame.gameType || 'mystery-box';
       const normalizedGame = {
         ...loadedGame,
         gameType: finalMode,

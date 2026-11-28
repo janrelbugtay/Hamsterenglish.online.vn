@@ -30,7 +30,8 @@ export type ViewState =
   | "roller-coaster-quiz"
   | "hamster-paintball"
   | "sleeping-hamster"
-  | "my-slides";
+  | "my-slides"
+  | "ai-3d-character-studio";
 
 export type GameCategoryId =
   | "classroom-tools"

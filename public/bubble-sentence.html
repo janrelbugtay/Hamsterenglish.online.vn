@@ -211,15 +211,18 @@
         .bubble-word.mcq-bubble.snapped {
             width: auto !important;
             height: auto !important;
-            min-width: 140px !important;
-            max-width: 340px !important;
-            min-height: 60px !important;
+            min-width: 150px !important;
+            max-width: min(420px, 44vw) !important;
+            min-height: 58px !important;
             max-height: none !important;
-            padding: 8px 22px 8px 10px !important;
-            border-radius: 9999px !important;
+            padding: 10px 22px 10px 12px !important;
+            border-radius: 36px !important;
             display: inline-flex !important;
             align-items: center !important;
             justify-content: flex-start !important;
+            white-space: normal !important;
+            word-break: break-word !important;
+            overflow-wrap: anywhere !important;
             pointer-events: none !important;
         }
 
@@ -252,7 +255,7 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            font-size: 3.5rem;
+            font-size: 3rem;
             color: #ef4444;
             font-weight: 900;
             z-index: 50;
@@ -263,20 +266,21 @@
 
         /* Slots */
         .word-slot {
-            height: 75px; min-width: 120px;
-            border: 4px dashed rgba(0, 0, 0, 0.2);
+            height: 64px; min-width: 105px;
+            border: 3.5px dashed rgba(0, 0, 0, 0.22);
             border-radius: 9999px;
-            background: rgba(255, 255, 255, 0.4);
+            background: rgba(255, 255, 255, 0.45);
             box-shadow: inset 0 4px 6px rgba(0,0,0,0.05);
             transition: all 0.2s;
             display: flex; align-items: center; justify-content: center;
             overflow: visible;
+            padding: 0 8px;
         }
         .word-slot.highlight {
-            background: rgba(255, 255, 255, 0.65);
+            background: rgba(255, 255, 255, 0.7);
             border-color: #fff; border-style: solid;
-            box-shadow: 0 0 25px rgba(255,255,255,0.8);
-            transform: scale(1.05);
+            box-shadow: 0 0 22px rgba(255,255,255,0.85);
+            transform: scale(1.04);
         }
         /* When slot is filled by a bubble, remove the dashed border & inset shadow line */
         .word-slot.filled {
@@ -285,13 +289,14 @@
             background: transparent !important;
             box-shadow: none !important;
             transform: none !important;
+            padding: 0 !important;
         }
 
         /* Anagram / Letter mode sizing */
         .word-slot.letter-slot {
-            width: 75px;
-            min-width: 75px;
-            height: 75px;
+            width: 64px;
+            min-width: 64px;
+            height: 64px;
             border-radius: 9999px;
             aspect-ratio: 1 / 1;
             padding: 0;
@@ -299,44 +304,47 @@
         }
 
         .bubble-word.letter-bubble {
-            width: 75px;
-            height: 75px;
-            min-width: 75px;
-            min-height: 75px;
+            width: 64px;
+            height: 64px;
+            min-width: 64px;
+            min-height: 64px;
             padding: 0;
             display: flex;
             align-items: center;
             justify-content: center;
             border-radius: 9999px;
             aspect-ratio: 1 / 1;
-            font-size: 2.2rem;
+            font-size: 1.9rem;
             line-height: 1;
         }
 
-        /* Multiple Choice Floating Option Bubbles */
+        /* Multiple Choice Floating Option Bubbles — wraps multi-line text cleanly inside the bubble */
         .bubble-word.mcq-bubble {
-            min-width: 140px;
-            max-width: 320px;
+            min-width: 150px;
+            max-width: min(420px, 44vw);
+            width: max-content;
             height: auto;
-            min-height: 60px;
-            padding: 8px 22px 8px 10px;
-            border-radius: 9999px;
-            font-size: 1.2rem;
-            line-height: 1.25;
+            min-height: 58px;
+            padding: 10px 22px 10px 12px;
+            border-radius: 36px;
+            font-size: clamp(0.95rem, 1.35vw, 1.2rem);
+            line-height: 1.3;
+            white-space: normal !important;
             word-break: break-word;
+            overflow-wrap: anywhere;
             display: inline-flex;
             align-items: center;
             justify-content: flex-start;
             gap: 12px;
             cursor: pointer;
             box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.18), 0 8px 10px -6px rgba(0, 0, 0, 0.1), inset 0 2px 4px rgba(255, 255, 255, 0.9);
-            border: 3px solid rgba(255, 255, 255, 0.9);
+            border: 3px solid rgba(255, 255, 255, 0.92);
             background: radial-gradient(circle at 35% 30%, #ffffff, #e0f2fe 60%, #bae6fd 100%);
             color: #0f172a;
             font-weight: 800;
             user-select: none;
             -webkit-user-select: none;
-            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            transition: box-shadow 0.15s ease;
         }
 
         .bubble-word.mcq-bubble:active {
@@ -344,13 +352,13 @@
         }
 
         .mcq-letter-badge {
-            width: 44px;
-            height: 44px;
-            min-width: 44px;
+            width: 40px;
+            height: 40px;
+            min-width: 40px;
             border-radius: 9999px;
             background: linear-gradient(135deg, #0284c7, #0369a1);
             color: #ffffff;
-            font-size: 1.3rem;
+            font-size: 1.2rem;
             font-weight: 900;
             display: flex;
             align-items: center;
@@ -388,10 +396,15 @@
 
         .mcq-opt-label {
             flex: 1;
-            font-size: 1.2rem;
+            min-width: 0;
+            font-size: clamp(0.95rem, 1.35vw, 1.2rem);
+            line-height: 1.3;
             font-weight: 800;
             color: #0f172a;
             text-align: left;
+            white-space: normal !important;
+            word-break: break-word;
+            overflow-wrap: anywhere;
         }
 
         .mcq-opt-image {
@@ -405,9 +418,9 @@
 
         /* Hyphen separator in words */
         .word-slot-hyphen {
-            width: 32px;
-            min-width: 32px;
-            height: 75px;
+            width: 28px;
+            min-width: 28px;
+            height: 64px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -423,12 +436,12 @@
         .word-group {
             display: flex;
             align-items: center;
-            flex-wrap: nowrap;
+            flex-wrap: wrap;
         }
 
         .word-spacer {
-            width: 36px;
-            height: 50px;
+            width: 24px;
+            height: 44px;
             pointer-events: none;
             flex-shrink: 0;
         }
@@ -445,7 +458,7 @@
              z-index: 50;
         }
 
-        .custom-scrollbar::-webkit-scrollbar { width: 10px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0,0,0,0.05); border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 10px; }
 
@@ -461,126 +474,27 @@
         }
         .map-island:hover { transform: scale(1.1) translateY(-10px); }
 
-    
-        @media (min-height: 800px) and (min-width: 1024px) {
-            .bubble-word {
-                padding: 2.5vh 4.5vh;
-                font-size: 6vh;
-                border-width: 0.4vh;
-            }
-            .word-slot {
-                height: 12vh;
-                min-width: 18vh;
-                border-width: 0.5vh;
-            }
-            .word-slot.letter-slot {
-                width: 11vh;
-                min-width: 11vh;
-                height: 11vh;
-            }
-            .bubble-word.letter-bubble {
-                width: 11vh;
-                height: 11vh;
-                min-width: 11vh;
-                min-height: 11vh;
-                font-size: 6vh;
-                padding: 0;
-            }
-            .word-slot-hyphen {
-                width: 4.5vh;
-                min-width: 4.5vh;
-                height: 11vh;
-            }
-            .word-spacer {
-                width: 5vh;
-            }
-            #sentence-container {
-                min-height: 16vh;
-                padding: 4vh;
-                gap: 2vh;
-                border-radius: 4vh;
-            }
-            .powerups-container button {
-                padding: 2vh 3vh !important;
-                font-size: 2.5vh !important;
-                border-radius: 1.5vh !important;
-            }
-            .ui-progress-container {
-                height: 3vh !important;
-                margin-top: 3vh !important;
-                border-radius: 1.5vh !important;
-            }
-            .lesson-status-container {
-                font-size: 2.5vh !important;
-                padding: 1vh 3vh !important;
-            }
-            #timer-container {
-                width: 18vh !important;
-                height: 18vh !important;
-            }
-            #ui-timer-text {
-                font-size: 6vh !important;
-            }
-            .quit-btn {
-                padding: 1.5vh 3vh !important;
-                font-size: 2.5vh !important;
-            }
-            .team-score {
-                padding: 1vh 3vh !important;
-                font-size: 2.5vh !important;
-            }
-        }
-
         @keyframes floatUp {
-        0% { opacity: 1; transform: translateY(0) scale(1); }
-        100% { opacity: 0; transform: translateY(-40px) scale(1.2); }
-    }
-    .floating-score {
-        position: absolute;
-        font-weight: 900;
-        font-size: 2rem;
-        pointer-events: none;
-        animation: floatUp 1s ease-out forwards;
-        z-index: 1000;
-        text-shadow: 0 4px 6px rgba(0,0,0,0.3);
-    }
+            0% { opacity: 1; transform: translateY(0) scale(1); }
+            100% { opacity: 0; transform: translateY(-40px) scale(1.2); }
+        }
+        .floating-score {
+            position: absolute;
+            font-weight: 900;
+            font-size: 2rem;
+            pointer-events: none;
+            animation: floatUp 1s ease-out forwards;
+            z-index: 1000;
+            text-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
     </style>
 
 <script>
 window.onerror = function(message, source, lineno, colno, error) {
-    const errorDiv = document.createElement('div');
-    errorDiv.style.position = 'fixed';
-    errorDiv.style.top = '0';
-    errorDiv.style.left = '0';
-    errorDiv.style.zIndex = '999999';
-    errorDiv.style.backgroundColor = 'rgba(255,0,0,0.8)';
-    errorDiv.style.color = 'white';
-    errorDiv.style.padding = '10px';
-    errorDiv.style.fontSize = '16px';
-    
-    let strMsg = message;
-    if (typeof message === 'object') {
-        try { strMsg = JSON.stringify(message); } catch(e) { strMsg = String(message); }
-    }
-    if (error && typeof error === 'object' && !error.stack) {
-        try { strMsg += " " + JSON.stringify(error); } catch(e) {}
-    }
-    errorDiv.innerText = strMsg + ' at ' + lineno + ':' + colno + ' ' + (error && error.stack ? error.stack : '');
-    
-    document.body.appendChild(errorDiv);
+    console.error('Bubble Island runtime error:', message, lineno, colno, error);
 };
 window.onunhandledrejection = function(event) {
-    const errorDiv = document.createElement('div');
-    errorDiv.style.position = 'fixed';
-    errorDiv.style.top = '50px';
-    errorDiv.style.left = '0';
-    errorDiv.style.zIndex = '999999';
-    errorDiv.style.backgroundColor = 'rgba(255,100,0,0.8)';
-    errorDiv.style.color = 'white';
-    errorDiv.style.padding = '10px';
-    errorDiv.style.fontSize = '16px';
-    errorDiv.innerText = 'Unhandled Promise Rejection: ' + event.reason;
-    document.body.appendChild(errorDiv);
+    console.error('Bubble Island unhandled rejection:', event.reason);
 };
 </script>
 
@@ -589,7 +503,7 @@ window.onunhandledrejection = function(event) {
     <canvas id="particle-canvas" style="pointer-events: none;"></canvas>
 
     <div class="absolute inset-0 pointer-events-none z-0 overflow-hidden" id="ambient-bg">
-        <svg class="absolute top-10 right-10 w-40 h-40 text-yellow-300 drop-shadow-2xl" style="animation: float 6s ease-in-out infinite" viewBox="0 0 100 100">
+        <svg class="absolute top-10 right-10 w-36 h-36 text-yellow-300 drop-shadow-2xl" style="animation: float 6s ease-in-out infinite" viewBox="0 0 100 100">
             <circle cx="50" cy="50" r="25" fill="currentColor" />
             <g fill="currentColor" stroke="currentColor" stroke-width="4" stroke-linecap="round">
                 <line x1="50" y1="5" x2="50" y2="15"/><line x1="50" y1="85" x2="50" y2="95"/>
@@ -615,9 +529,6 @@ window.onunhandledrejection = function(event) {
         <div class="text-4xl font-black text-blue-500 animate-pulse">Loading...</div>
     </div>
     <div id="screen-menu" class="screen active relative overflow-hidden">
-        <!-- Top Bar Profile -->
-        
-
         <div class="absolute top-4 right-4 z-20 flex gap-2">
             <button onclick="Game.showScreen('screen-editor')" class="btn-premium px-6 py-3 text-sm hidden">👨‍🏫 Game Setup</button>
             <button onclick="Game.openSettings()" class="btn-premium px-4 py-3 text-sm">⚙️</button>
@@ -676,8 +587,6 @@ window.onunhandledrejection = function(event) {
             </div>
             
             <div class="overflow-y-auto custom-scrollbar px-2 pb-4 flex-1">
-
-                
                 <!-- Players Panel -->
                 <div id="lobby-teams-panel" class="bg-blue-50 rounded-3xl p-4 md:p-6 border-2 border-blue-200 mb-6 text-left shadow-inner">
                     <div class="flex justify-between items-center mb-4">
@@ -691,95 +600,96 @@ window.onunhandledrejection = function(event) {
                         Tip: Click a player name to edit it!
                     </div>
                 </div>
-
-
             </div>
             
             <button onclick="Game.startGameFromLobby()" class="btn-premium green w-full py-4 text-2xl font-black shadow-lg shrink-0 mt-4 z-10 relative">🚀 START GAME</button>
         </div>
     </div>
 
-    <div id="screen-game" class="screen relative" style="transition: box-shadow 0.2s">
+    <!-- Main Gameplay Screen (Non-Overlapping 3-Row Full-Viewport Flex Layout) -->
+    <div id="screen-game" class="screen relative w-full h-full overflow-hidden justify-between" style="transition: box-shadow 0.2s">
 
-
-
-        <!-- Top Bar -->
-        <div class="absolute top-0 left-0 w-full p-4 z-30 pointer-events-none">
-            <!-- Right Controls (Lesson Status) -->
-            <div class="absolute top-4 right-20 flex flex-col gap-2 pointer-events-auto">
-                <div class="bg-blue-900/40 backdrop-blur-md text-white font-black text-xl px-6 py-2 rounded-full shadow-lg border border-white/30 tracking-wide lesson-status-container" id="ui-lesson-status">1 / 5</div>
-            </div>
-
+        <!-- Row 1: Top HUD Bar (Left Controls, Center Teams & Timer, Right Progress Counter) -->
+        <div class="relative w-full px-3 sm:px-5 pt-2.5 pb-1.5 z-30 flex items-center justify-between gap-2 sm:gap-4 shrink-0">
             <!-- Left Controls -->
-            <div class="absolute top-4 left-4 flex flex-row gap-2 pointer-events-auto">
-                <button onclick="Game.quitGame()" class="btn-premium quit-btn bg-gradient-to-b from-gray-200 to-gray-300 text-gray-700 border-gray-100 w-14 h-14 flex items-center justify-center text-2xl shadow-[0_10px_0_#9ca3af,0_15px_20px_rgba(0,0,0,0.2)] rounded-2xl shrink-0" title="Back to Menu">🔙</button>
-                <button onclick="Game.pauseGame()" class="btn-premium quit-btn bg-gradient-to-b from-blue-200 to-blue-300 text-blue-700 border-blue-100 w-14 h-14 flex items-center justify-center text-2xl shadow-[0_10px_0_#93c5fd,0_15px_20px_rgba(0,0,0,0.2)] rounded-2xl shrink-0" title="Settings">⚙️</button>
+            <div class="flex items-center gap-2 shrink-0 pointer-events-auto">
+                <button onclick="Game.quitGame()" class="btn-premium quit-btn bg-gradient-to-b from-slate-800 to-slate-900 text-white border-white/40 px-4 h-11 flex items-center justify-center gap-1.5 text-sm sm:text-base shadow-[0_6px_0_#0f172a,0_10px_16px_rgba(0,0,0,0.22)] rounded-full shrink-0" style="text-transform: none;" title="Back to Setup">
+                    <span>←</span>
+                    <span>Back</span>
+                </button>
+                <button onclick="Game.pauseGame()" class="btn-premium quit-btn bg-gradient-to-b from-blue-200 to-blue-300 text-blue-700 border-blue-100 w-11 h-11 flex items-center justify-center text-lg shadow-[0_6px_0_#93c5fd,0_10px_16px_rgba(0,0,0,0.18)] rounded-2xl shrink-0" title="Settings">⚙️</button>
             </div>
             
-            <!-- Teams and Timer Wrapper -->
-            <div class="absolute top-4 left-1/2 transform -translate-x-1/2 flex items-center gap-6 pointer-events-none w-full justify-center max-w-full px-4 overflow-x-auto" style="scrollbar-width: none;">
-                <div id="teams-container" class="flex items-center gap-4 pointer-events-auto">
+            <!-- Center Teams and Timer Wrapper -->
+            <div class="flex-1 min-w-0 flex items-center justify-center overflow-x-auto py-1" style="scrollbar-width: none;">
+                <div id="teams-container" class="flex flex-wrap items-center justify-center gap-2 sm:gap-3 pointer-events-auto">
                     <!-- Circular Timer -->
-                    <div class="relative w-24 h-24 flex items-center justify-center shrink-0 pointer-events-auto" id="timer-container" style="order: 999;">
+                    <div class="relative w-16 h-16 sm:w-20 sm:h-20 flex items-center justify-center shrink-0 pointer-events-auto" id="timer-container" style="order: 999;">
                         <svg class="absolute inset-0 w-full h-full drop-shadow-md" viewBox="0 0 100 100">
-                            <circle cx="50" cy="50" r="45" fill="rgba(255,255,255,0.8)" stroke="#e5e7eb" stroke-width="8"/>
+                            <circle cx="50" cy="50" r="45" fill="rgba(255,255,255,0.88)" stroke="#e5e7eb" stroke-width="8"/>
                             <circle id="ui-timer-ring" cx="50" cy="50" r="45" fill="none" stroke="#4ade80" stroke-width="8" class="timer-ring-circle" stroke-dasharray="283" stroke-dashoffset="0"/>
                         </svg>
-                        <span id="ui-timer-text" class="text-2xl font-black text-gray-800 z-10 drop-shadow-sm">∞</span>
+                        <span id="ui-timer-text" class="text-xl sm:text-2xl font-black text-gray-800 z-10 drop-shadow-sm">∞</span>
                     </div>
                 </div>
             </div>
+
+            <!-- Right Controls (Lesson Status, leaves space on right for Fullscreen button) -->
+            <div class="flex items-center gap-2 shrink-0 pointer-events-auto mr-11 sm:mr-12">
+                <div class="bg-blue-900/45 backdrop-blur-md text-white font-black text-sm sm:text-lg px-4 sm:px-5 py-1.5 rounded-full shadow-lg border border-white/35 tracking-wide lesson-status-container whitespace-nowrap" id="ui-lesson-status">1 / 5</div>
+            </div>
         </div>
 
-        <!-- Sentence Area with Illustration -->
-        <div class="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex flex-col w-[95%] max-w-[95%] z-10">
-            <!-- Dynamic Emoji Illustration -->
-            
+        <!-- Row 2: Middle Physics Arena (Strictly between Top HUD and Bottom Dock so bubbles never overlap UI) -->
+        <div id="physics-area" class="relative flex-1 w-full min-h-0 z-20 overflow-hidden my-1"></div>
 
-            <div class="flex items-center gap-4 w-full">
-                <div class="glass bg-white/40 rounded-[40px] p-8 min-h-[140px] flex flex-wrap gap-4 items-center justify-center shadow-2xl grow" id="sentence-container">
-                    <!-- Slots -->
+        <!-- Row 3: Bottom Question / Slots & Powerups Dock -->
+        <div class="relative w-[96%] max-w-[1440px] mx-auto pb-3 pt-1 z-30 shrink-0">
+            <div class="flex items-stretch gap-3 sm:gap-4 w-full">
+                <div class="glass bg-white/55 rounded-[28px] sm:rounded-[36px] px-4 py-3 sm:px-7 sm:py-4 min-h-[112px] sm:min-h-[130px] max-h-[26vh] overflow-y-auto custom-scrollbar flex flex-wrap gap-2.5 sm:gap-3 items-center justify-center shadow-2xl grow" id="sentence-container">
+                    <!-- Slots / Question -->
                 </div>
-                <div class="flex flex-col gap-2 shrink-0 pointer-events-auto z-30 powerups-container">
-                    <button onclick="Game.usePowerup('solve')" class="btn-premium bg-gradient-to-b from-yellow-300 to-yellow-500 text-yellow-900 border-yellow-200 px-4 py-3 text-lg shadow-[0_10px_0_#ca8a04,0_15px_20px_rgba(0,0,0,0.2)] flex flex-col items-center leading-none">💡 Hint</button>
-                    <button id="btn-freeze" onclick="Game.usePowerup('freeze')" class="btn-premium bg-gradient-to-b from-blue-400 to-blue-600 text-white border-blue-300 px-4 py-3 text-lg shadow-[0_10px_0_#2563eb,0_15px_20px_rgba(0,0,0,0.2)] flex flex-col items-center leading-none">❄️ Freeze</button>
-                    <button onclick="Game.usePowerup('show')" class="btn-premium bg-gradient-to-b from-purple-400 to-purple-600 text-white border-purple-300 px-4 py-3 text-lg shadow-[0_10px_0_#9333ea,0_15px_20px_rgba(0,0,0,0.2)] flex flex-col items-center leading-none">👁️ Show</button>
+                <div class="flex flex-col justify-center gap-2 shrink-0 pointer-events-auto z-30 powerups-container">
+                    <button id="btn-hint" onclick="Game.usePowerup('solve')" class="btn-premium bg-gradient-to-b from-yellow-300 to-yellow-500 text-yellow-900 border-yellow-200 px-4 py-2.5 text-sm sm:text-base shadow-[0_6px_0_#ca8a04,0_10px_16px_rgba(0,0,0,0.2)] flex items-center justify-center gap-1.5 leading-none rounded-2xl min-w-[122px]">💡 HINT</button>
+                    <button id="btn-freeze" onclick="Game.usePowerup('freeze')" class="btn-premium bg-gradient-to-b from-blue-400 to-blue-600 text-white border-blue-300 px-4 py-2.5 text-sm sm:text-base shadow-[0_6px_0_#2563eb,0_10px_16px_rgba(0,0,0,0.2)] flex items-center justify-center gap-1.5 leading-none rounded-2xl min-w-[122px]">❄️ FREEZE</button>
+                    <button id="btn-show" onclick="Game.usePowerup('show')" class="btn-premium bg-gradient-to-b from-purple-400 to-purple-600 text-white border-purple-300 px-4 py-2.5 text-sm sm:text-base shadow-[0_6px_0_#9333ea,0_10px_16px_rgba(0,0,0,0.2)] flex items-center justify-center gap-1.5 leading-none rounded-2xl min-w-[122px]">👁️ SHOW</button>
                 </div>
             </div>
-            
-
         </div>
-
-        <!-- Physics Area -->
-        <div id="physics-area" class="absolute top-24 left-0 w-full z-20 overflow-visible" style="bottom: 320px;"></div>
     </div>
 
-    <div id="screen-win" class="screen bg-black/60 backdrop-blur-md justify-center items-center z-40">
-        <div class="glass bg-white p-10 rounded-[40px] text-center max-w-xl w-11/12 shadow-2xl transform scale-0 transition-transform duration-700 ease-out" id="win-modal">
-            <h2 class="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500 drop-shadow-md mb-2" id="win-title">PERFECT!</h2>
-            
-            <div class="flex justify-center gap-2 mb-8" id="win-stars">
-                <!-- Animated SVG Stars -->
-            </div>
-            
-            <div class="grid grid-cols-2 gap-4 text-left bg-blue-50/80 p-6 rounded-3xl mb-8 border-4 border-blue-100 shadow-inner">
-                <div class="font-bold text-gray-500 text-xl">Accuracy:</div>
-                <div class="font-black text-blue-600 text-2xl text-right" id="win-accuracy">100%</div>
-                
-                <div class="font-bold text-gray-500 text-xl">Time:</div>
-                <div class="font-black text-blue-600 text-2xl text-right" id="win-time">0:45</div>
-                
-                <div class="font-bold text-gray-500 text-xl">Max Combo:</div>
-                <div class="font-black text-orange-500 text-2xl text-right" id="win-combo">5</div>
+    <!-- Winner / Game Over Podium Modal -->
+    <div id="screen-win" class="screen bg-slate-950/80 backdrop-blur-md justify-center items-center z-40 p-3 sm:p-5 overflow-y-auto">
+        <div class="border-4 border-amber-400 rounded-3xl sm:rounded-[2.5rem] p-5 sm:p-7 md:p-8 text-center max-w-2xl w-full shadow-[0_25px_80px_rgba(0,0,0,0.85),0_0_45px_rgba(251,191,36,0.4)] transform scale-0 transition-transform duration-500 ease-out text-white my-auto" id="win-modal" style="background: linear-gradient(180deg, #1e3a8a 0%, #172554 55%, #0f172a 100%);">
+            <div class="text-3xl sm:text-4xl mb-1 animate-bounce drop-shadow">👑</div>
+            <div id="win-avatars" class="flex items-center justify-center gap-3 mb-2"></div>
+            <p class="text-xs sm:text-sm font-black text-amber-300 uppercase tracking-widest mb-1">🏆 OFFICIAL WINNER ANNOUNCEMENT 🏆</p>
+            <h2 class="text-2xl sm:text-4xl font-black text-white uppercase drop-shadow-md mb-1" id="win-title">GAME COMPLETE!</h2>
+            <p class="text-xs sm:text-sm font-bold text-sky-200 mb-4" id="win-stars">GREAT JOB!</p>
 
-                <div class="col-span-2 h-1 bg-gray-200 rounded-full my-2"></div>
-                
-                
+            <!-- Team Podium Leaderboard -->
+            <div id="win-leaderboard" class="w-full flex flex-col gap-2.5 mb-5 max-h-56 overflow-y-auto pr-1 custom-scrollbar text-left"></div>
+            
+            <!-- Game Summary Stats -->
+            <div class="grid grid-cols-3 gap-2.5 bg-white/10 p-3.5 rounded-2xl mb-5 border border-white/20 text-center">
+                <div class="flex flex-col">
+                    <span class="text-xs font-bold text-sky-200 uppercase">Accuracy</span>
+                    <span class="font-black text-emerald-300 text-lg sm:text-xl" id="win-accuracy">100%</span>
+                </div>
+                <div class="flex flex-col border-x border-white/15">
+                    <span class="text-xs font-bold text-sky-200 uppercase">Time</span>
+                    <span class="font-black text-amber-300 text-lg sm:text-xl" id="win-time">0:45</span>
+                </div>
+                <div class="flex flex-col">
+                    <span class="text-xs font-bold text-sky-200 uppercase">Max Combo</span>
+                    <span class="font-black text-pink-300 text-lg sm:text-xl" id="win-combo">5</span>
+                </div>
+                <span id="win-coins" class="hidden">0</span>
             </div>
             
-            <div class="flex gap-4 justify-center">
-                <button onclick="if(window.self !== window.top) { window.parent.postMessage({type: 'QUIT_GAME'}, '*'); } else { Game.showScreen('screen-menu') }" class="btn-premium px-8 py-4 text-xl text-gray-700">Exit Game</button>
-                <button onclick="Game.start(Game.selectedCatId)" class="btn-premium blue px-8 py-4 text-xl">Play Again</button>
+            <div class="flex flex-col sm:flex-row gap-3 justify-center">
+                <button onclick="Game.restartGame()" class="flex-1 py-3.5 bg-gradient-to-b from-amber-300 via-amber-400 to-amber-500 hover:brightness-105 text-slate-950 border-2 border-amber-200 font-black text-lg sm:text-xl rounded-2xl shadow-lg transition-all cursor-pointer">Play Again 🔄</button>
+                <button onclick="if(window.self !== window.top) { window.parent.postMessage({type: 'QUIT_GAME'}, '*'); } else { Game.showScreen('screen-menu') }" class="flex-1 py-3.5 bg-blue-800/80 hover:bg-blue-700 border-2 border-sky-300/50 text-white font-black text-lg sm:text-xl rounded-2xl shadow-lg transition-all cursor-pointer">Game Setup ⚙️</button>
             </div>
         </div>
     </div>
@@ -1544,22 +1454,40 @@ var Game = {
                     this.start(this.selectedCatId);
                 }
             },
+            restartGame() {
+                window.currentTeamIndex = 0;
+                this.classroomMode = window.teamsData && window.teamsData.length > 0;
+                const catId = this.selectedCatId || (this.cat && this.cat.id) || (Storage.data.categories[0] && Storage.data.categories[0].id) || 'cat_1';
+                this.start(catId);
+            },
             start(catId) {
-
-                this.cat = Storage.getCat(catId);
-                this.sents = Storage.getSents(catId).sort(()=>Math.random()-0.5);
+                this.selectedCatId = catId;
+                this.cat = Storage.getCat(catId) || Storage.data.categories[0];
+                this.sents = Storage.getSents(this.cat.id).sort(()=>Math.random()-0.5);
                 this.idx = 0; this.score = 0; this.combo = 0; this.maxCombo = 0;
+                this.totalMistakes = 0;
+                this.gameStartTime = Date.now();
                 this.isPlaying = true;
+                this.isTransitioning = false;
+                clearTimeout(this.levelTimeout);
+                clearInterval(this.nextQInterval);
+                this.setFrozenState(false);
+
+                const winModal = document.getElementById('win-modal');
+                if (winModal) {
+                    winModal.classList.remove('scale-100');
+                    winModal.classList.add('scale-0');
+                }
                 
                 // Classroom scores
-                if(this.classroomMode) {
+                if(this.classroomMode && window.teamsData) {
                     window.teamsData.forEach(t => t.score = 0);
                     if (typeof renderTeams === 'function') renderTeams();
                     const container = document.getElementById('teams-container');
                     if (container) container.style.display = 'flex';
                 } else {
                     const container = document.getElementById('teams-container');
-                    if (container) container.style.display = 'none';
+                    if (container) container.style.display = 'flex';
                 }
 
                 this.showScreen('screen-game');
@@ -1567,13 +1495,134 @@ var Game = {
             },
             quitGame() {
                 this.isPlaying = false;
+                this.isTransitioning = false;
                 clearTimeout(this.levelTimeout);
+                clearInterval(this.nextQInterval);
+                this.setFrozenState(false);
                 this.stopPhysics(); clearInterval(this.timerInterval);
                 window.parent.postMessage({ type: 'QUIT_GAME' }, '*');
             },
 
+            setFrozenState(frozen) {
+                this.isFrozen = !!frozen;
+                if (this.freezeTimeout) {
+                    clearTimeout(this.freezeTimeout);
+                    this.freezeTimeout = null;
+                }
+                const btn = document.getElementById('btn-freeze');
+                const timerCon = document.getElementById('timer-container');
+                const timerText = document.getElementById('ui-timer-text');
+                if (this.isFrozen) {
+                    if (btn) {
+                        btn.innerHTML = '🔥 UNFREEZE';
+                        btn.classList.add('ring-4', 'ring-cyan-300', 'animate-pulse');
+                    }
+                    if (timerCon) timerCon.style.filter = 'drop-shadow(0 0 18px #38bdf8)';
+                    if (timerText) timerText.style.color = '#0284c7';
+                    if (Array.isArray(this.bubbles)) {
+                        this.bubbles.forEach(b => {
+                            b.vx = 0;
+                            b.vy = 0;
+                        });
+                    }
+                } else {
+                    if (btn) {
+                        btn.innerHTML = '❄️ FREEZE';
+                        btn.classList.remove('ring-4', 'ring-cyan-300', 'animate-pulse');
+                    }
+                    if (timerCon) timerCon.style.filter = '';
+                    if (timerText) timerText.style.color = '';
+                    if (Array.isArray(this.bubbles)) {
+                        this.bubbles.forEach(b => {
+                            if (!b.snapped && this.dragB !== b) {
+                                b.vx = (Math.random() - 0.5) * 3.2;
+                                b.vy = (Math.random() - 0.5) * 3.2;
+                            }
+                        });
+                    }
+                }
+            },
+
+            scheduleNextQuestion(seconds = 3) {
+                if (this.isTransitioning) return;
+                this.isTransitioning = true;
+                clearInterval(this.timerInterval);
+                clearInterval(this.nextQInterval);
+                clearTimeout(this.levelTimeout);
+
+                let remaining = seconds;
+                const isLastQuestion = (this.idx + 1 >= this.sents.length);
+                const con = document.getElementById('sentence-container');
+                const timerText = document.getElementById('ui-timer-text');
+                const timerRing = document.getElementById('ui-timer-ring');
+                document.getElementById('game-body').style.animation = 'none';
+
+                const updateCountdownUI = () => {
+                    if (timerText) {
+                        timerText.classList.remove('text-red-500');
+                        timerText.style.color = '#2563eb';
+                        timerText.innerText = `${remaining}s`;
+                    }
+                    if (timerRing) {
+                        timerRing.style.stroke = '#3b82f6';
+                        const pct = Math.max(0, remaining / seconds);
+                        timerRing.style.strokeDashoffset = 283 - (283 * pct);
+                    }
+                    let banner = document.getElementById('next-question-countdown');
+                    if (!banner && con) {
+                        banner = document.createElement('div');
+                        banner.id = 'next-question-countdown';
+                        banner.className = 'w-full flex justify-center mt-1.5 z-20 pointer-events-none';
+                        con.appendChild(banner);
+                    }
+                    if (banner) {
+                        const labelText = isLastQuestion
+                            ? `🏆 Showing Winners in ${remaining}s...`
+                            : `⏳ Next Question in ${remaining}s...`;
+                        banner.innerHTML = `
+                            <div class="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-blue-600 text-white font-black text-xs sm:text-sm uppercase tracking-wider shadow-md border-2 border-white animate-pulse">
+                                <span>${labelText}</span>
+                            </div>
+                        `;
+                    }
+                };
+
+                updateCountdownUI();
+
+                this.nextQInterval = setInterval(() => {
+                    if (!this.isPlaying) {
+                        clearInterval(this.nextQInterval);
+                        return;
+                    }
+                    if (this.isFrozen) return; // Respect freeze pause even during countdown
+                    remaining--;
+                    if (remaining > 0) {
+                        updateCountdownUI();
+                    } else {
+                        clearInterval(this.nextQInterval);
+                        this.isTransitioning = false;
+                        if (con) {
+                            con.style.border = '';
+                            con.style.boxShadow = '';
+                        }
+                        this.idxComplete();
+                    }
+                }, 1000);
+            },
+
             loadLevel() {
                 if(!this.isPlaying) return;
+                clearTimeout(this.levelTimeout);
+                clearInterval(this.nextQInterval);
+                this.isTransitioning = false;
+                this.setFrozenState(false);
+
+                const con = document.getElementById('sentence-container');
+                if (con) {
+                    con.style.border = '';
+                    con.style.boxShadow = '';
+                }
+
                 if(this.idx >= this.sents.length) { this.winGame(); return; }
                 const s = this.sents[this.idx];
                 this.placed = 0; this.mistakes = 0; this.bubbles = []; this.slots = [];
@@ -1582,6 +1631,18 @@ var Game = {
                 const isMcqMode = (Storage.data.mode === 'multiple-choice' || Storage.data.mode === 'multiple-choices' || Storage.data.mode === 'mcq') || 
                                   (Storage.data.mode !== 'anagram' && Storage.data.mode !== 'word' && s && Array.isArray(s.options) && s.options.length >= 2);
                 this.isMcq = isMcqMode;
+
+                // Powerups visibility per game mode:
+                // Anagram & Word mode: Hint, Freeze, Show
+                // Multiple Choice mode: ONLY Freeze and Show (NO Hint)
+                const hintBtn = document.getElementById('btn-hint');
+                const freezeBtn = document.getElementById('btn-freeze');
+                const showBtn = document.getElementById('btn-show');
+                if (hintBtn) {
+                    hintBtn.style.display = isMcqMode ? 'none' : 'flex';
+                }
+                if (freezeBtn) freezeBtn.style.display = 'flex';
+                if (showBtn) showBtn.style.display = 'flex';
 
                 if (isMcqMode) {
                     this.anagramWords = null;
@@ -1625,19 +1686,15 @@ var Game = {
                     }
                 }
                 
-                // UI Setup
-                
-                
-                 // Reflow
-                
-                
                 document.getElementById('ui-lesson-status').innerText = `${this.idx + 1} / ${this.sents.length}`;
                 if(document.getElementById('ui-progress')) document.getElementById('ui-progress').style.width = `${(this.idx/this.sents.length)*100}%`;
                 this.updateScore();
                 
-                this.renderSlots(); this.createBubbles();
+                this.renderSlots();
+                this.createBubbles();
                 this.startTimer(this.cat.timer);
-                this.startPhysics(); this.updateHints();
+                this.startPhysics();
+                this.updateHints();
             },
 
             startTimer(seconds, isResume=false) {
@@ -1652,6 +1709,7 @@ var Game = {
                 
                 document.getElementById('game-body').style.animation = 'none';
                 ring.style.stroke = '#4ade80'; // Green
+                text.classList.remove('text-red-500');
                 text.style.color = ''; // Reset text color
                 
                 let responseTimeStr = 'default';
@@ -1671,13 +1729,15 @@ var Game = {
                     this.timerTotal = seconds;
                 }
                 this.timeLeft = seconds;
+                text.innerText = this.timeLeft;
+                ring.style.strokeDashoffset = '0';
                 
                 this.timerInterval = setInterval(() => {
-                    if (this.isFrozen) return;
+                    if (this.isFrozen || this.isTransitioning) return;
                     this.timeLeft--;
-                    text.innerText = this.timeLeft;
+                    text.innerText = Math.max(0, this.timeLeft);
                     
-                    const pct = this.timeLeft / this.timerTotal;
+                    const pct = Math.max(0, this.timeLeft / this.timerTotal);
                     ring.style.strokeDashoffset = 283 - (283 * pct); // 283 is approx circumference of r=45
                     
                     if(this.timeLeft <= 10) {
@@ -1694,30 +1754,33 @@ var Game = {
                     if(this.timeLeft <= 0) {
                         clearInterval(this.timerInterval);
                         Audio.wrong(); Mascot.react('sad');
+                        this.mistakes++;
+                        this.totalMistakes = (this.totalMistakes || 0) + 1;
                         
                         if (this.isMcq) {
                             const correctB = this.bubbles.find(b => b.isCorrectAnswer);
                             if (correctB) {
                                 correctB.el.style.background = 'radial-gradient(circle at 35% 30%, #bbf7d0, #22c55e)';
                                 correctB.el.style.borderColor = '#15803d';
-                                correctB.el.style.transform = 'scale(1.15)';
                             }
-                            this.levelTimeout = setTimeout(() => this.idxComplete(), 2000);
+                            if (this.classroomMode && window.teamsData && window.teamsData.length > 0) {
+                                window.currentTeamIndex = (window.currentTeamIndex + 1) % window.teamsData.length;
+                                if (typeof renderTeams === 'function') renderTeams();
+                            }
+                            this.scheduleNextQuestion(3);
                             return;
                         }
                         
                         let unplacedCount = 0;
-                        this.slots.forEach((slot, index) => {
+                        this.slots.forEach((slot) => {
                             if (!slot.filled && !slot.isStatic) {
                                 unplacedCount++;
-                                // Find an un-snapped bubble for this slot
                                 const b = this.bubbles.find(bubble => !bubble.snapped && bubble.wordText === slot.w);
                                 if (b) {
                                     b.snapped = true;
                                     b.el.style.transform = 'none'; b.el.style.position = 'relative';
                                     b.el.style.left='auto'; b.el.style.top='auto';
                                     b.el.classList.add('snapped');
-                                    // Make it look slightly faded/tinted to indicate it was auto-placed
                                     b.el.style.opacity = '0.7';
                                     b.el.style.pointerEvents = 'none';
                                     
@@ -1728,7 +1791,6 @@ var Game = {
                                     slot.filled = true;
                                     slot.isCorrectlyFilled = true;
                                 } else {
-                                    // Fallback just in case
                                     slot.el.classList.add('filled');
                                     slot.el.innerHTML = '<span class="text-gray-400 font-bold">' + slot.w + '</span>';
                                     slot.el.style.backgroundColor = '#f1f5f9';
@@ -1738,7 +1800,7 @@ var Game = {
                             }
                         });
 
-                        // Pop any leftover floating bubbles (should be none ideally)
+                        // Pop any leftover floating bubbles
                         this.bubbles.forEach(b => {
                             if (!b.snapped) {
                                 Particles.spawn(parseFloat(b.el.style.left) || window.innerWidth/2, parseFloat(b.el.style.top) || window.innerHeight/2, 10, '#ef4444');
@@ -1750,14 +1812,12 @@ var Game = {
                             const team = window.teamsData[window.currentTeamIndex];
                             if (team && unplacedCount > 0) {
                                 updateTeamScore(team.id, -unplacedCount);
-                                if (typeof renderTeams === 'function') renderTeams();
                             }
-                            
                             window.currentTeamIndex = (window.currentTeamIndex + 1) % window.teamsData.length;
                             if (typeof renderTeams === 'function') renderTeams();
                         }
 
-                        this.levelTimeout = setTimeout(()=>this.idxComplete(), 3000); 
+                        this.scheduleNextQuestion(3);
                     }
                 }, 1000);
             },
@@ -1768,27 +1828,24 @@ var Game = {
                 this.slots = [];
                 
                 if (this.isMcq || Storage.data.mode === 'multiple-choice') {
-                    // In multiple choice game mode:
-                    // Instead of circle dots below, add the questions with solid black text!
                     const q = this.currentQuestion || this.sents[this.idx] || {};
                     const qText = q.text || '';
                     const qImg = q.image || q.imageUrl || '';
                     
                     const qBox = document.createElement('div');
-                    qBox.className = 'w-full flex flex-col items-center justify-center text-center px-4 py-2 select-none';
+                    qBox.className = 'w-full flex flex-col items-center justify-center text-center px-3 py-1 select-none';
                     
                     qBox.innerHTML = `
-                        <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-blue-100 font-black text-xs sm:text-sm uppercase tracking-wider mb-2 border border-blue-400/50 shadow-sm" style="color: #0f172a !important;">
+                        <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-blue-100 font-black text-xs uppercase tracking-wider mb-1 border border-blue-400/50 shadow-sm" style="color: #0f172a !important;">
                             <span style="color: #0f172a !important;">Question ${this.idx + 1} / ${this.sents.length}</span>
                         </div>
-                        ${qImg ? `<img src="${qImg}" alt="Question Image" class="max-h-24 sm:max-h-32 rounded-2xl object-contain mb-3 border-2 border-white/60 shadow-md bg-white/50" />` : ''}
-                        <h2 id="mcq-question-text" class="font-black leading-snug tracking-tight max-w-5xl my-2 px-2 select-text" style="color: #000000 !important; font-size: clamp(2.2rem, 5vw, 3.8rem); line-height: 1.25;">
+                        ${qImg ? `<img src="${qImg}" alt="Question Image" class="max-h-20 sm:max-h-24 rounded-2xl object-contain mb-1.5 border-2 border-white/60 shadow-md bg-white/50" />` : ''}
+                        <h2 id="mcq-question-text" class="font-black leading-snug tracking-tight max-w-5xl my-1 px-2 select-text" style="color: #000000 !important; font-size: clamp(1.35rem, 3.2vw, 2.5rem); line-height: 1.22;">
                             ${qText}
                         </h2>
-                        <div id="mcq-feedback-indicator" class="min-h-[20px] flex items-center justify-center"></div>
+                        <div id="mcq-feedback-indicator" class="min-h-[18px] flex items-center justify-center"></div>
                     `;
                     con.appendChild(qBox);
-                    // No circle dots below in multiple choice mode!
                     this.slots = [];
                     return;
                 } else if (Storage.data.mode === 'anagram' && this.anagramWords && this.anagramWords.length > 0) {
@@ -1796,26 +1853,24 @@ var Game = {
                     const sImg = currentSent.image || currentSent.imageUrl || '';
                     if (sImg) {
                         const imgWrap = document.createElement('div');
-                        imgWrap.className = 'w-full flex justify-center mb-2';
-                        imgWrap.innerHTML = `<img src="${sImg}" alt="Prompt" class="max-h-24 sm:max-h-32 rounded-2xl object-contain border-2 border-white/60 shadow-md bg-white/50 p-1" />`;
+                        imgWrap.className = 'w-full flex justify-center mb-1.5';
+                        imgWrap.innerHTML = `<img src="${sImg}" alt="Prompt" class="max-h-20 sm:max-h-24 rounded-2xl object-contain border-2 border-white/60 shadow-md bg-white/50 p-1" />`;
                         con.appendChild(imgWrap);
                     }
                     const hasMultipleWords = this.anagramWords.length >= 2;
                     
                     this.anagramWords.forEach((wordTokens, wordIdx) => {
                         const wordGroup = document.createElement('div');
-                        wordGroup.className = 'word-group gap-2 sm:gap-3';
+                        wordGroup.className = 'word-group gap-1.5 sm:gap-2.5';
                         
                         wordTokens.forEach(token => {
                             if (token.type === 'hyphen') {
-                                // Put hyphen already!
                                 const hSlot = document.createElement('div');
                                 hSlot.className = 'word-slot-hyphen';
-                                hSlot.innerHTML = '<span class="text-3xl sm:text-4xl font-black drop-shadow-sm leading-none">-</span>';
+                                hSlot.innerHTML = '<span class="text-2xl sm:text-3xl font-black drop-shadow-sm leading-none">-</span>';
                                 wordGroup.appendChild(hSlot);
                                 this.slots.push({ el: hSlot, w: '-', filled: true, isCorrectlyFilled: true, isStatic: true });
                             } else {
-                                // Letter slot
                                 const s = document.createElement('div');
                                 s.className = 'word-slot letter-slot shadow-inner relative';
                                 s.dataset.w = token.char;
@@ -1826,7 +1881,6 @@ var Game = {
                         
                         con.appendChild(wordGroup);
                         
-                        // Observe word spacing: add word spacer between words when 2 or more words
                         if (hasMultipleWords && wordIdx < this.anagramWords.length - 1) {
                             const spacer = document.createElement('div');
                             spacer.className = 'word-spacer';
@@ -1839,11 +1893,11 @@ var Game = {
                     const sImg = currentSent.image || currentSent.imageUrl || '';
                     if (sImg) {
                         const imgWrap = document.createElement('div');
-                        imgWrap.className = 'w-full flex justify-center mb-2';
-                        imgWrap.innerHTML = `<img src="${sImg}" alt="Prompt" class="max-h-24 sm:max-h-32 rounded-2xl object-contain border-2 border-white/60 shadow-md bg-white/50 p-1" />`;
+                        imgWrap.className = 'w-full flex justify-center mb-1.5';
+                        imgWrap.innerHTML = `<img src="${sImg}" alt="Prompt" class="max-h-20 sm:max-h-24 rounded-2xl object-contain border-2 border-white/60 shadow-md bg-white/50 p-1" />`;
                         con.appendChild(imgWrap);
                     }
-                    this.words.forEach((w,i) => {
+                    this.words.forEach((w) => {
                         const s = document.createElement('div');
                         s.className = 'word-slot shadow-inner relative';
                         s.dataset.w = w;
@@ -1852,10 +1906,16 @@ var Game = {
                     });
                 }
             },
+
             createBubbles() {
-                this.bubbles = []; const area = document.getElementById('physics-area');
+                this.bubbles = [];
+                const area = document.getElementById('physics-area');
                 area.innerHTML = '';
                 const aRect = area.getBoundingClientRect();
+                const areaW = Math.max(320, aRect.width || (window.innerWidth - 40));
+                const areaH = Math.max(180, aRect.height || (window.innerHeight * 0.45));
+                const pad = 14;
+
                 let sizeMult = 1;
                 if (window.Storage && Storage.data && Storage.data.profile && Storage.data.profile.settings) {
                     sizeMult = Storage.data.profile.settings.bubbleSize || 1;
@@ -1864,7 +1924,6 @@ var Game = {
                 const isMcq = this.isMcq || (Storage.data.mode === 'multiple-choice');
                 
                 if (isMcq) {
-                    // Options A, B, C, D will float!
                     const optionItems = this.options.map((optText, optIdx) => ({
                         text: optText,
                         origIndex: optIdx,
@@ -1873,8 +1932,11 @@ var Game = {
                     }));
                     
                     const shuffledOptions = [...optionItems].sort(() => Math.random() - 0.5);
+                    const totalOpts = Math.max(1, shuffledOptions.length);
+                    const cols = Math.min(2, totalOpts);
+                    const rows = Math.ceil(totalOpts / cols);
                     
-                    shuffledOptions.forEach(opt => {
+                    shuffledOptions.forEach((opt, idx) => {
                         const el = document.createElement('div');
                         el.className = 'bubble-word mcq-bubble';
                         
@@ -1899,10 +1961,18 @@ var Game = {
                         el.style.transform = `scale(${sizeMult})`;
                         area.appendChild(el);
                         const bR = el.getBoundingClientRect();
-                        let bx = Math.random() * (aRect.width - bR.width);
-                        if (isNaN(bx) || bx < 0) bx = aRect.width / 2 || 100;
-                        let by = Math.random() * (aRect.height - bR.height);
-                        if (isNaN(by) || by < 0) by = aRect.height / 2 || 100;
+                        const bw = Math.min(areaW - pad * 2, bR.width || 220);
+                        const bh = Math.min(areaH - pad * 2, bR.height || 64);
+
+                        const col = idx % cols;
+                        const row = Math.floor(idx / cols);
+                        const cellW = areaW / cols;
+                        const cellH = areaH / rows;
+
+                        let bx = col * cellW + (cellW - bw) / 2 + (Math.random() - 0.5) * 30;
+                        let by = row * cellH + (cellH - bh) / 2 + (Math.random() - 0.5) * 20;
+                        bx = Math.max(pad, Math.min(areaW - bw - pad, bx));
+                        by = Math.max(pad, Math.min(areaH - bh - pad, by));
                         
                         const bubbleObj = {
                             el,
@@ -1912,10 +1982,10 @@ var Game = {
                             isCorrectAnswer: opt.isCorrect,
                             x: bx,
                             y: by,
-                            w: bR.width || 180,
-                            h: bR.height || 60,
-                            vx: (Math.random() - 0.5) * 3.5,
-                            vy: (Math.random() - 0.5) * 3.5,
+                            w: bw,
+                            h: bh,
+                            vx: (Math.random() - 0.5) * 2.5,
+                            vy: (Math.random() - 0.5) * 2.5,
                             snapped: false,
                             scaleX: 1,
                             scaleY: 1,
@@ -1925,7 +1995,7 @@ var Game = {
                         
                         el.addEventListener('pointerdown', e => {
                             e.stopPropagation();
-                            if (bubbleObj.snapped) return;
+                            if (bubbleObj.snapped || this.isTransitioning) return;
                             
                             this.dragB = bubbleObj;
                             const r = bubbleObj.el.getBoundingClientRect();
@@ -1940,31 +2010,44 @@ var Game = {
                     });
                 } else {
                     const shuffled = [...this.words].sort(()=>Math.random()-0.5);
-                    shuffled.forEach(w => {
+                    const total = Math.max(1, shuffled.length);
+                    const cols = Math.ceil(Math.sqrt(total * (areaW / Math.max(1, areaH))));
+                    const rows = Math.max(1, Math.ceil(total / cols));
+
+                    shuffled.forEach((w, idx) => {
                         const el = document.createElement('div');
                         el.className = isAnagram ? 'bubble-word letter-bubble' : 'bubble-word';
                         el.innerText = w;
                         el.style.transform = `scale(${sizeMult})`;
                         area.appendChild(el);
                         const bR = el.getBoundingClientRect();
-                        let bx = Math.random() * (aRect.width - bR.width);
-                        if (isNaN(bx) || bx < 0) bx = aRect.width / 2 || 100;
-                        let by = Math.random() * (aRect.height - bR.height);
-                        if (isNaN(by) || by < 0) by = aRect.height / 2 || 100;
+                        const bw = bR.width || (isAnagram ? 68 : 110);
+                        const bh = bR.height || (isAnagram ? 68 : 48);
+
+                        const col = idx % cols;
+                        const row = Math.floor(idx / cols);
+                        const cellW = areaW / cols;
+                        const cellH = areaH / rows;
+
+                        let bx = col * cellW + (cellW - bw) / 2 + (Math.random() - 0.5) * 24;
+                        let by = row * cellH + (cellH - bh) / 2 + (Math.random() - 0.5) * 20;
+                        bx = Math.max(pad, Math.min(areaW - bw - pad, bx));
+                        by = Math.max(pad, Math.min(areaH - bh - pad, by));
                         
                         this.bubbles.push({
                             el, wordText: w,
                             x: bx,
                             y: by,
-                            w: bR.width || (isAnagram ? 75 : 100),
-                            h: bR.height || (isAnagram ? 75 : 40),
-                            vx: (Math.random()-0.5)*4, vy: (Math.random()-0.5)*4,
+                            w: bw,
+                            h: bh,
+                            vx: (Math.random()-0.5)*3.2, vy: (Math.random()-0.5)*3.2,
                             snapped: false, scaleX: 1, scaleY: 1,
                             shakeTime: 0
                         });
                         
                         el.addEventListener('pointerdown', e => {
                             e.stopPropagation();
+                            if (this.isTransitioning) return;
                             const clickedB = this.bubbles.find(bb => bb.el === el);
                             if(!clickedB) return;
                             
@@ -1988,9 +2071,6 @@ var Game = {
             },
 
             setupDrag() {
-                const doc = document.getElementById('screen-game');
-                
-                // (pointerdown is now bound directly to bubbles)
                 window.addEventListener('pointermove', e => {
                     if(this.dragB) {
                         const bnds = document.getElementById('physics-area').getBoundingClientRect();
@@ -1999,7 +2079,6 @@ var Game = {
                         this.dragB.x = newX;
                         this.dragB.y = newY;
                         
-                        // Jitter tolerance
                         const dist = Math.hypot(e.clientX - this.dragB.startX, e.clientY - this.dragB.startY);
                         if (dist > 45) {
                             this.dragB.isClick = false;
@@ -2007,7 +2086,7 @@ var Game = {
                     }
                 });
 
-                window.addEventListener('pointercancel', e => {
+                window.addEventListener('pointercancel', () => {
                     if (this.dragB) {
                         this.dragB.el.classList.remove('dragging');
                         this.dragB = null;
@@ -2031,7 +2110,7 @@ var Game = {
                             }
                             const nextI = this.slots.findIndex(s => !s.isCorrectlyFilled);
                             if (nextI !== -1) {
-                                if (this.slots[nextI].filled) return; // Wait for wrong bubble to pop out
+                                if (this.slots[nextI].filled) return;
                                 if (this.slots[nextI].w === clickedB.wordText) {
                                     this.correct(clickedB, this.slots[nextI]);
                                 } else {
@@ -2057,39 +2136,33 @@ var Game = {
                     }
                     return;
                 }
-                const pad = 30; // Generous hit area
+                const pad = 30;
                 const wordText = b.wordText;
                 
-                // Only allow dropping on the next available slot in order
                 const nextI = this.slots.findIndex(s => !s.isCorrectlyFilled);
                 const nextSlot = nextI !== -1 ? this.slots[nextI] : null;
-                if (nextSlot && nextSlot.filled) return; // Wait for wrong bubble
+                if (nextSlot && nextSlot.filled) return;
                 if (nextSlot) {
                     const r = nextSlot.el.getBoundingClientRect();
-                    // Check if dropped near the next available slot
                     if(cx > r.left-pad && cx < r.right+pad && cy > r.top-pad && cy < r.bottom+pad) {
                         if(wordText === nextSlot.w) {
                             this.correct(b, nextSlot);
                             return;
                         } else {
                             this.wrong(b, nextSlot);
-                            return; // dropped on wrong slot
+                            return;
                         }
                     } else {
-                        // Check if they tried to drop on a DIFFERENT empty slot
                         for (let slot of this.slots) {
                             if (slot.filled || slot === nextSlot || slot.isStatic) continue;
                             const sr = slot.el.getBoundingClientRect();
                             if(cx > sr.left-pad && cx < sr.right+pad && cy > sr.top-pad && cy < sr.bottom+pad) {
-                                // Dropped on a slot that is not the next in order
                                 this.wrong(b, slot);
                                 return;
                             }
                         }
                     }
                 }
-                
-                // If dropped in empty space, just do nothing. Let it float.
             },
 
             correct(b, slot) {
@@ -2110,7 +2183,6 @@ var Game = {
                     this.score += (100 * diffMulti) + (this.combo * 50);
                     this.combo++; if(this.combo > this.maxCombo) this.maxCombo = this.combo;
                     
-                    // Classroom Mode Add Points
                     b.hasScored = true;
                     if (this.classroomMode && window.teamsData && window.teamsData.length > 0) {
                         const team = window.teamsData[window.currentTeamIndex];
@@ -2124,21 +2196,21 @@ var Game = {
                 this.updateScore(); this.updateHints(); this.checkComboEffects();
                 
                 const playableSlots = this.slots.filter(s => !s.isStatic);
-                if(this.placed === playableSlots.length || playableSlots.every(s => s.isCorrectlyFilled)) {
+                if(this.placed >= playableSlots.length || playableSlots.every(s => s.isCorrectlyFilled)) {
                     if (this.classroomMode && window.teamsData && window.teamsData.length > 0) {
                         const team = window.teamsData[window.currentTeamIndex];
                         if (team) {
-                            // Removed +5 point bonus for completing the sentence
                             window.currentTeamIndex = (window.currentTeamIndex + 1) % window.teamsData.length;
                             if (typeof renderTeams === 'function') renderTeams();
                         }
                     }
-                    clearInterval(this.timerInterval);
-                    this.levelTimeout = setTimeout(()=>this.idxComplete(), 500);
+                    // Unfreeze automatically if question is finished so the 3s transition runs smoothly
+                    if (this.isFrozen) this.setFrozenState(false);
+                    this.scheduleNextQuestion(3);
                 }
             },
             unsnap(b) {
-                if(!b.snapped) return;
+                if(!b.snapped || this.isTransitioning) return;
                 const slot = this.slots.find(s => s.el && s.el.contains(b.el));
                 if (slot && slot.filled && !slot.isStatic) {
                     slot.filled = false; slot.isCorrectlyFilled = false;
@@ -2154,18 +2226,17 @@ var Game = {
                 area.appendChild(b.el);
                 
                 const aRect = area.getBoundingClientRect();
-                b.x = aRect.width / 2;
-                b.y = aRect.height / 2;
-                b.vx = (Math.random()-0.5)*10;
-                b.vy = (Math.random()-0.5)*10;
+                b.x = Math.max(20, (aRect.width - b.w) / 2);
+                b.y = Math.max(20, (aRect.height - b.h) / 2);
+                b.vx = this.isFrozen ? 0 : (Math.random()-0.5)*6;
+                b.vy = this.isFrozen ? 0 : (Math.random()-0.5)*6;
                 
                 if (window.Audio && Audio.click) Audio.click();
             },
             
             wrong(b, slot) {
-                if (!slot || slot.isStatic) return;
+                if (!slot || slot.isStatic || this.isTransitioning) return;
                 
-                // 1. Temporarily snap it to the slot so it appears in the box
                 b.snapped = true;
                 slot.filled = true;
                 
@@ -2178,12 +2249,10 @@ var Game = {
                 slot.el.innerHTML = ''; 
                 slot.el.appendChild(b.el);
 
-                // Play snap effect so they know it landed in the box
                 Audio.snap();
                 const r = slot.el.getBoundingClientRect();
                 Particles.spawn(r.left + r.width/2, r.top + r.height/2, 20, '#ef4444');
 
-                // 2. Mark it wrong visually
                 slot.el.style.backgroundColor = 'rgba(239, 68, 68, 0.2)';
                 slot.el.style.borderColor = '#ef4444';
                 b.el.style.borderColor = '#ef4444';
@@ -2193,25 +2262,25 @@ var Game = {
                 let xMark = document.createElement('div');
                 xMark.className = 'wrong-x-mark';
                 xMark.innerText = '❌';
-                // Append X to the bubble itself so it's guaranteed to be visible and centered!
                 b.el.appendChild(xMark);
                 
-                setTimeout(() => Audio.wrong(), 200); // Play wrong sound right after snap
+                setTimeout(() => Audio.wrong(), 200);
                 Mascot.react('sad');
-                this.combo = 0; this.mistakes++; this.updateScore();
+                this.combo = 0;
+                this.mistakes++;
+                this.totalMistakes = (this.totalMistakes || 0) + 1;
+                this.updateScore();
                 if (this.classroomMode && window.teamsData && window.teamsData.length > 0) {
                     const team = window.teamsData[window.currentTeamIndex];
                     if (team) {
                         updateTeamScore(team.id, -1);
                         if (typeof renderTeams === 'function') renderTeams();
-                        if (typeof renderTeams === 'function') renderTeams();
                     }
                 }
                 
-                b.el.classList.add('wrong-shake'); // CSS shake
+                b.el.classList.add('wrong-shake');
                 b.isError = true;
                 
-                // 3. Wait 800ms, then pop it back out
                 setTimeout(() => {
                     if (xMark) xMark.remove();
                     slot.el.classList.remove('filled');
@@ -2222,12 +2291,12 @@ var Game = {
                     b.el.style.color = '';
                     b.el.style.background = ''; b.el.classList.remove('wrong-shake');
                     
-                    // Only unsnap if user hasn't already pulled it out manually
                     if (b.snapped && b.el.parentElement === slot.el) {
                         this.unsnap(b);
-                        // Add an extra bounce when it pops out
-                        b.vy = -15; 
-                        b.vx = (Math.random()-0.5)*20;
+                        if (!this.isFrozen) {
+                            b.vy = -8; 
+                            b.vx = (Math.random()-0.5)*10;
+                        }
                     }
                     
                     b.isError = false;
@@ -2235,66 +2304,56 @@ var Game = {
                 
                 this.checkComboEffects();
             },
+
             correctMcq(b) {
-                if (b.snapped) return;
+                if (b.snapped || this.isTransitioning) return;
                 b.snapped = true;
                 
-                // Audio & Celebration
                 Audio.snap();
                 if (window.Audio && Audio.coin) Audio.coin();
                 Mascot.react('happy');
                 
-                // Visual pop on bubble - Keep bubble in its exact position!
                 b.isCorrectChosen = true;
                 b.el.classList.add('correct-chosen');
                 b.el.style.background = 'radial-gradient(circle at 35% 30%, #86efac, #22c55e)';
                 b.el.style.borderColor = '#16a34a';
                 b.el.style.color = '#ffffff';
                 b.el.style.boxShadow = '0 0 35px rgba(34, 197, 94, 0.8), inset 0 2px 4px rgba(255,255,255,0.9)';
-                b.el.style.transform = `translate(${b.x}px, ${b.y}px) scale(1.15)`;
+                b.el.style.transform = `translate(${b.x}px, ${b.y}px) scale(1.08)`;
                 
                 const r = b.el.getBoundingClientRect();
                 Particles.spawn(r.left + r.width / 2, r.top + r.height / 2, 35, '#22c55e', 'sparkle', 2);
                 
-                // Construct the correct sentence with the answer
                 const q = this.currentQuestion || this.sents[this.idx] || {};
                 const qText = q.text || '';
                 const qImg = q.image || q.imageUrl || '';
                 const rawAns = b.rawAnswerText || (b.wordText ? b.wordText.replace(/^[A-Da-d][\.\)\:\-]\s+/, '').trim() : '') || this.correctAnswerText || '';
                 
-                // Check if the question text contains a blank placeholder (___, [blank], ..., etc.)
                 const blankRegex = /_{2,}|\[blank\]|\.{3,}|\(\s*\)|(?<=\s)_(?=\s|[.,!?]|$)/i;
                 let sentenceHtml = '';
                 if (blankRegex.test(qText)) {
-                    sentenceHtml = qText.replace(blankRegex, `<span class="inline-block px-4 py-1 mx-2 rounded-2xl bg-green-200 border-2 border-green-600 font-black shadow-sm" style="color: #000000 !important;">${rawAns}</span>`);
+                    sentenceHtml = qText.replace(blankRegex, `<span class="inline-block px-3 py-0.5 mx-1.5 rounded-xl bg-green-200 border-2 border-green-600 font-black shadow-sm" style="color: #000000 !important;">${rawAns}</span>`);
                 } else {
-                    sentenceHtml = `<span style="color: #000000 !important;">${qText}</span> <span class="inline-block px-4 py-1 mx-2 rounded-2xl bg-green-200 border-2 border-green-600 font-black shadow-sm" style="color: #000000 !important;">${rawAns}</span>`;
+                    sentenceHtml = `<span style="color: #000000 !important;">${qText}</span> <span class="inline-block px-3 py-0.5 mx-1.5 rounded-xl bg-green-200 border-2 border-green-600 font-black shadow-sm" style="color: #000000 !important;">${rawAns}</span>`;
                 }
 
-                // Show the complete correct sentence with answer in solid black and larger font
                 const con = document.getElementById('sentence-container');
                 if (con) {
                     con.style.border = '4px solid #22c55e';
                     con.style.boxShadow = '0 0 35px rgba(34, 197, 94, 0.4)';
                     con.innerHTML = `
-                        <div class="w-full flex flex-col items-center justify-center text-center px-4 py-2 select-none animate-fadeIn">
-                            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-green-100 font-black text-xs sm:text-sm uppercase tracking-wider mb-2 border border-green-400 shadow-sm" style="color: #14532d !important;">
+                        <div class="w-full flex flex-col items-center justify-center text-center px-3 py-1 select-none animate-fadeIn">
+                            <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-green-100 font-black text-xs uppercase tracking-wider mb-1 border border-green-400 shadow-sm" style="color: #14532d !important;">
                                 <span>🎉 Correct Answer!</span>
                             </div>
-                            ${qImg ? `<img src="${qImg}" alt="Question Image" class="max-h-24 sm:max-h-32 rounded-2xl object-contain mb-3 border-2 border-white/60 shadow-md bg-white/50" />` : ''}
-                            <h2 class="font-black leading-snug tracking-tight max-w-5xl my-2 px-2" style="color: #000000 !important; font-size: clamp(2.2rem, 5vw, 3.8rem); line-height: 1.25;">
+                            ${qImg ? `<img src="${qImg}" alt="Question Image" class="max-h-20 sm:max-h-24 rounded-2xl object-contain mb-1.5 border-2 border-white/60 shadow-md bg-white/50" />` : ''}
+                            <h2 class="font-black leading-snug tracking-tight max-w-5xl my-1 px-2" style="color: #000000 !important; font-size: clamp(1.3rem, 2.8vw, 2.3rem); line-height: 1.22;">
                                 ${sentenceHtml}
                             </h2>
-                            <div class="mt-2 min-h-[20px] flex items-center justify-center">
-                                <span class="text-base font-black flex items-center gap-1.5" style="color: #15803d !important;">
-                                    <span>✓ Correct!</span>
-                                </span>
-                            </div>
                         </div>
                     `;
                 }
                 
-                // Combo & Score
                 this.combo++;
                 if (this.combo > this.maxCombo) this.maxCombo = this.combo;
                 this.score += 100 * this.combo;
@@ -2308,33 +2367,27 @@ var Game = {
                     if (typeof renderTeams === 'function') renderTeams();
                 }
                 
-                // Pop other bubbles
                 this.bubbles.forEach(other => {
                     if (other !== b && !other.snapped) {
                         other.snapped = true;
                         other.el.style.transition = 'all 0.4s ease';
                         other.el.style.opacity = '0.25';
-                        other.el.style.transform = 'scale(0.8)';
                         other.el.style.pointerEvents = 'none';
                     }
                 });
                 
-                // Allow player 1.8 seconds to read the completed sentence and answer
-                this.levelTimeout = setTimeout(() => {
-                    if (con) {
-                        con.style.border = '';
-                        con.style.boxShadow = '';
-                    }
-                    this.idxComplete();
-                }, 1800);
+                // Unfreeze automatically when question finishes so the 3s countdown runs
+                if (this.isFrozen) this.setFrozenState(false);
+                this.scheduleNextQuestion(3);
             },
 
             wrongMcq(b) {
-                if (b.snapped) return;
+                if (b.snapped || this.isTransitioning) return;
                 Audio.wrong();
                 Mascot.react('sad');
                 this.combo = 0;
                 this.mistakes++;
+                this.totalMistakes = (this.totalMistakes || 0) + 1;
                 
                 if (this.classroomMode && window.teamsData && window.teamsData.length > 0) {
                     const team = window.teamsData[window.currentTeamIndex];
@@ -2344,7 +2397,6 @@ var Game = {
                     if (typeof renderTeams === 'function') renderTeams();
                 }
                 
-                // Shake in place without losing translate position
                 b.shakeTime = 700;
                 b.isError = true;
                 b.el.classList.add('wrong-shake');
@@ -2360,13 +2412,14 @@ var Game = {
                 xMark.innerText = '❌';
                 b.el.appendChild(xMark);
                 
-                // Gentle drift in place, do not fling off or to top left
-                b.vx = (Math.random() - 0.5) * 3;
-                b.vy = (Math.random() - 0.5) * 3;
+                if (!this.isFrozen) {
+                    b.vx = (Math.random() - 0.5) * 3;
+                    b.vy = (Math.random() - 0.5) * 3;
+                }
                 
                 const indicator = document.getElementById('mcq-feedback-indicator');
                 if (indicator) {
-                    indicator.innerHTML = '<span class="text-rose-600 font-black text-base">❌ Try again!</span>';
+                    indicator.innerHTML = '<span class="text-rose-600 font-black text-sm sm:text-base">❌ Try again!</span>';
                 }
                 
                 setTimeout(() => {
@@ -2381,7 +2434,7 @@ var Game = {
             },
 
             updateScore() {
-                // Score is hidden now
+                // Score handled by team cards & end screen
             },
             updateHints() {
                 if(!this.hintsEnabled) return;
@@ -2390,75 +2443,46 @@ var Game = {
                 if(n && n.el) n.el.classList.add('highlight');
             },
             usePowerup(type) {
+                if (this.isTransitioning && type !== 'freeze') return;
                 if (type === 'hint') {
+                    // Hint is disabled in multiple choice mode
+                    if (this.isMcq) return;
                     this.showHint();
                 } else if (type === 'solve') {
                     this.showAnswer();
                 } else if (type === 'show') {
                     this.showAllAnswers();
                 } else if (type === 'freeze') {
-                    const btn = document.getElementById('btn-freeze');
+                    // Toggle Freeze / Unfreeze indefinitely (no auto-unfreeze timer!)
                     if (this.isFrozen) {
-                        this.isFrozen = false;
-                        if (btn) btn.innerHTML = '❄️ Freeze';
-                        if(this.freezeTimeout) clearTimeout(this.freezeTimeout);
-                        document.getElementById('timer-container').style.filter = '';
-                        document.getElementById('ui-timer-text').style.color = '';
-                        this.bubbles.forEach(b => {
-                            if (!b.snapped && this.dragB !== b) {
-                                b.vx = (Math.random() - 0.5) * 4;
-                                b.vy = (Math.random() - 0.5) * 4;
-                            }
-                        });
+                        this.setFrozenState(false);
+                        if (window.Audio && Audio.click) Audio.click();
                     } else {
-                        this.isFrozen = true;
-                        if (btn) btn.innerHTML = '❄️ Unfreeze';
-                        Audio.coin();
-                        Particles.spawn(window.innerWidth/2, window.innerHeight/2, 50, '#93c5fd', 'sparkle', 2);
-                        document.getElementById('timer-container').style.filter = 'drop-shadow(0 0 20px #60a5fa)';
-                        document.getElementById('ui-timer-text').style.color = '#3b82f6';
-                        this.freezeTimeout = setTimeout(() => {
-                            this.isFrozen = false;
-                            if (btn) btn.innerHTML = '❄️ Freeze';
-                            document.getElementById('timer-container').style.filter = '';
-                            document.getElementById('ui-timer-text').style.color = '';
-                        }, 10000); // 10 seconds of freeze
+                        this.setFrozenState(true);
+                        if (window.Audio && Audio.coin) Audio.coin();
+                        Particles.spawn(window.innerWidth/2, window.innerHeight/2, 40, '#93c5fd', 'sparkle', 2);
                     }
                 }
             },
             showHint() {
-                if (this.isMcq) {
-                    const correctB = this.bubbles.find(b => b.isCorrectAnswer && !b.snapped);
-                    if (correctB) {
-                        correctB.shakeTime = 800;
-                        correctB.el.style.borderColor = '#fbbf24';
-                        correctB.el.style.boxShadow = '0 0 25px #fbbf24';
-                        correctB.vx = 0; correctB.vy = 0;
-                        if (window.Audio && Audio.coin) Audio.coin();
-                        setTimeout(() => {
-                            if (correctB && correctB.el) {
-                                correctB.el.style.borderColor = '';
-                                correctB.el.style.boxShadow = '';
-                            }
-                        }, 1200);
-                    }
-                    return;
-                }
+                if (this.isMcq) return;
                 const n = this.slots.find(s=>!s.isCorrectlyFilled && !s.filled && !s.isStatic);
                 if(n) {
                     const b = this.bubbles.find(b => !b.snapped && b.wordText === n.w);
                     if(b) {
                         b.shakeTime = 800;
                         b.el.style.borderColor = '#fbbf24';
-                        b.el.style.color = '#fbbf24';
+                        b.el.style.color = '#b45309';
+                        b.el.style.boxShadow = '0 0 25px #fbbf24';
                         b.vx = 0; b.vy = 0;
                         if(window.Audio && Audio.coin) Audio.coin();
                         setTimeout(() => {
                             if(b && b.el) {
                                 b.el.style.borderColor = '';
                                 b.el.style.color = '';
+                                b.el.style.boxShadow = '';
                             }
-                        }, 1000);
+                        }, 1200);
                     }
                 }
             },
@@ -2490,11 +2514,10 @@ var Game = {
                         if(b) {
                             this.correct(b, n);
                         }
-                    }, idx * 150); // Stagger the snapping slightly
+                    }, idx * 140);
                 });
             },
             checkComboEffects() {
-                // Apply visual classes to all unsnapped bubbles
                 this.bubbles.forEach(b => {
                     b.el.classList.remove('bubble-combo-fire', 'bubble-combo-rainbow');
                     if(this.combo >= 5 && this.combo < 10) b.el.classList.add('bubble-combo-fire');
@@ -2507,52 +2530,150 @@ var Game = {
                 if(!this.isPlaying) return;
                 Particles.fireworks();
                 this.idx++;
-                if(this.idx >= this.sents.length) { this.levelTimeout = setTimeout(()=>this.winGame(), 1500); }
-                else { this.levelTimeout = setTimeout(()=>this.loadLevel(), 800); }
+                if(this.idx >= this.sents.length) {
+                    this.winGame();
+                } else {
+                    this.loadLevel();
+                }
             },
 
             winGame() {
                 if(!this.isPlaying) return;
-                this.stopPhysics(); document.getElementById('game-body').style.animation='none';
-                Audio.win(); Particles.fireworks();
+                this.isPlaying = false;
+                this.isTransitioning = false;
+                clearInterval(this.timerInterval);
+                clearInterval(this.nextQInterval);
+                clearTimeout(this.levelTimeout);
+                this.setFrozenState(false);
+                this.stopPhysics();
+                const gameBody = document.getElementById('game-body');
+                if (gameBody) gameBody.style.animation = 'none';
+                Audio.win();
+                Particles.fireworks();
                 
-                const totalW = this.sents.reduce((acc, val) => {
-                    let clean = val.text.replace(/[.,!?]/g, '');
+                const totalItems = Math.max(1, this.sents.reduce((acc, val) => {
+                    if (this.isMcq) return acc + 1;
+                    let clean = (val.text || '').replace(/[.,!?]/g, '');
                     if (Storage.data.mode === 'anagram') {
                         return acc + clean.replace(/\s+/g, '').replace(/-/g, '').split('').filter(w=>w.length>0).length;
                     } else {
-                        return acc + clean.split(' ').filter(w=>w.length>0).length;
+                        return acc + clean.split(/\s+/).filter(w=>w.length>0).length;
                     }
-                }, 0);
-                const acc = Math.max(0, Math.round(((totalW - this.mistakes)/totalW)*100));
+                }, 0));
+                const totalErr = this.totalMistakes || this.mistakes || 0;
+                const acc = Math.max(0, Math.min(100, Math.round(((totalItems - totalErr) / totalItems) * 100)));
                 
+                const elapsedSec = Math.max(1, Math.round((Date.now() - (this.gameStartTime || Date.now())) / 1000));
+                const mins = Math.floor(elapsedSec / 60);
+                const secs = elapsedSec % 60;
+                const timeFormatted = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+
                 let stars = 1; if(acc > 80) stars = 2; if(acc === 100) stars = 3;
                 let coinsEarned = this.score;
                 
-                // Save
-                if(!Storage.data.progress[this.cat.id]) Storage.data.progress[this.cat.id] = { stars: 0 };
-                Storage.data.progress[this.cat.id].stars = Math.max(Storage.data.progress[this.cat.id].stars, stars);
+                if (this.cat && this.cat.id) {
+                    if(!Storage.data.progress[this.cat.id]) Storage.data.progress[this.cat.id] = { stars: 0 };
+                    Storage.data.progress[this.cat.id].stars = Math.max(Storage.data.progress[this.cat.id].stars, stars);
+                }
                 Storage.addCoins(coinsEarned);
 
-                document.getElementById('win-accuracy').innerText = `${acc}%`;
-                document.getElementById('win-combo').innerText = this.maxCombo;
-                document.getElementById('win-stars').innerHTML = '<span class="text-4xl text-blue-500 font-black">GREAT JOB!</span>';
+                const accEl = document.getElementById('win-accuracy');
+                if (accEl) accEl.innerText = `${acc}%`;
+                const timeEl = document.getElementById('win-time');
+                if (timeEl) timeEl.innerText = timeFormatted;
+                const comboEl = document.getElementById('win-combo');
+                if (comboEl) comboEl.innerText = this.maxCombo || 0;
+
+                // Winner & Team Leaderboard Podium
+                const titleEl = document.getElementById('win-title');
+                const starsEl = document.getElementById('win-stars');
+                const avatarsEl = document.getElementById('win-avatars');
+                const leaderboardEl = document.getElementById('win-leaderboard');
+
+                if (window.teamsData && window.teamsData.length > 0) {
+                    const sortedTeams = [...window.teamsData].sort((a, b) => (b.score || 0) - (a.score || 0));
+                    const topScore = sortedTeams[0].score || 0;
+                    const winners = sortedTeams.filter(t => (t.score || 0) === topScore);
+
+                    if (avatarsEl) {
+                        avatarsEl.innerHTML = winners.map(w => `
+                            <div class="relative flex flex-col items-center">
+                                <span class="text-4xl sm:text-5xl -mb-2 z-10 drop-shadow-md animate-bounce">👑</span>
+                                ${w.avatarImage
+                                    ? `<img src="${w.avatarImage}" alt="${w.name}" class="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-white border-4 border-amber-400 object-contain shadow-xl" />`
+                                    : `<div class="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-amber-400 border-4 border-white flex items-center justify-center text-3xl font-black text-white shadow-xl">${(w.name || 'T').charAt(0)}</div>`
+                                }
+                            </div>
+                        `).join('');
+                    }
+
+                    if (winners.length === 1) {
+                        if (titleEl) titleEl.innerText = `🏆 ${winners[0].name} Wins!`;
+                        if (starsEl) starsEl.innerText = `Champion with ${topScore} PTS!`;
+                    } else {
+                        if (titleEl) titleEl.innerText = `🤝 It's a Tie!`;
+                        if (starsEl) starsEl.innerText = `${winners.map(w => w.name).join(' & ')} (${topScore} PTS)`;
+                    }
+
+                    if (leaderboardEl) {
+                        leaderboardEl.style.display = 'flex';
+                        const medals = ['🥇', '🥈', '🥉'];
+                        const rowColors = {
+                            blue: 'from-blue-500 to-blue-600 border-blue-300',
+                            red: 'from-red-500 to-red-600 border-red-300',
+                            green: 'from-green-500 to-green-600 border-green-300',
+                            yellow: 'from-amber-400 to-amber-500 border-amber-200',
+                            purple: 'from-purple-500 to-purple-600 border-purple-300',
+                            pink: 'from-pink-500 to-pink-600 border-pink-300'
+                        };
+                        leaderboardEl.innerHTML = sortedTeams.map((t, idx) => {
+                            const isWinner = (t.score || 0) === topScore;
+                            const medal = medals[idx] || `#${idx + 1}`;
+                            const grad = rowColors[t.color] || rowColors.blue;
+                            return `
+                                <div class="flex items-center justify-between px-4 py-2.5 rounded-2xl bg-gradient-to-r ${grad} text-white border-2 shadow-md ${isWinner ? 'ring-4 ring-amber-300 scale-[1.01]' : 'opacity-90'}">
+                                    <div class="flex items-center gap-3 min-w-0">
+                                        <span class="text-2xl sm:text-3xl shrink-0">${medal}</span>
+                                        ${t.avatarImage
+                                            ? `<img src="${t.avatarImage}" alt="${t.name}" class="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-white border-2 border-white object-contain shrink-0 shadow" />`
+                                            : ''
+                                        }
+                                        <span class="font-black text-lg sm:text-xl truncate drop-shadow">${t.name}</span>
+                                        ${isWinner ? '<span class="px-2.5 py-0.5 text-xs font-black uppercase bg-amber-300 text-amber-950 rounded-full shadow-sm shrink-0">Winner</span>' : ''}
+                                    </div>
+                                    <div class="bg-black/25 px-4 py-1 rounded-full font-black text-lg sm:text-xl shrink-0">
+                                        ${t.score || 0} PTS
+                                    </div>
+                                </div>
+                            `;
+                        }).join('');
+                    }
+                } else {
+                    if (avatarsEl) avatarsEl.innerHTML = '<div class="text-6xl">🏆</div>';
+                    if (titleEl) titleEl.innerText = '🎉 Island Cleared!';
+                    if (starsEl) starsEl.innerText = `Total Score: ${this.score} PTS`;
+                    if (leaderboardEl) leaderboardEl.style.display = 'none';
+                }
                 
-                // Animated Coin counter
                 const ce = document.getElementById('win-coins');
-                ce.innerText = '0';
-                let c = 0; const step = Math.ceil(coinsEarned/30);
-                const cInt = setInterval(()=>{
-                    c += step; if(c >= coinsEarned) { c = coinsEarned; clearInterval(cInt); }
-                    ce.innerText = c; Audio.click();
-                }, 50);
+                if (ce) {
+                    ce.innerText = '0';
+                    let c = 0; const step = Math.max(1, Math.ceil(coinsEarned/30));
+                    const cInt = setInterval(()=>{
+                        c += step; if(c >= coinsEarned) { c = coinsEarned; clearInterval(cInt); }
+                        ce.innerText = c;
+                    }, 50);
+                }
 
                 this.showScreen('screen-win');
                 setTimeout(()=>{
-                    document.getElementById('win-modal').classList.remove('scale-0');
-                    document.getElementById('win-modal').classList.add('scale-100');
+                    const modal = document.getElementById('win-modal');
+                    if (modal) {
+                        modal.classList.remove('scale-0');
+                        modal.classList.add('scale-100');
+                    }
                     Particles.coinExplosion(window.innerWidth/2, window.innerHeight/2);
-                }, 100);
+                }, 80);
             },
 
             startPhysics() {
@@ -2560,7 +2681,8 @@ var Game = {
                 const loop = (t) => {
                     try {
                     let dt = (t - lastT) / 16.66; lastT = t; if (dt > 3) dt = 3;
-                    const bnds = document.getElementById('physics-area').getBoundingClientRect();
+                    const areaEl = document.getElementById('physics-area');
+                    const bnds = areaEl ? areaEl.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight * 0.5 };
                     
                     let speedMult = 1;
                     let sizeMult = 1;
@@ -2568,62 +2690,66 @@ var Game = {
                         speedMult = Storage.data.profile.settings.bubbleSpeed || 1;
                         sizeMult = Storage.data.profile.settings.bubbleSize || 1;
                     }
-                    if (this.isFrozen) speedMult = 0; // stop when frozen
 
                     this.bubbles.forEach((b, i) => {
                         if (b.snapped) {
                             if (b.isCorrectChosen) {
-                                b.el.style.transform = `translate(${b.x}px, ${b.y}px) scale(1.15)`;
+                                b.el.style.transform = `translate(${b.x}px, ${b.y}px) scale(1.08)`;
                             }
                             return;
                         }
                         
                         let rot = 0;
                         if (this.dragB === b) {
-                            // If being dragged, skip physics, but set scale
-                            b.scaleX = 1.1;
-                            b.scaleY = 1.1;
+                            b.scaleX = 1.08;
+                            b.scaleY = 1.08;
+                        } else if (this.isFrozen) {
+                            // Completely paused while frozen: zero velocity, no movement, no collision drift
+                            b.vx = 0;
+                            b.vy = 0;
+                            b.scaleX = 1;
+                            b.scaleY = 1;
+                            rot = b.twistRot || 0;
                         } else {
-                            if (this.isFrozen) {
-                                b.vx = 0;
-                                b.vy = 0;
-                            } else {
-                                // Gentle wandering force in any direction
-                                b.vx += (Math.random() - 0.5) * 0.1 * dt * speedMult;
-                                b.vy += (Math.random() - 0.5) * 0.1 * dt * speedMult;
-                            }
+                            // Gentle wandering force in any direction
+                            b.vx += (Math.random() - 0.5) * 0.1 * dt * speedMult;
+                            b.vy += (Math.random() - 0.5) * 0.1 * dt * speedMult;
                             
-                            // Maintain a steady, gentle speed (prevents stopping or moving too fast)
+                            // Maintain a steady, gentle speed
                             let speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
-                            if (b.isError && speed > 10) {
-                                b.vx = (b.vx / speed) * 10;
-                                b.vy = (b.vy / speed) * 10;
-                            } else if (!b.isError && speed > 2.5) {
-                                b.vx = (b.vx / speed) * 2.5;
-                                b.vy = (b.vy / speed) * 2.5;
-                            } else if (speed < 0.5 && speed > 0) {
-                                b.vx = (b.vx / speed) * 0.5;
-                                b.vy = (b.vy / speed) * 0.5;
+                            if (b.isError && speed > 8) {
+                                b.vx = (b.vx / speed) * 8;
+                                b.vy = (b.vy / speed) * 8;
+                            } else if (!b.isError && speed > 2.2) {
+                                b.vx = (b.vx / speed) * 2.2;
+                                b.vy = (b.vy / speed) * 2.2;
+                            } else if (speed < 0.45 && speed > 0) {
+                                b.vx = (b.vx / speed) * 0.45;
+                                b.vy = (b.vy / speed) * 0.45;
                             }
 
-                            b.x += b.vx * dt; b.y += b.vy * dt;
+                            b.x += b.vx * dt;
+                            b.y += b.vy * dt;
                             if (isNaN(b.x)) b.x = bnds.width / 2;
                             if (isNaN(b.y)) b.y = bnds.height / 2;
                             
                             // Wobble organically
-                            b.scaleX = 1 + Math.sin(t/300 + i)*0.03;
-                            b.scaleY = 1 + Math.cos(t/300 + i)*0.03;
+                            b.scaleX = 1 + Math.sin(t/300 + i)*0.025;
+                            b.scaleY = 1 + Math.cos(t/300 + i)*0.025;
                             
-                            // Bounds (Elastic bounce instead of losing momentum)
+                            // Bounds strictly inside #physics-area so bubbles never overlap top HUD or bottom card
+                            const pad = 8;
                             const scaledW = b.w * sizeMult;
                             const scaledH = b.h * sizeMult;
-                            const offsetX = (scaledW - b.w) / 2;
-                            const offsetY = (scaledH - b.h) / 2;
+                            const offsetX = Math.max(0, (scaledW - b.w) / 2) + pad;
+                            const offsetY = Math.max(0, (scaledH - b.h) / 2) + pad;
+                            const maxX = Math.max(offsetX, bnds.width - b.w - offsetX);
+                            const maxY = Math.max(offsetY, bnds.height - b.h - offsetY);
                             
-                            if(b.x < offsetX) { b.x = offsetX; b.vx *= -1; }
-                            if(b.x + b.w + offsetX > bnds.width) { b.x = bnds.width - b.w - offsetX; b.vx *= -1; }
-                            if(b.y < offsetY) { b.y = offsetY; b.vy *= -1; }
-                            if(b.y + b.h + offsetY > bnds.height) { b.y = bnds.height - b.h - offsetY; b.vy *= -1; }
+                            if(b.x < offsetX) { b.x = offsetX; b.vx = Math.abs(b.vx); }
+                            if(b.x > maxX) { b.x = maxX; b.vx = -Math.abs(b.vx); }
+                            if(b.y < offsetY) { b.y = offsetY; b.vy = Math.abs(b.vy); }
+                            if(b.y > maxY) { b.y = maxY; b.vy = -Math.abs(b.vy); }
                             
                             // Collisions (Soft Repel)
                             for(let j=i+1; j<this.bubbles.length; j++) {
@@ -2632,27 +2758,27 @@ var Game = {
                                 const dx = (b.x+b.w/2) - (b2.x+b2.w/2);
                                 const dy = (b.y+b.h/2) - (b2.y+b2.h/2);
                                 const dist = Math.sqrt(dx*dx + dy*dy);
-                                const minDist = (b.w + b2.w)*0.45;
+                                const minDist = (b.w + b2.w)*0.42;
                                 if(dist < minDist && dist>0) {
-                                    const force = (minDist - dist)*0.1;
+                                    const force = (minDist - dist)*0.08;
                                     const ax = (dx/dist)*force; const ay = (dy/dist)*force;
                                     b.vx += ax; b.vy += ay; b2.vx -= ax; b2.vy -= ay;
                                 }
                             }
                             
-                            if (Storage.data.profile.settings.twistedEnabled && !this.isFrozen) {
+                            if (Storage.data.profile.settings.twistedEnabled) {
                                 b.twistRot = (b.twistRot || 0) + (1.5 * dt * speedMult);
                                 rot = b.twistRot;
                             } else {
-                                rot = b.vx * 3;
+                                rot = b.vx * 2.5;
                             }
                         }
                         
                         let renderX = b.x;
                         let renderY = b.y;
                         if (b.shakeTime > 0) {
-                            renderX += (Math.random() - 0.5) * 15;
-                            renderY += (Math.random() - 0.5) * 15;
+                            renderX += (Math.random() - 0.5) * 14;
+                            renderY += (Math.random() - 0.5) * 14;
                             b.shakeTime -= dt * 16.66;
                         }
                         
@@ -3038,40 +3164,44 @@ var Editor = {
                 container.removeChild(timer);
             }
             
-            const middleIndex = Math.ceil(window.teamsData.length / 2);
+            const middleIndex = Math.ceil((window.teamsData ? window.teamsData.length : 0) / 2);
             if (timer) {
                 timer.style.order = middleIndex * 10;
             }
             
             let html = '';
-            window.teamsData.forEach((t, i) => {
-                const colorMap = {
-                    blue: 'background: radial-gradient(circle at 30% 30%, #60a5fa, #2563eb); box-shadow: inset -4px -8px 12px rgba(0,0,0,0.3), inset 4px 8px 12px rgba(255,255,255,0.6), 0 10px 20px rgba(37,99,235,0.4); color: white; border: 4px solid rgba(255,255,255,0.9); text-shadow: 0 2px 4px rgba(0,0,0,0.4);',
-                    red: 'background: radial-gradient(circle at 30% 30%, #f87171, #dc2626); box-shadow: inset -4px -8px 12px rgba(0,0,0,0.3), inset 4px 8px 12px rgba(255,255,255,0.6), 0 10px 20px rgba(220,38,38,0.4); color: white; border: 4px solid rgba(255,255,255,0.9); text-shadow: 0 2px 4px rgba(0,0,0,0.4);',
-                    green: 'background: radial-gradient(circle at 30% 30%, #4ade80, #16a34a); box-shadow: inset -4px -8px 12px rgba(0,0,0,0.3), inset 4px 8px 12px rgba(255,255,255,0.6), 0 10px 20px rgba(22,163,74,0.4); color: white; border: 4px solid rgba(255,255,255,0.9); text-shadow: 0 2px 4px rgba(0,0,0,0.4);',
-                    yellow: 'background: radial-gradient(circle at 30% 30%, #fde047, #eab308); box-shadow: inset -4px -8px 12px rgba(0,0,0,0.2), inset 4px 8px 12px rgba(255,255,255,0.8), 0 10px 20px rgba(234,179,8,0.4); color: #713f12; border: 4px solid rgba(255,255,255,0.9);',
-                    purple: 'background: radial-gradient(circle at 30% 30%, #c084fc, #9333ea); box-shadow: inset -4px -8px 12px rgba(0,0,0,0.3), inset 4px 8px 12px rgba(255,255,255,0.6), 0 10px 20px rgba(147,51,234,0.4); color: white; border: 4px solid rgba(255,255,255,0.9); text-shadow: 0 2px 4px rgba(0,0,0,0.4);',
-                    pink: 'background: radial-gradient(circle at 30% 30%, #f472b6, #db2777); box-shadow: inset -4px -8px 12px rgba(0,0,0,0.3), inset 4px 8px 12px rgba(255,255,255,0.6), 0 10px 20px rgba(219,39,119,0.4); color: white; border: 4px solid rgba(255,255,255,0.9); text-shadow: 0 2px 4px rgba(0,0,0,0.4);'
-                };
-                const bubbleStyle = colorMap[t.color];
-                const isCurrentTurn = window.currentTeamIndex === i;
-                const turnClass = isCurrentTurn ? 'ring-8 ring-white ring-offset-4 ring-offset-blue-300 scale-[1.15] z-20' : 'opacity-80 scale-95';
-                
-                const order = (i < middleIndex) ? (i * 10) : (i * 10 + 10);
-                const avatarHtml = t.avatarImage
-                    ? `<img src="${t.avatarImage}" alt="${t.name}" style="width: 6.2vh; height: 6.2vh; border-radius: 9999px; background: #ffffff; border: 3px solid #ffffff; object-fit: contain; flex-shrink: 0; box-shadow: 0 4px 10px rgba(0,0,0,0.28);" />`
-                    : '';
-                
-                html += `
-                    <div class="flex items-center gap-1 group shrink-0" style="order: ${order}; margin: 0 15px;">
-                        <div class="team-score px-8 py-5 min-w-[320px] justify-center rounded-full font-black transform transition-all duration-300 flex items-center gap-4 ${turnClass}" style="${bubbleStyle}; font-size: 5vh; line-height: 1.1;">
-                            ${avatarHtml}
-                            <span class="truncate max-w-[220px] pb-1 drop-shadow-lg">${t.name}</span>
-                            <span class="bg-black/20 px-6 py-2 rounded-full shadow-inner pb-3" id="score-team${t.id}">${t.score}</span>
+            if (Game.classroomMode && window.teamsData && window.teamsData.length > 0) {
+                window.teamsData.forEach((t, i) => {
+                    const colorMap = {
+                        blue: 'background: radial-gradient(circle at 30% 30%, #60a5fa, #2563eb); box-shadow: inset -3px -6px 10px rgba(0,0,0,0.28), inset 3px 6px 10px rgba(255,255,255,0.55), 0 6px 14px rgba(37,99,235,0.35); color: white; border: 3px solid rgba(255,255,255,0.92); text-shadow: 0 2px 3px rgba(0,0,0,0.35);',
+                        red: 'background: radial-gradient(circle at 30% 30%, #f87171, #dc2626); box-shadow: inset -3px -6px 10px rgba(0,0,0,0.28), inset 3px 6px 10px rgba(255,255,255,0.55), 0 6px 14px rgba(220,38,38,0.35); color: white; border: 3px solid rgba(255,255,255,0.92); text-shadow: 0 2px 3px rgba(0,0,0,0.35);',
+                        green: 'background: radial-gradient(circle at 30% 30%, #4ade80, #16a34a); box-shadow: inset -3px -6px 10px rgba(0,0,0,0.28), inset 3px 6px 10px rgba(255,255,255,0.55), 0 6px 14px rgba(22,163,74,0.35); color: white; border: 3px solid rgba(255,255,255,0.92); text-shadow: 0 2px 3px rgba(0,0,0,0.35);',
+                        yellow: 'background: radial-gradient(circle at 30% 30%, #fde047, #eab308); box-shadow: inset -3px -6px 10px rgba(0,0,0,0.2), inset 3px 6px 10px rgba(255,255,255,0.8), 0 6px 14px rgba(234,179,8,0.35); color: #713f12; border: 3px solid rgba(255,255,255,0.92);',
+                        purple: 'background: radial-gradient(circle at 30% 30%, #c084fc, #9333ea); box-shadow: inset -3px -6px 10px rgba(0,0,0,0.28), inset 3px 6px 10px rgba(255,255,255,0.55), 0 6px 14px rgba(147,51,234,0.35); color: white; border: 3px solid rgba(255,255,255,0.92); text-shadow: 0 2px 3px rgba(0,0,0,0.35);',
+                        pink: 'background: radial-gradient(circle at 30% 30%, #f472b6, #db2777); box-shadow: inset -3px -6px 10px rgba(0,0,0,0.28), inset 3px 6px 10px rgba(255,255,255,0.55), 0 6px 14px rgba(219,39,119,0.35); color: white; border: 3px solid rgba(255,255,255,0.92); text-shadow: 0 2px 3px rgba(0,0,0,0.35);'
+                    };
+                    const bubbleStyle = colorMap[t.color] || colorMap.blue;
+                    const isCurrentTurn = window.currentTeamIndex === i;
+                    const turnClass = isCurrentTurn ? 'ring-4 ring-white ring-offset-2 ring-offset-sky-300 scale-105 z-20' : 'opacity-85 scale-95';
+                    
+                    const order = (i < middleIndex) ? (i * 10) : (i * 10 + 10);
+                    const avatarHtml = t.avatarImage
+                        ? `<img src="${t.avatarImage}" alt="${t.name}" class="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white border-2 border-white object-contain shrink-0 shadow" />`
+                        : '';
+                    
+                    html += `
+                        <div class="flex items-center group shrink-0" style="order: ${order}; margin: 0 4px;">
+                            <div class="team-score px-3.5 py-1.5 sm:px-5 sm:py-2 min-w-[135px] sm:min-w-[175px] max-w-[235px] justify-between rounded-full font-black transform transition-all duration-300 flex items-center gap-2 sm:gap-3 text-base sm:text-xl leading-none ${turnClass}" style="${bubbleStyle}">
+                                <div class="flex items-center gap-2 min-w-0">
+                                    ${avatarHtml}
+                                    <span class="truncate max-w-[95px] sm:max-w-[125px] drop-shadow">${t.name}</span>
+                                </div>
+                                <span class="bg-black/25 px-3 py-1 rounded-full shadow-inner text-sm sm:text-lg shrink-0" id="score-team${t.id}">${t.score}</span>
+                            </div>
                         </div>
-                    </div>
-                `;
-            });
+                    `;
+                });
+            }
             container.innerHTML = html;
             if (timer) {
                 container.appendChild(timer);

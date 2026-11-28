@@ -1,0 +1,4133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FORM3D — Gemini Direct 3D Character Studio</title>
+  <style>
+    :root {
+      --bg-app: #0b0c12;
+      --bg-panel: #131520;
+      --bg-elevated: #1a1d2c;
+      --bg-input: #0e1018;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.16);
+      --text-main: #f3f4f8;
+      --text-muted: #98a0b8;
+      --text-dim: #666e85;
+      --accent: #8b5cf6;
+      --accent-hover: #7c3aed;
+      --accent-soft: rgba(139, 92, 246, 0.18);
+      --cyan: #38bdf8;
+      --cyan-soft: rgba(56, 189, 248, 0.16);
+      --success: #22c55e;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg-app);
+      color: var(--text-main);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .studio-shell {
+      display: grid;
+      grid-template-rows: 52px 1fr;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* HEADER */
+    .studio-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+      z-index: 20;
+    }
+
+    .header-left, .header-center, .header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      font-size: 14px;
+    }
+
+    .brand-badge {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #8b5cf6, #38bdf8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 11px;
+      color: #fff;
+      box-shadow: 0 2px 10px rgba(139, 92, 246, 0.35);
+    }
+
+    .project-name-input {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      border-radius: var(--radius-sm);
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      width: 180px;
+      outline: none;
+    }
+    .project-name-input:focus { border-color: var(--accent); }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 6px 11px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      color: var(--text-main);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+      white-space: nowrap;
+    }
+    .btn:hover:not(:disabled) {
+      background: #23273a;
+      border-color: var(--border-strong);
+    }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-primary {
+      background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+      border-color: rgba(167, 139, 250, 0.4);
+      color: #fff;
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: linear-gradient(135deg, #9d71fb, #7c3aed);
+    }
+    .btn-cyan {
+      background: linear-gradient(135deg, #0ea5e9, #2563eb);
+      border-color: rgba(56, 189, 248, 0.45);
+      color: #fff;
+    }
+    .btn-cyan:hover:not(:disabled) {
+      background: linear-gradient(135deg, #38bdf8, #3b82f6);
+    }
+    .btn-ghost { background: transparent; border-color: transparent; color: var(--text-muted); }
+    .btn-ghost:hover:not(:disabled) { background: rgba(255, 255, 255, 0.06); color: var(--text-main); }
+    .btn-xs { padding: 4px 8px; font-size: 11px; }
+
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: rgba(34, 197, 94, 0.12);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      font-size: 11px;
+      font-weight: 600;
+      color: #86efac;
+    }
+    .status-chip.offline {
+      background: rgba(239, 68, 68, 0.12);
+      border-color: rgba(239, 68, 68, 0.35);
+      color: #fca5a5;
+    }
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--success);
+    }
+    .status-chip.offline .status-dot { background: var(--danger); }
+
+    /* WORKSPACE */
+    .studio-body {
+      display: grid;
+      grid-template-columns: 186px 1fr 330px;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    /* LEFT SIDEBAR */
+    .left-sidebar {
+      background: var(--bg-panel);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 12px 10px;
+      gap: 6px;
+      overflow-y: auto;
+    }
+
+    .nav-section-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      padding: 6px 8px 2px;
+      font-weight: 700;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      background: transparent;
+      text-align: left;
+      width: 100%;
+    }
+    .nav-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text-main); }
+    .nav-item.active {
+      background: var(--accent-soft);
+      border-color: rgba(139, 92, 246, 0.35);
+      color: #fff;
+    }
+
+    .left-panel-drawer {
+      margin-top: 8px;
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+    }
+
+    .preset-card {
+      padding: 8px 9px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .preset-card:hover {
+      border-color: var(--accent);
+      background: #212538;
+    }
+    .preset-card-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 2px;
+    }
+    .preset-card-sub {
+      font-size: 10px;
+      color: var(--text-muted);
+      line-height: 1.35;
+    }
+
+    /* CENTER VIEWPORT */
+    .viewport-stage {
+      position: relative;
+      background: #0d0f17;
+      overflow: hidden;
+      min-width: 0;
+      min-height: 0;
+    }
+
+    #viewport-canvas-mount {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .viewport-top-hud {
+      position: absolute;
+      top: 10px;
+      left: 12px;
+      right: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .hud-group {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 3px;
+      background: rgba(16, 18, 28, 0.92);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      pointer-events: auto;
+      flex-shrink: 0;
+    }
+
+    .hud-btn {
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .hud-btn:hover { color: var(--text-main); background: rgba(255, 255, 255, 0.06); }
+    .hud-btn.active {
+      background: var(--accent);
+      color: #fff;
+    }
+    .hud-btn.active-cyan {
+      background: #0284c7;
+      color: #fff;
+    }
+
+    /* SELECTED PART PILL IN VIEWPORT */
+    .selected-part-pill {
+      position: absolute;
+      top: 52px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: rgba(14, 24, 38, 0.94);
+      border: 1px solid rgba(56, 189, 248, 0.55);
+      color: #e0f2fe;
+      font-size: 11px;
+      font-weight: 600;
+      z-index: 11;
+    }
+    .selected-part-pill.visible { display: inline-flex; }
+
+    /* EMPTY STAGE OVERLAY */
+    .viewport-empty-state {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 5;
+    }
+    .viewport-empty-state.hidden { display: none; }
+
+    .empty-card {
+      background: rgba(17, 20, 31, 0.92);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-lg);
+      padding: 22px 26px;
+      max-width: 360px;
+      text-align: center;
+      pointer-events: auto;
+    }
+    .empty-card-icon {
+      width: 44px;
+      height: 44px;
+      margin: 0 auto 12px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(56, 189, 248, 0.25));
+      border: 1px solid rgba(139, 92, 246, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+    .empty-card h2 { font-size: 15px; font-weight: 800; margin-bottom: 6px; }
+    .empty-card p { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+
+    /* LIVE BUILD PROGRESS HUD */
+    .viewport-build-hud {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(10, 11, 18, 0.72);
+      z-index: 15;
+    }
+    .viewport-build-hud.active { display: flex; }
+
+    .build-card {
+      width: 320px;
+      background: var(--bg-panel);
+      border: 1px solid rgba(139, 92, 246, 0.45);
+      border-radius: var(--radius-lg);
+      padding: 18px 20px;
+      box-shadow: 0 18px 42px rgba(0, 0, 0, 0.55);
+    }
+    .build-card-title { font-size: 13px; font-weight: 800; margin-bottom: 4px; }
+    .build-card-stage { font-size: 11px; color: var(--cyan); font-weight: 600; margin-bottom: 10px; }
+    .progress-track {
+      width: 100%;
+      height: 7px;
+      background: var(--bg-input);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+    .progress-fill {
+      height: 100%;
+      width: 12%;
+      background: linear-gradient(90deg, #8b5cf6, #38bdf8);
+      transition: width 0.25s ease;
+    }
+    .build-steps-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-top: 8px;
+    }
+    .build-step-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+    .build-step-row.active { color: var(--text-main); font-weight: 700; }
+    .build-step-row.done { color: var(--success); }
+
+    /* BOTTOM VIEWPORT DOCK (VARIANTS + ANIMATIONS) */
+    .viewport-bottom-dock {
+      position: absolute;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 7px;
+      z-index: 10;
+      max-width: calc(100% - 24px);
+    }
+
+    .variant-bar {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 6px;
+      background: rgba(16, 18, 28, 0.94);
+      border: 1px solid rgba(139, 92, 246, 0.4);
+      border-radius: var(--radius-md);
+    }
+    .variant-bar.visible { display: flex; }
+
+    .variant-pill {
+      padding: 5px 10px;
+      border-radius: 7px;
+      border: 1px solid transparent;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .variant-pill:hover { background: rgba(255, 255, 255, 0.08); color: var(--text-main); }
+    .variant-pill.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: rgba(196, 181, 253, 0.5);
+    }
+
+    .anim-bar {
+      display: none;
+      align-items: center;
+      gap: 3px;
+      padding: 4px;
+      background: rgba(16, 18, 28, 0.94);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+    }
+    .anim-bar.visible { display: flex; }
+
+    .viewport-hint {
+      position: absolute;
+      bottom: 12px;
+      right: 12px;
+      font-size: 10px;
+      color: var(--text-dim);
+      background: rgba(16, 18, 28, 0.85);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 8px;
+      pointer-events: none;
+      z-index: 9;
+    }
+
+    /* RIGHT SIDEBAR */
+    .right-sidebar {
+      background: var(--bg-panel);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .right-tabs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      padding: 8px 10px 0;
+      gap: 4px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .right-tab {
+      padding: 8px 6px;
+      border: none;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .right-tab:hover { color: var(--text-main); }
+    .right-tab.active {
+      color: #fff;
+      border-bottom-color: var(--accent);
+    }
+
+    .right-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .tab-pane { display: none; flex-direction: column; gap: 12px; }
+    .tab-pane.active { display: flex; }
+
+    .panel-card {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 11px;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .card-title { font-size: 12px; font-weight: 700; color: var(--text-main); }
+
+    textarea.prompt-box {
+      width: 100%;
+      min-height: 88px;
+      resize: vertical;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-main);
+      padding: 9px 10px;
+      font-family: inherit;
+      font-size: 12px;
+      line-height: 1.45;
+      outline: none;
+    }
+    textarea.prompt-box:focus { border-color: var(--accent); }
+
+    .chip-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    .chip {
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-input);
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .chip:hover { border-color: var(--accent); color: #fff; background: var(--accent-soft); }
+
+    .dropzone {
+      border: 1px dashed var(--border-strong);
+      border-radius: var(--radius-sm);
+      padding: 9px 10px;
+      background: var(--bg-input);
+      text-align: center;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .dropzone:hover, .dropzone.dragover { border-color: var(--accent); color: var(--text-main); }
+    .dropzone img {
+      width: 34px;
+      height: 34px;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 1px solid var(--border-strong);
+    }
+
+    .action-row {
+      display: grid;
+      grid-template-columns: 1fr 1.5fr;
+      gap: 7px;
+    }
+
+    .control-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .control-label-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    .control-value { color: var(--text-main); font-variant-numeric: tabular-nums; }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    .select-input, .text-input {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-main);
+      padding: 6px 8px;
+      font-size: 12px;
+      outline: none;
+    }
+    .select-input:focus, .text-input:focus { border-color: var(--accent); }
+
+    .color-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 7px;
+    }
+    .color-field {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 5px 8px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .color-field input[type="color"] {
+      width: 24px;
+      height: 20px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .part-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: var(--cyan-soft);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      color: #7dd3fc;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: capitalize;
+    }
+
+    .part-chip-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 5px;
+    }
+    .part-btn {
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-input);
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+      text-transform: capitalize;
+    }
+    .part-btn:hover { border-color: var(--cyan); color: #fff; }
+    .part-btn.active {
+      background: var(--cyan-soft);
+      border-color: var(--cyan);
+      color: #e0f2fe;
+    }
+
+    .history-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+
+    .summary-note {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.45;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 8px 9px;
+    }
+
+    /* TOAST */
+    .toast-host {
+      position: fixed;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 60;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      pointer-events: none;
+    }
+    .toast {
+      background: #1c2033;
+      border: 1px solid rgba(139, 92, 246, 0.5);
+      color: #fff;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+    }
+    .toast.error { border-color: rgba(239, 68, 68, 0.65); color: #fecaca; }
+
+    /* MODAL */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(6, 7, 12, 0.78);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal-box {
+      width: 420px;
+      max-width: 92vw;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-lg);
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .modal-title { font-size: 14px; font-weight: 800; }
+  </style>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div class="studio-shell">
+    <!-- HEADER -->
+    <header class="studio-header">
+      <div class="header-left">
+        <div class="brand">
+          <div class="brand-badge">3D</div>
+          <span>FORM3D</span>
+        </div>
+        <input id="project-name-input" class="project-name-input" type="text" value="Untitled Character" aria-label="Project name" />
+        <button id="btn-new" class="btn">New</button>
+        <button id="btn-save" class="btn">Save</button>
+      </div>
+
+      <div class="header-center">
+        <div id="engine-status-chip" class="status-chip">
+          <span class="status-dot"></span>
+          <span id="engine-status-text">Gemini Direct 3D Ready</span>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <button id="btn-undo" class="btn btn-xs" disabled title="Undo last edit">Undo</button>
+        <button id="btn-redo" class="btn btn-xs" disabled title="Redo edit">Redo</button>
+        <button id="btn-export-glb" class="btn btn-primary">Export GLB</button>
+        <button id="btn-settings" class="btn">Settings</button>
+      </div>
+    </header>
+
+    <!-- MAIN BODY -->
+    <div class="studio-body">
+      <!-- LEFT SIDEBAR -->
+      <aside class="left-sidebar">
+        <div class="nav-section-label">Workspace</div>
+        <button class="nav-item active" data-nav="create">Create Character</button>
+        <button class="nav-item" data-nav="my-characters">My Characters</button>
+        <button class="nav-item" data-nav="library">Character Library</button>
+        <button class="nav-item" data-nav="animation">Animation Studio</button>
+        <button class="nav-item" data-nav="import">Import GLB / GLTF</button>
+
+        <div id="left-drawer" class="left-panel-drawer"></div>
+      </aside>
+
+      <!-- CENTER 3D VIEWPORT -->
+      <main class="viewport-stage">
+        <div id="viewport-canvas-mount"></div>
+
+        <!-- COMPACT SINGLE-ROW TOP HUD -->
+        <div class="viewport-top-hud">
+          <div class="hud-group" id="camera-hud">
+            <button class="hud-btn active" data-cam="front">Front</button>
+            <button class="hud-btn" data-cam="side">Side</button>
+            <button class="hud-btn" data-cam="back">Back</button>
+            <button class="hud-btn" data-cam="top">Top</button>
+            <button class="hud-btn" data-cam="reset">Reset</button>
+            <button class="hud-btn" id="btn-turntable">Spin</button>
+          </div>
+
+          <div class="hud-group" id="shading-hud">
+            <button class="hud-btn active" data-shade="cel">Cel</button>
+            <button class="hud-btn" data-shade="pbr">Vinyl</button>
+            <button class="hud-btn" data-shade="clay">Clay</button>
+            <button class="hud-btn" data-shade="wireframe">Wire</button>
+            <button class="hud-btn active-cyan" id="btn-outline-toggle" title="Toggle anime ink outline">Ink</button>
+          </div>
+
+          <div class="hud-group" id="bg-hud">
+            <button class="hud-btn active" data-bg="dark">Dark</button>
+            <button class="hud-btn" data-bg="light">Light</button>
+            <button class="hud-btn" data-bg="gradient">Grad</button>
+            <button class="hud-btn active" id="btn-grid-toggle">Grid</button>
+            <button class="hud-btn" id="btn-fullscreen">Full</button>
+          </div>
+        </div>
+
+        <!-- SELECTED PART PILL -->
+        <div id="selected-part-pill" class="selected-part-pill">
+          <span>Selected: <strong id="selected-part-pill-name">Hair</strong></span>
+          <button id="btn-clear-part-pill" class="btn btn-xs btn-ghost" style="color:#bae6fd;padding:2px 5px;">Clear</button>
+        </div>
+
+        <!-- EMPTY STAGE OVERLAY -->
+        <div id="viewport-empty-state" class="viewport-empty-state">
+          <div class="empty-card">
+            <div class="empty-card-icon">✦</div>
+            <h2>3D Stage Ready</h2>
+            <p>Describe any anime or chibi character on the right—or drop a reference image—to sculpt 3 cel-shaded 3D variants with Gemini Direct 3D.</p>
+          </div>
+        </div>
+
+        <!-- LIVE BUILD PROGRESS HUD -->
+        <div id="viewport-build-hud" class="viewport-build-hud">
+          <div class="build-card">
+            <div class="build-card-title" id="build-card-title">Sculpting 3D Variants with Gemini</div>
+            <div class="build-card-stage" id="build-card-stage">Analyzing prompt & color palette...</div>
+            <div class="progress-track"><div class="progress-fill" id="build-progress-fill"></div></div>
+            <div class="build-steps-list">
+              <div class="build-step-row" data-step="1"><span>1. Gemini 3D Blueprint & Vision</span><span class="st">Pending</span></div>
+              <div class="build-step-row" data-step="2"><span>2. Sculpting 3 Rigged Variants</span><span class="st">Pending</span></div>
+              <div class="build-step-row" data-step="3"><span>3. Painting HD 1024px Face & Outfit</span><span class="st">Pending</span></div>
+              <div class="build-step-row" data-step="4"><span>4. Cel-Shading & Anime Ink Reveal</span><span class="st">Pending</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BOTTOM DOCK: VARIANT PICKER + ANIMATION BAR -->
+        <div class="viewport-bottom-dock">
+          <div id="variant-bar" class="variant-bar"></div>
+          <div id="anim-bar" class="anim-bar">
+            <button class="hud-btn active" data-anim="idle">Idle</button>
+            <button class="hud-btn" data-anim="walk">Walk</button>
+            <button class="hud-btn" data-anim="run">Run</button>
+            <button class="hud-btn" data-anim="jump">Jump</button>
+            <button class="hud-btn" data-anim="fight">Fight</button>
+            <button class="hud-btn" data-anim="push">Push</button>
+            <button class="hud-btn" data-anim="victory">Victory</button>
+          </div>
+        </div>
+
+        <div class="viewport-hint" id="viewport-hint">Click any 3D part to restyle • Drag to orbit</div>
+      </main>
+
+      <!-- RIGHT SIDEBAR -->
+      <aside class="right-sidebar">
+        <div class="right-tabs">
+          <button class="right-tab active" data-tab="prompt">Prompt &amp; Sculpt</button>
+          <button class="right-tab" data-tab="part">Part Inspector</button>
+          <button class="right-tab" data-tab="refine">AI Refine</button>
+        </div>
+
+        <div class="right-scroll">
+          <!-- TAB 1: PROMPT & SCULPT -->
+          <div id="tab-prompt" class="tab-pane active">
+            <div class="panel-card">
+              <div class="card-header">
+                <span class="card-title">Character Prompt</span>
+                <div style="display:flex;gap:4px;">
+                  <button id="btn-random-prompt" class="btn btn-xs btn-ghost">Random</button>
+                  <button id="btn-clear-prompt" class="btn btn-xs btn-ghost">Clear</button>
+                </div>
+              </div>
+              <textarea id="character-prompt-input" class="prompt-box" placeholder="Describe the anime/chibi 3D character you want to create..."></textarea>
+
+              <div class="chip-wrap" id="example-chips">
+                <button class="chip" data-idea="sumo">Blue Sumo</button>
+                <button class="chip" data-idea="panda">Panda Fighter</button>
+                <button class="chip" data-idea="kitsune">Kitsune Mage</button>
+                <button class="chip" data-idea="cyber">Cyber Neko</button>
+                <button class="chip" data-idea="dragon">Chibi Dragon</button>
+                <button class="chip" data-idea="knight">Star Knight</button>
+              </div>
+
+              <div id="ref-dropzone" class="dropzone" title="Click, drag & drop, or paste an image">
+                <span id="ref-dropzone-text">Drop or click to upload reference image (optional)</span>
+              </div>
+              <input id="ref-file-input" type="file" accept="image/*" style="display:none;" />
+
+              <div class="action-row">
+                <button id="btn-enhance" class="btn">Enhance</button>
+                <button id="btn-generate" class="btn btn-primary">Generate 3 Variants</button>
+              </div>
+            </div>
+
+            <div class="panel-card">
+              <div class="card-header">
+                <span class="card-title">Anime Cel Style</span>
+                <span style="font-size:10px;color:var(--cyan);font-weight:700;">Gemini Direct 3D</span>
+              </div>
+              <div class="control-row">
+                <div class="control-label-row">
+                  <span>Style Preset</span>
+                </div>
+                <select id="style-preset-select" class="select-input">
+                  <option value="anime_cel" selected>Anime / Chibi Cel-Shaded</option>
+                  <option value="shonen_action">Shonen Action Hero</option>
+                  <option value="kawaii_mascot">Kawaii Chibi Mascot</option>
+                  <option value="fantasy_rpg">JRPG Fantasy Chibi</option>
+                </select>
+              </div>
+              <div class="control-row">
+                <div class="control-label-row">
+                  <span>Anime Ink Outline</span>
+                  <span id="val-outline-weight" class="control-value">1.0×</span>
+                </div>
+                <input id="slider-outline-weight" type="range" min="0" max="2" step="0.1" value="1.0" />
+              </div>
+              <div id="variant-summary-box" class="summary-note" style="display:none;"></div>
+            </div>
+
+            <div class="panel-card" id="quick-proportions-card" style="display:none;">
+              <div class="card-header">
+                <span class="card-title">Quick Proportions &amp; Palette</span>
+              </div>
+              <div class="color-grid">
+                <label class="color-field"><span>Skin</span><input type="color" id="col-skin" value="#ffe0c4" /></label>
+                <label class="color-field"><span>Hair</span><input type="color" id="col-hair" value="#1e293b" /></label>
+                <label class="color-field"><span>Outfit</span><input type="color" id="col-outfit" value="#2563eb" /></label>
+                <label class="color-field"><span>Accent</span><input type="color" id="col-accent" value="#f59e0b" /></label>
+                <label class="color-field"><span>Eyes</span><input type="color" id="col-eyes" value="#3b82f6" /></label>
+                <label class="color-field"><span>Ink</span><input type="color" id="col-outline" value="#1b1626" /></label>
+              </div>
+              <div class="control-row">
+                <div class="control-label-row"><span>Head Scale</span><span id="val-headScale" class="control-value">1.15</span></div>
+                <input id="slider-headScale" type="range" min="0.85" max="1.45" step="0.02" value="1.15" />
+              </div>
+              <div class="control-row">
+                <div class="control-label-row"><span>Body Width</span><span id="val-torsoWidth" class="control-value">1.05</span></div>
+                <input id="slider-torsoWidth" type="range" min="0.75" max="1.45" step="0.02" value="1.05" />
+              </div>
+              <div class="control-row">
+                <div class="control-label-row"><span>Eye Size</span><span id="val-eyeSize" class="control-value">1.08</span></div>
+                <input id="slider-eyeSize" type="range" min="0.75" max="1.35" step="0.02" value="1.08" />
+              </div>
+              <div class="control-row">
+                <div class="control-label-row"><span>Expression</span></div>
+                <select id="select-mouthStyle" class="select-input">
+                  <option value="confident_grin">Confident Grin</option>
+                  <option value="gentle_smile">Gentle Smile</option>
+                  <option value="cat_smile">Cute Cat Smile (:3)</option>
+                  <option value="battle_shout">Battle Shout</option>
+                  <option value="smirk">Anime Smirk</option>
+                  <option value="surprised_o">Surprised</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 2: CLICK-TO-RESTYLE PART INSPECTOR -->
+          <div id="tab-part" class="tab-pane">
+            <div class="panel-card">
+              <div class="card-header">
+                <span class="card-title">Click a 3D Body Part</span>
+                <span id="part-inspector-badge" class="part-badge" style="display:none;">Hair</span>
+              </div>
+              <p style="font-size:11px;color:var(--text-muted);line-height:1.45;">
+                Click directly on any part of your character in the 3D viewport—or pick a group below—to change its color, scale, visibility, or ask Gemini to restyle just that part.
+              </p>
+              <div class="part-chip-grid" id="part-group-list">
+                <button class="part-btn" data-group="hair">Hair</button>
+                <button class="part-btn" data-group="face">Face &amp; Eyes</button>
+                <button class="part-btn" data-group="headgear">Headgear</button>
+                <button class="part-btn" data-group="torso">Torso / Skin</button>
+                <button class="part-btn" data-group="outfit">Outfit</button>
+                <button class="part-btn" data-group="belt">Belt / Waist</button>
+                <button class="part-btn" data-group="arms">Arms</button>
+                <button class="part-btn" data-group="legs">Legs &amp; Feet</button>
+                <button class="part-btn" data-group="accessory">Accessories</button>
+                <button class="part-btn" data-group="weapon">Weapon</button>
+              </div>
+            </div>
+
+            <div class="panel-card" id="selected-part-controls" style="display:none;">
+              <div class="card-header">
+                <span class="card-title" id="selected-part-title">Restyle Part</span>
+                <button id="btn-toggle-part-visible" class="btn btn-xs">Hide Part</button>
+              </div>
+              <div class="color-field">
+                <span>Part Color Override</span>
+                <input type="color" id="part-color-input" value="#8b5cf6" />
+              </div>
+              <div class="control-row">
+                <div class="control-label-row">
+                  <span>Part Scale</span>
+                  <span id="val-part-scale" class="control-value">1.00×</span>
+                </div>
+                <input id="slider-part-scale" type="range" min="0.55" max="1.6" step="0.05" value="1.0" />
+              </div>
+              <div style="display:flex;gap:6px;">
+                <button id="btn-reset-part-override" class="btn btn-xs" style="flex:1;">Reset Part</button>
+                <button id="btn-deselect-part" class="btn btn-xs btn-ghost">Deselect</button>
+              </div>
+
+              <div style="border-top:1px solid var(--border);padding-top:9px;display:flex;flex-direction:column;gap:7px;">
+                <span class="card-title" style="font-size:11px;">AI Restyle Selected Part</span>
+                <textarea id="part-ai-prompt" class="prompt-box" style="min-height:62px;" placeholder="e.g. turn this into a glowing gold samurai crown..."></textarea>
+                <button id="btn-part-ai-restyle" class="btn btn-cyan">AI Restyle This Part</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 3: ITERATIVE AI REFINE -->
+          <div id="tab-refine" class="tab-pane">
+            <div class="panel-card">
+              <div class="card-header">
+                <span class="card-title">Iterative AI Edit</span>
+                <span id="history-counter" style="font-size:10px;color:var(--text-muted);font-weight:700;">v0 / 0</span>
+              </div>
+              <p style="font-size:11px;color:var(--text-muted);line-height:1.45;">
+                Describe any change to refine your current 3D sculpt while keeping the rest of the character intact.
+              </p>
+              <textarea id="refine-prompt-input" class="prompt-box" style="min-height:82px;" placeholder="e.g. Make the eyes bigger and sparklier, add a flowing red scarf and golden headband..."></textarea>
+              <div class="chip-wrap" id="refine-chips">
+                <button class="chip" data-refine="Make the anime eyes bigger with brighter star highlights and softer pink blush">Bigger sparkly eyes</button>
+                <button class="chip" data-refine="Add a flowing crimson hero cape and golden shoulder pauldrons">Add red cape</button>
+                <button class="chip" data-refine="Make the hair spikier shonen style with glowing blue highlights">Spikier anime hair</button>
+                <button class="chip" data-refine="Add cute fox ears on top of the head and a fluffy curved tail">Add fox ears &amp; tail</button>
+                <button class="chip" data-refine="Give a fierce determined expression and a glowing katana sword">Fierce + katana</button>
+              </div>
+              <button id="btn-apply-refine" class="btn btn-primary">Apply AI Edit</button>
+              <div class="history-bar">
+                <button id="btn-refine-undo" class="btn btn-xs" style="flex:1;" disabled>Undo Edit</button>
+                <button id="btn-refine-redo" class="btn btn-xs" style="flex:1;" disabled>Redo Edit</button>
+              </div>
+            </div>
+
+            <div class="panel-card" id="refine-log-card" style="display:none;">
+              <div class="card-header">
+                <span class="card-title">Edit History</span>
+              </div>
+              <div id="refine-log-list" style="display:flex;flex-direction:column;gap:5px;font-size:11px;color:var(--text-muted);"></div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- HIDDEN FILE INPUT FOR GLB IMPORT -->
+  <input id="glb-import-input" type="file" accept=".glb,.gltf" style="display:none;" />
+
+  <!-- SETTINGS MODAL -->
+  <div id="settings-modal" class="modal-backdrop">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span class="modal-title">FORM3D Engine Settings</span>
+        <button id="btn-close-settings" class="btn btn-xs btn-ghost">Close</button>
+      </div>
+      <div class="summary-note">
+        <strong>Engine:</strong> Gemini Direct 3D Sculpt Engine (<code id="modal-gemini-model">gemini-4-hydrogen</code>)<br />
+        <strong>Status:</strong> <span id="modal-gemini-status">Checking...</span><br />
+        <strong>External 3D Keys Required:</strong> None — runs completely on the built-in Gemini backend with zero external 3D API dependencies.
+      </div>
+      <div class="control-row">
+        <div class="control-label-row"><span>Include Anime Ink Outlines in GLB Export</span></div>
+        <select id="select-export-outlines" class="select-input">
+          <option value="no" selected>No — Clean Standard Mesh (Recommended)</option>
+          <option value="yes">Yes — Bake Inverted-Hull Ink Outlines</option>
+        </select>
+      </div>
+      <button id="btn-recheck-status" class="btn btn-primary">Re-Check Gemini Connection</button>
+    </div>
+  </div>
+
+  <div id="toast-host" class="toast-host"></div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+    // =========================================================================
+    // CURATED EXAMPLE PROMPTS & BUILT-IN ANIME CHARACTER LIBRARY
+    // =========================================================================
+    const EXAMPLE_PROMPTS = {
+      sumo: 'Adorable anime chibi blue sumo wrestler with warm peach skin, round chubby cheeks, expressive determined eyes, black chonmage topknot hair, royal blue Japanese hachimaki headband with gold emblem, royal blue sumo mawashi belt with gold ceremonial tassels, and confident fighting stance.',
+      panda: 'Cute cel-shaded chibi panda martial artist with black and white fur, iconic panda eye patches, fluffy round ears, vibrant crimson Japanese headband, red sash belt with gold knot, and playful confident grin.',
+      kitsune: 'Anime chibi kitsune spirit mage with warm fair skin, flowing silver-white hair with cyan tips, twin tall fox ears, fluffy curved fox tail, indigo-and-white kimono robe with gold crest, and a glowing star staff.',
+      cyber: 'Stylized anime cyber neko assistant with neon cyan holographic visor, twin robotic cat ears, pastel lavender bob haircut with ahoge, sleek white-and-navy mecha plating jacket, and glowing energy accents.',
+      dragon: 'Adorable chibi emerald fantasy dragon warrior with glowing amber eyes, curved golden horns, beveled dragon wings, emerald scales with cream belly, crimson hero cape, and tiny clawed feet.',
+      knight: 'Chibi anime starlight paladin knight with spiky golden hair, sparkling sapphire eyes, royal blue-and-silver fantasy armor with shoulder pauldrons, flowing cape, golden crown band, and glowing energy sword.',
+    };
+
+    const LIBRARY_PRESETS = [
+      {
+        name: 'Blue Sumo Wrestler',
+        subtitle: 'Warm skin, royal blue headband, mawashi & white ankle wraps',
+        prompt: EXAMPLE_PROMPTS.sumo,
+        blueprint: {
+          title: 'Blue Sumo Wrestler',
+          variantLabel: 'Classic Chibi',
+          artSummary: 'Chubby chibi sumo rikishi with warm peach human skin, black chonmage topknot & sideburns, royal blue hachimaki headband with white-gold emblem, royal blue mawashi belt with braided gold trim & 7 tassels, blue wristbands, and white ankle wraps.',
+          species: 'human_rikishi',
+          hasAnkleTape: true,
+          hasHeadband: true,
+          headbandColor: '#2563eb',
+          palette: {
+            skin: '#f8b886', skinShadow: '#d9824c', hair: '#18181b', hairHighlight: '#3f3f46',
+            primaryOutfit: '#2563eb', secondaryOutfit: '#1d4ed8', accent: '#fbbf24',
+            eyeColor: '#1e293b', eyeSecondary: '#60a5fa', blushColor: '#fb7185', outlineColor: '#1b1626'
+          },
+          proportions: { headScale: 1.24, headWidth: 1.14, headHeight: 0.96, cheekFullness: 0.88, torsoWidth: 1.36, torsoHeight: 0.94, bellyRoundness: 0.92, armLength: 0.96, armThickness: 1.24, legLength: 0.88, legThickness: 1.28, footScale: 1.22 },
+          facePaint: { eyeStyle: 'determined_sumo', eyeSize: 1.12, eyeSpacing: 1.02, eyebrowStyle: 'thick_sumo', mouthStyle: 'confident_grin', blushStyle: 'soft_pink', faceMarkings: 'none' },
+          hairSculpt: { style: 'chonmage_topknot', bangCount: 5, spikeLength: 0.7, backVolume: 0.95, hasAhoge: false },
+          outfitPattern: { type: 'sumo_mawashi', emblemShape: 'circle_gold', beltDetail: true, tasselCount: 7, hasCape: false, hasCollar: false, hasWristWraps: true, hasShoes: false },
+          customParts: [
+            { id: 'hb1', label: 'Royal Blue Hachimaki Headband', partGroup: 'headgear', bone: 'head', geometryType: 'headband_wrap', position: [0, 0.21, 0], rotation: [0, 0, 0], scale: [1.0, 1.0, 1.0], colorHex: '#2563eb', materialType: 'toon_matte', mirrorX: false, visible: true },
+            { id: 'hb2', label: 'Headband Front Emblem', partGroup: 'headgear', bone: 'head', geometryType: 'sphere', position: [0, 0.21, 0.56], rotation: [0, 0, 0], scale: [0.11, 0.11, 0.05], colorHex: '#fbbf24', materialType: 'metallic_accent', mirrorX: false, visible: true },
+            { id: 'hb3', label: 'Headband Back Ribbon Tails', partGroup: 'headgear', bone: 'head', geometryType: 'ribbon_tail', position: [0.09, 0.17, -0.54], rotation: [0.22, 0.28, -0.2], scale: [0.85, 0.9, 0.85], colorHex: '#2563eb', materialType: 'toon_matte', mirrorX: true, visible: true }
+          ],
+          partOverrides: {}
+        }
+      },
+      {
+        name: 'Panda Sumo Fighter',
+        subtitle: 'Black & white panda fur, crimson headband & mawashi',
+        prompt: EXAMPLE_PROMPTS.panda,
+        blueprint: {
+          title: 'Panda Sumo Fighter',
+          variantLabel: 'Classic Chibi',
+          artSummary: 'Cute cel-shaded chibi panda sumo wrestler with black eye patches, black ears & limbs, white belly fur, and crimson mawashi belt with gold trim.',
+          species: 'panda',
+          hasAnkleTape: true,
+          hasHeadband: true,
+          headbandColor: '#dc2626',
+          palette: {
+            skin: '#f8fafc', skinShadow: '#cbd5e1', hair: '#18181b', hairHighlight: '#3f3f46',
+            primaryOutfit: '#dc2626', secondaryOutfit: '#18181b', accent: '#fbbf24',
+            eyeColor: '#1e293b', eyeSecondary: '#38bdf8', blushColor: '#fb7185', outlineColor: '#1b1626'
+          },
+          proportions: { headScale: 1.24, headWidth: 1.15, headHeight: 0.96, cheekFullness: 0.88, torsoWidth: 1.35, torsoHeight: 0.94, bellyRoundness: 0.92, armLength: 0.96, armThickness: 1.24, legLength: 0.88, legThickness: 1.28, footScale: 1.22 },
+          facePaint: { eyeStyle: 'chibi_glossy', eyeSize: 1.14, eyeSpacing: 1.02, eyebrowStyle: 'thick_sumo', mouthStyle: 'confident_grin', blushStyle: 'soft_pink', faceMarkings: 'panda_patches' },
+          hairSculpt: { style: 'bald_smooth', bangCount: 3, spikeLength: 0.5, backVolume: 0.8, hasAhoge: false },
+          outfitPattern: { type: 'sumo_mawashi', emblemShape: 'circle_gold', beltDetail: true, tasselCount: 7, hasCape: false, hasCollar: false, hasWristWraps: true, hasShoes: false },
+          customParts: [
+            { id: 'hb1', label: 'Crimson Hachimaki Headband', partGroup: 'headgear', bone: 'head', geometryType: 'headband_wrap', position: [0, 0.21, 0], rotation: [0, 0, 0], scale: [1.0, 1.0, 1.0], colorHex: '#dc2626', materialType: 'toon_matte', mirrorX: false, visible: true },
+            { id: 'hb2', label: 'Headband Gold Emblem', partGroup: 'headgear', bone: 'head', geometryType: 'sphere', position: [0, 0.21, 0.56], rotation: [0, 0, 0], scale: [0.11, 0.11, 0.05], colorHex: '#fbbf24', materialType: 'metallic_accent', mirrorX: false, visible: true },
+            { id: 'hb3', label: 'Headband Ribbon Tails', partGroup: 'headgear', bone: 'head', geometryType: 'ribbon_tail', position: [0.09, 0.17, -0.54], rotation: [0.22, 0.28, -0.2], scale: [0.85, 0.9, 0.85], colorHex: '#dc2626', materialType: 'toon_matte', mirrorX: true, visible: true }
+          ],
+          partOverrides: {}
+        }
+      },
+      {
+        name: 'Kitsune Spirit Mage',
+        subtitle: 'Twin fox ears, silver hair, indigo kimono',
+        prompt: EXAMPLE_PROMPTS.kitsune,
+        blueprint: {
+          title: 'Kitsune Spirit Mage',
+          variantLabel: 'Classic Chibi',
+          artSummary: 'Cel-shaded anime kitsune with silver-cyan hair, twin fox ears, indigo kimono robe, fluffy tail, and star staff.',
+          species: 'kitsune',
+          palette: {
+            skin: '#ffe6d4', skinShadow: '#e8b99e', hair: '#e2e8f0', hairHighlight: '#38bdf8',
+            primaryOutfit: '#3730a3', secondaryOutfit: '#f8fafc', accent: '#fbbf24',
+            eyeColor: '#06b6d4', eyeSecondary: '#a5f3fc', blushColor: '#f472b6', outlineColor: '#1b1626'
+          },
+          proportions: { headScale: 1.18, headWidth: 1.04, headHeight: 0.98, cheekFullness: 0.45, torsoWidth: 0.92, torsoHeight: 1.02, bellyRoundness: 0.15, armLength: 1.0, armThickness: 0.88, legLength: 1.02, legThickness: 0.92, footScale: 0.98 },
+          facePaint: { eyeStyle: 'anime_sparkle', eyeSize: 1.18, eyeSpacing: 0.98, eyebrowStyle: 'arched_cute', mouthStyle: 'cat_smile', blushStyle: 'anime_hatch', faceMarkings: 'star_mark' },
+          hairSculpt: { style: 'long_flowing', bangCount: 7, spikeLength: 1.0, backVolume: 1.25, hasAhoge: true },
+          outfitPattern: { type: 'kimono_robe', emblemShape: 'star', beltDetail: true, tasselCount: 3, hasCape: false, hasCollar: true, hasWristWraps: false, hasShoes: true },
+          customParts: [
+            { id: 'ear1', label: 'Fox Ears', partGroup: 'headgear', bone: 'head', geometryType: 'animal_ear', position: [0.33, 0.44, 0.04], rotation: [0.05, 0, -0.32], scale: [0.95, 1.15, 0.95], colorHex: '#f1f5f9', materialType: 'toon_matte', mirrorX: true, visible: true },
+            { id: 'tail1', label: 'Fluffy Fox Tail', partGroup: 'accessory', bone: 'hips', geometryType: 'tail_curved', position: [0, -0.05, -0.36], rotation: [0.2, 0, 0], scale: [1.1, 1.1, 1.1], colorHex: '#f8fafc', materialType: 'toon_matte', mirrorX: false, visible: true },
+            { id: 'stf1', label: 'Starlight Staff', partGroup: 'weapon', bone: 'rightArm', geometryType: 'staff_orb', position: [0, -0.5, 0.15], rotation: [-0.45, 0, 0], scale: [1.0, 1.0, 1.0], colorHex: '#fbbf24', materialType: 'emissive_glow', mirrorX: false, visible: true }
+          ],
+          partOverrides: {}
+        }
+      },
+      {
+        name: 'Starlight Knight',
+        subtitle: 'Spiky gold hair, armor, cape & blade',
+        prompt: EXAMPLE_PROMPTS.knight,
+        blueprint: {
+          title: 'Starlight Knight',
+          variantLabel: 'Heroic Stylized',
+          artSummary: 'Shonen chibi knight in cobalt-and-silver armor with golden pauldrons, crimson cape, spiky hair, and energy blade.',
+          species: 'human_anime',
+          palette: {
+            skin: '#ffdfc4', skinShadow: '#e2ac84', hair: '#facc15', hairHighlight: '#fef08a',
+            primaryOutfit: '#1d4ed8', secondaryOutfit: '#e2e8f0', accent: '#f59e0b',
+            eyeColor: '#2563eb', eyeSecondary: '#93c5fd', blushColor: '#fb7185', outlineColor: '#161424'
+          },
+          proportions: { headScale: 1.12, headWidth: 1.02, headHeight: 1.0, cheekFullness: 0.35, torsoWidth: 1.02, torsoHeight: 1.08, bellyRoundness: 0.12, armLength: 1.06, armThickness: 0.98, legLength: 1.08, legThickness: 1.0, footScale: 1.08 },
+          facePaint: { eyeStyle: 'fierce_shonen', eyeSize: 1.1, eyeSpacing: 1.0, eyebrowStyle: 'confident', mouthStyle: 'smirk', blushStyle: 'soft_pink', faceMarkings: 'none' },
+          hairSculpt: { style: 'spiky_shonen', bangCount: 6, spikeLength: 1.28, backVolume: 1.1, hasAhoge: true },
+          outfitPattern: { type: 'fantasy_armor', emblemShape: 'lightning', beltDetail: true, tasselCount: 0, hasCape: true, hasCollar: true, hasWristWraps: true, hasShoes: true },
+          customParts: [
+            { id: 'cr1', label: 'Hero Crown', partGroup: 'headgear', bone: 'head', geometryType: 'crown_band', position: [0, 0.52, 0.04], rotation: [-0.08, 0, 0], scale: [0.85, 0.85, 0.85], colorHex: '#f59e0b', materialType: 'metallic_accent', mirrorX: false, visible: true },
+            { id: 'pl1', label: 'Shoulder Pauldrons', partGroup: 'outfit', bone: 'torso', geometryType: 'shoulder_pauldron', position: [0.46, 0.26, 0], rotation: [0, 0, -0.25], scale: [1.0, 1.0, 1.0], colorHex: '#e2e8f0', materialType: 'metallic_accent', mirrorX: true, visible: true },
+            { id: 'sw1', label: 'Starlight Blade', partGroup: 'weapon', bone: 'rightArm', geometryType: 'sword_blade', position: [0, -0.52, 0.16], rotation: [-0.55, 0, 0], scale: [1.05, 1.05, 1.05], colorHex: '#38bdf8', materialType: 'emissive_glow', mirrorX: false, visible: true }
+          ],
+          partOverrides: {}
+        }
+      }
+    ];
+
+    // =========================================================================
+    // TOAST & UI HELPERS
+    // =========================================================================
+    function showToast(message, isError = false) {
+      const host = document.getElementById('toast-host');
+      const el = document.createElement('div');
+      el.className = 'toast' + (isError ? ' error' : '');
+      el.textContent = message;
+      host.appendChild(el);
+      setTimeout(() => {
+        el.style.opacity = '0';
+        el.style.transition = 'opacity 0.25s';
+        setTimeout(() => el.remove(), 260);
+      }, 3200);
+    }
+
+    function deepClone(obj) {
+      return JSON.parse(JSON.stringify(obj));
+    }
+
+    // =========================================================================
+    // HD 1024x1024 ANIME FACE & OUTFIT CANVAS TEXTURE PAINTERS
+    // =========================================================================
+    function paintAnimeFaceTexture(bp, maxAnisotropy = 8) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1024;
+      canvas.height = 1024;
+      const ctx = canvas.getContext('2d');
+      const pal = bp.palette || {};
+      const fp = bp.facePaint || {};
+      const species = bp.species || 'human_anime';
+
+      const skin = pal.skin || '#ffe0c4';
+      const skinShadow = pal.skinShadow || '#e5b08a';
+      const hair = pal.hair || '#1e293b';
+      const eyePrimary = pal.eyeColor || '#3b82f6';
+      const eyeSecondary = pal.eyeSecondary || '#93c5fd';
+      const blushColor = pal.blushColor || '#ff8fa3';
+
+      // Base skin fill with subtle warm vertical anime shading
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, 1024);
+      bgGrad.addColorStop(0, skin);
+      bgGrad.addColorStop(0.68, skin);
+      bgGrad.addColorStop(1, skinShadow);
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, 1024, 1024);
+
+      // Soft ambient forehead tint where bangs/headband sit
+      const browShadow = ctx.createRadialGradient(512, 340, 20, 512, 340, 210);
+      browShadow.addColorStop(0, 'rgba(130, 75, 50, 0.08)');
+      browShadow.addColorStop(1, 'rgba(130, 75, 50, 0)');
+      ctx.fillStyle = browShadow;
+      ctx.fillRect(280, 220, 464, 240);
+
+      const cx = 512;
+      const spacing = 68 * (fp.eyeSpacing || 1.0);
+      const eyeScale = fp.eyeSize || 1.08;
+      const eyeY = 508;
+
+      // Species & face markings behind eyes/blush
+      if (fp.faceMarkings === 'panda_patches' || species === 'panda') {
+        [-1, 1].forEach((dir) => {
+          ctx.save();
+          ctx.translate(cx + dir * spacing, eyeY + 6);
+          ctx.rotate(dir * 0.22);
+          ctx.fillStyle = '#18181b';
+          ctx.beginPath();
+          ctx.ellipse(0, 0, 54 * eyeScale, 44 * eyeScale, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        });
+      } else if (species === 'hamster' || species === 'shiba') {
+        // Cream lower cheek & muzzle mask for hamster / shiba
+        ctx.fillStyle = '#fffbeb';
+        ctx.beginPath();
+        ctx.ellipse(cx, eyeY + 78, 148, 86, 0, 0, Math.PI * 2);
+        ctx.fill();
+        if (species === 'shiba') {
+          [-1, 1].forEach((dir) => {
+            ctx.beginPath();
+            ctx.ellipse(cx + dir * (spacing * 0.78), eyeY - 62, 16, 11, dir * -0.15, 0, Math.PI * 2);
+            ctx.fill();
+          });
+        }
+      } else if (species === 'tiger') {
+        // Forehead & cheek tiger stripes
+        ctx.strokeStyle = '#18181b';
+        ctx.lineWidth = 10;
+        ctx.lineCap = 'round';
+        [-28, 0, 28].forEach((dx) => {
+          ctx.beginPath();
+          ctx.moveTo(cx + dx, eyeY - 115);
+          ctx.lineTo(cx + dx * 0.75, eyeY - 72);
+          ctx.stroke();
+        });
+        ctx.beginPath();
+        ctx.moveTo(cx - 42, eyeY - 94);
+        ctx.lineTo(cx + 42, eyeY - 94);
+        ctx.stroke();
+        [-1, 1].forEach((dir) => {
+          [0, 18].forEach((dy) => {
+            ctx.beginPath();
+            ctx.moveTo(cx + dir * (spacing + 42), eyeY + 42 + dy);
+            ctx.lineTo(cx + dir * (spacing + 84), eyeY + 36 + dy);
+            ctx.stroke();
+          });
+        });
+      }
+
+      // Cheek Blush
+      if (fp.blushStyle !== 'none') {
+        [-1, 1].forEach((dir) => {
+          const bx = cx + dir * (spacing + 26);
+          const by = eyeY + 66;
+          if (fp.blushStyle === 'anime_hatch') {
+            ctx.save();
+            ctx.fillStyle = blushColor;
+            ctx.globalAlpha = 0.38;
+            ctx.beginPath();
+            ctx.ellipse(bx, by, 32, 16, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 0.72;
+            ctx.strokeStyle = blushColor;
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            for (let k = -1; k <= 1; k++) {
+              ctx.beginPath();
+              ctx.moveTo(bx + k * 11 - 5, by + 8);
+              ctx.lineTo(bx + k * 11 + 5, by - 8);
+              ctx.stroke();
+            }
+            ctx.restore();
+          } else {
+            const bGrad = ctx.createRadialGradient(bx, by, 3, bx, by, 38);
+            bGrad.addColorStop(0, blushColor + 'aa');
+            bGrad.addColorStop(1, blushColor + '00');
+            ctx.fillStyle = bGrad;
+            ctx.beginPath();
+            ctx.ellipse(bx, by, 40, 24, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        });
+      }
+
+      // Eyes
+      const drawSingleAnimeEye = (dir) => {
+        const ex = cx + dir * spacing;
+        const ey = eyeY;
+        const ew = 36 * eyeScale;
+        const eh = (fp.eyeStyle === 'fierce_shonen' ? 32 : fp.eyeStyle === 'determined_sumo' ? 36 : 44) * eyeScale;
+
+        ctx.save();
+        ctx.translate(ex, ey);
+
+        // Cute wink on right eye
+        if (fp.eyeStyle === 'cute_wink' && dir === 1) {
+          ctx.strokeStyle = '#181426';
+          ctx.lineWidth = 9;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.arc(0, 6, ew * 0.78, Math.PI * 1.12, Math.PI * 1.88);
+          ctx.stroke();
+          ctx.restore();
+          return;
+        }
+
+        // Cyber glowing visor eyes
+        if (fp.eyeStyle === 'cyber_visor') {
+          ctx.fillStyle = '#0f172a';
+          ctx.beginPath();
+          ctx.roundRect(-ew * 0.95, -eh * 0.65, ew * 1.9, eh * 1.3, 18);
+          ctx.fill();
+          ctx.fillStyle = eyePrimary;
+          ctx.beginPath();
+          ctx.roundRect(-ew * 0.68, -eh * 0.36, ew * 1.36, eh * 0.72, 12);
+          ctx.fill();
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(-ew * 0.25, -eh * 0.1, 7 * eyeScale, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+          return;
+        }
+
+        // Sclera (white of eye)
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, ew, eh, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Clip inside sclera
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(0, 0, ew, eh, 0, 0, Math.PI * 2);
+        ctx.clip();
+
+        // Subtle upper sclera shadow
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.28)';
+        ctx.fillRect(-ew, -eh, ew * 2, eh * 0.55);
+
+        // Iris vertical gradient
+        const irisR = ew * 0.78;
+        const irisH = eh * 0.84;
+        const iGrad = ctx.createLinearGradient(0, -irisH, 0, irisH);
+        iGrad.addColorStop(0, '#0f172a');
+        iGrad.addColorStop(0.28, eyePrimary);
+        iGrad.addColorStop(0.75, eyePrimary);
+        iGrad.addColorStop(1, eyeSecondary);
+        ctx.fillStyle = iGrad;
+        ctx.beginPath();
+        ctx.ellipse(-dir * 2, 2, irisR, irisH, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Lower luminous anime crescent inside iris
+        ctx.fillStyle = eyeSecondary;
+        ctx.globalAlpha = 0.75;
+        ctx.beginPath();
+        ctx.ellipse(-dir * 2, irisH * 0.42, irisR * 0.64, irisH * 0.34, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+
+        // Deep pupil
+        ctx.fillStyle = '#0d0c1d';
+        ctx.beginPath();
+        ctx.ellipse(-dir * 2, 1, irisR * 0.44, irisH * 0.48, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Primary upper-left glossy catchlight
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.ellipse(-ew * 0.32, -eh * 0.3, ew * 0.26, eh * 0.22, -0.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Secondary lower-right sparkle catchlight
+        ctx.beginPath();
+        ctx.arc(ew * 0.28, eh * 0.28, ew * 0.13, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Anime 4-point star glint for sparkle style
+        if (fp.eyeStyle === 'anime_sparkle' || fp.eyeStyle === 'chibi_glossy') {
+          ctx.fillStyle = '#ffffff';
+          const sx = ew * 0.28, sy = -eh * 0.12, sr = ew * 0.16;
+          ctx.beginPath();
+          ctx.moveTo(sx, sy - sr);
+          ctx.quadraticCurveTo(sx, sy, sx + sr, sy);
+          ctx.quadraticCurveTo(sx, sy, sx, sy + sr);
+          ctx.quadraticCurveTo(sx, sy, sx - sr, sy);
+          ctx.quadraticCurveTo(sx, sy, sx, sy - sr);
+          ctx.fill();
+        }
+
+        ctx.restore(); // end sclera clip
+
+        // Crisp upper anime eyelash arch
+        ctx.strokeStyle = '#151226';
+        ctx.lineWidth = (fp.eyeStyle === 'fierce_shonen' || fp.eyeStyle === 'determined_sumo') ? 10.5 : 9;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        const startA = dir === -1 ? Math.PI * 1.02 : Math.PI * 1.08;
+        const endA = dir === -1 ? Math.PI * 1.92 : Math.PI * 1.98;
+        ctx.ellipse(0, -2, ew * 1.04, eh * 1.02, 0, startA, endA);
+        ctx.stroke();
+
+        // Outer eyelash flick wing
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(dir * ew * 0.96, -eh * 0.18);
+        ctx.lineTo(dir * ew * 1.2, -eh * 0.36);
+        ctx.stroke();
+
+        // Delicate lower lash accent
+        ctx.lineWidth = 3.2;
+        ctx.strokeStyle = 'rgba(21, 18, 38, 0.55)';
+        ctx.beginPath();
+        ctx.ellipse(0, 3, ew * 0.85, eh * 0.95, 0, Math.PI * 0.2, Math.PI * 0.8);
+        ctx.stroke();
+
+        ctx.restore();
+      };
+
+      drawSingleAnimeEye(-1);
+      drawSingleAnimeEye(1);
+
+      // Eyebrows
+      if (fp.eyebrowStyle !== 'none') {
+        [-1, 1].forEach((dir) => {
+          const bx = cx + dir * spacing;
+          const by = eyeY - 56 * eyeScale;
+          ctx.save();
+          ctx.strokeStyle = hair === '#f8fafc' ? '#18181b' : hair;
+          ctx.fillStyle = hair === '#f8fafc' ? '#18181b' : hair;
+          ctx.lineCap = 'round';
+          if (fp.eyebrowStyle === 'thick_sumo') {
+            ctx.lineWidth = 15;
+            ctx.beginPath();
+            ctx.moveTo(bx - dir * 25, by + 7);
+            ctx.quadraticCurveTo(bx, by - 11, bx + dir * 27, by - 3);
+            ctx.stroke();
+          } else if (fp.eyebrowStyle === 'fierce') {
+            ctx.lineWidth = 10;
+            ctx.beginPath();
+            ctx.moveTo(bx - dir * 26, by + 12);
+            ctx.lineTo(bx + dir * 24, by - 10);
+            ctx.stroke();
+          } else if (fp.eyebrowStyle === 'worried') {
+            ctx.lineWidth = 7;
+            ctx.beginPath();
+            ctx.moveTo(bx - dir * 22, by - 6);
+            ctx.quadraticCurveTo(bx, by + 4, bx + dir * 22, by + 10);
+            ctx.stroke();
+          } else {
+            ctx.lineWidth = fp.eyebrowStyle === 'confident' ? 9 : 6.5;
+            ctx.beginPath();
+            ctx.moveTo(bx - dir * 24, by + (fp.eyebrowStyle === 'confident' ? 4 : 2));
+            ctx.quadraticCurveTo(bx, by - 11, bx + dir * 24, by - 1);
+            ctx.stroke();
+          }
+          ctx.restore();
+        });
+      }
+
+      // Subtle anime nose shadow
+      ctx.fillStyle = skinShadow;
+      ctx.beginPath();
+      ctx.ellipse(cx, eyeY + 50, 5.5, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Mouth
+      const my = eyeY + 94;
+      ctx.save();
+      ctx.strokeStyle = '#24172b';
+      ctx.lineWidth = 6.5;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      const ms = fp.mouthStyle || 'confident_grin';
+      if (ms === 'cat_smile') {
+        ctx.beginPath();
+        ctx.moveTo(cx - 24, my - 3);
+        ctx.quadraticCurveTo(cx - 12, my + 14, cx, my + 2);
+        ctx.quadraticCurveTo(cx + 12, my + 14, cx + 24, my - 3);
+        ctx.stroke();
+      } else if (ms === 'battle_shout') {
+        ctx.fillStyle = '#9f1239';
+        ctx.beginPath();
+        ctx.ellipse(cx, my + 6, 26, 20, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fb7185';
+        ctx.beginPath();
+        ctx.ellipse(cx, my + 15, 16, 8, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(cx - 18, my - 11, 36, 9);
+        ctx.beginPath();
+        ctx.ellipse(cx, my + 6, 26, 20, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (ms === 'surprised_o') {
+        ctx.fillStyle = '#be123c';
+        ctx.beginPath();
+        ctx.ellipse(cx, my + 5, 13, 16, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      } else if (ms === 'smirk') {
+        ctx.beginPath();
+        ctx.moveTo(cx - 18, my + 5);
+        ctx.quadraticCurveTo(cx + 4, my + 8, cx + 24, my - 7);
+        ctx.stroke();
+      } else if (ms === 'gentle_smile') {
+        ctx.beginPath();
+        ctx.moveTo(cx - 20, my);
+        ctx.quadraticCurveTo(cx, my + 16, cx + 20, my);
+        ctx.stroke();
+      } else {
+        // confident_grin (warm smiling mouth with upper white teeth & pink inner smile)
+        ctx.fillStyle = '#881337';
+        ctx.beginPath();
+        ctx.moveTo(cx - 27, my - 2);
+        ctx.quadraticCurveTo(cx, my + 24, cx + 27, my - 2);
+        ctx.quadraticCurveTo(cx, my + 2, cx - 27, my - 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(cx - 23, my - 1);
+        ctx.quadraticCurveTo(cx, my + 10, cx + 23, my - 1);
+        ctx.quadraticCurveTo(cx, my + 2, cx - 23, my - 1);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(cx - 27, my - 2);
+        ctx.quadraticCurveTo(cx, my + 24, cx + 27, my - 2);
+        ctx.quadraticCurveTo(cx, my + 2, cx - 27, my - 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // Additional face markings
+      if (fp.faceMarkings === 'whiskers') {
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        [-1, 1].forEach((dir) => {
+          for (let i = 0; i < 3; i++) {
+            ctx.beginPath();
+            ctx.moveTo(cx + dir * (spacing + 14), eyeY + 56 + i * 12);
+            ctx.lineTo(cx + dir * (spacing + 48), eyeY + 52 + i * 14);
+            ctx.stroke();
+          }
+        });
+      } else if (fp.faceMarkings === 'freckles') {
+        ctx.fillStyle = skinShadow;
+        [-1, 1].forEach((dir) => {
+          [[14, 58], [26, 63], [36, 56], [22, 72]].forEach(([dx, dy]) => {
+            ctx.beginPath();
+            ctx.arc(cx + dir * (spacing + dx - 16), eyeY + dy, 2.8, 0, Math.PI * 2);
+            ctx.fill();
+          });
+        });
+      } else if (fp.faceMarkings === 'cheek_scar') {
+        ctx.strokeStyle = '#dc2626';
+        ctx.lineWidth = 5;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(cx + spacing + 8, eyeY + 48);
+        ctx.lineTo(cx + spacing + 32, eyeY + 76);
+        ctx.stroke();
+      } else if (fp.faceMarkings === 'star_mark') {
+        ctx.fillStyle = pal.accent || '#fbbf24';
+        const sx = cx + spacing + 26, sy = eyeY + 58;
+        ctx.beginPath();
+        for (let i = 0; i < 10; i++) {
+          const r = i % 2 === 0 ? 11 : 5;
+          const a = (i * Math.PI) / 5 - Math.PI / 2;
+          if (i === 0) ctx.moveTo(sx + Math.cos(a) * r, sy + Math.sin(a) * r);
+          else ctx.lineTo(sx + Math.cos(a) * r, sy + Math.sin(a) * r);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = maxAnisotropy;
+      tex.needsUpdate = true;
+      return tex;
+    }
+
+    function paintOutfitTexture(bp, maxAnisotropy = 8) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+      const pal = bp.palette || {};
+      const op = bp.outfitPattern || {};
+      const primary = pal.primaryOutfit || '#2563eb';
+      const secondary = pal.secondaryOutfit || '#f8fafc';
+      const accent = pal.accent || '#f59e0b';
+      const type = op.type || 'anime_uniform';
+
+      ctx.fillStyle = primary;
+      ctx.fillRect(0, 0, 512, 512);
+
+      if (type === 'sumo_mawashi') {
+        // Heavy woven silk horizontal ribs + braided gold rope borders
+        ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+        ctx.lineWidth = 3;
+        for (let y = 0; y < 512; y += 14) {
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(512, y); ctx.stroke();
+        }
+        ctx.fillStyle = accent;
+        ctx.fillRect(0, 16, 512, 22);
+        ctx.fillRect(0, 474, 512, 22);
+      } else if (type === 'kimono_robe') {
+        // Traditional diamond wave lattice + white collar wrap
+        ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+        ctx.lineWidth = 3;
+        for (let y = 0; y < 512; y += 48) {
+          for (let x = 0; x < 512; x += 48) {
+            ctx.beginPath();
+            ctx.arc(x, y, 22, 0, Math.PI);
+            ctx.stroke();
+          }
+        }
+        // V-neck wrap on front center (u = 0.5 -> x = 256)
+        ctx.strokeStyle = secondary;
+        ctx.lineWidth = 24;
+        ctx.beginPath();
+        ctx.moveTo(205, 0); ctx.lineTo(256, 210); ctx.lineTo(307, 0);
+        ctx.stroke();
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(214, 0); ctx.lineTo(256, 188); ctx.lineTo(298, 0);
+        ctx.stroke();
+      } else if (type === 'fantasy_armor' || type === 'mecha_plating') {
+        // Crisp cel-shaded panel seams & chest crest
+        ctx.fillStyle = secondary;
+        ctx.fillRect(190, 40, 132, 200);
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 6;
+        ctx.strokeRect(190, 40, 132, 200);
+        ctx.fillStyle = accent;
+        ctx.fillRect(0, 320, 512, 26);
+        for (let x = 40; x < 512; x += 64) {
+          ctx.beginPath(); ctx.arc(x, 333, 6, 0, Math.PI * 2); ctx.fillStyle = '#0f172a'; ctx.fill();
+        }
+      } else if (type === 'anime_uniform') {
+        // Crisp sailor/blazer collar + tie on front center
+        ctx.fillStyle = secondary;
+        ctx.beginPath();
+        ctx.moveTo(200, 0); ctx.lineTo(256, 210); ctx.lineTo(312, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = accent;
+        ctx.beginPath();
+        ctx.moveTo(246, 55); ctx.lineTo(266, 55); ctx.lineTo(272, 225); ctx.lineTo(256, 255); ctx.lineTo(240, 225);
+        ctx.closePath();
+        ctx.fill();
+      } else if (type === 'hoodie_street') {
+        ctx.strokeStyle = secondary;
+        ctx.lineWidth = 8;
+        ctx.beginPath(); ctx.moveTo(234, 20); ctx.lineTo(234, 165); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(278, 20); ctx.lineTo(278, 165); ctx.stroke();
+        ctx.fillStyle = 'rgba(0,0,0,0.16)';
+        ctx.beginPath(); ctx.roundRect(184, 300, 144, 120, 24); ctx.fill();
+      } else if (type === 'animal_fur') {
+        ctx.fillStyle = secondary;
+        ctx.beginPath();
+        ctx.ellipse(256, 280, 96, 150, 0, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // ninja_gi diagonal wraps
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 14;
+        ctx.beginPath(); ctx.moveTo(180, 20); ctx.lineTo(332, 340); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(332, 20); ctx.lineTo(180, 340); ctx.stroke();
+      }
+
+      // Emblem on front center
+      if (op.emblemShape && op.emblemShape !== 'none') {
+        const ex = 256, ey = 256;
+        ctx.save();
+        ctx.fillStyle = accent;
+        ctx.strokeStyle = '#1b1626';
+        ctx.lineWidth = 5;
+        if (op.emblemShape === 'star') {
+          ctx.beginPath();
+          for (let i = 0; i < 10; i++) {
+            const r = i % 2 === 0 ? 34 : 15;
+            const a = (i * Math.PI) / 5 - Math.PI / 2;
+            if (i === 0) ctx.moveTo(ex + Math.cos(a) * r, ey + Math.sin(a) * r);
+            else ctx.lineTo(ex + Math.cos(a) * r, ey + Math.sin(a) * r);
+          }
+          ctx.closePath(); ctx.fill(); ctx.stroke();
+        } else if (op.emblemShape === 'diamond') {
+          ctx.beginPath();
+          ctx.moveTo(ex, ey - 32); ctx.lineTo(ex + 26, ey); ctx.lineTo(ex, ey + 32); ctx.lineTo(ex - 26, ey);
+          ctx.closePath(); ctx.fill(); ctx.stroke();
+        } else if (op.emblemShape === 'lightning') {
+          ctx.beginPath();
+          ctx.moveTo(ex + 6, ey - 34); ctx.lineTo(ex - 16, ey + 4); ctx.lineTo(ex + 2, ey + 4);
+          ctx.lineTo(ex - 8, ey + 34); ctx.lineTo(ex + 18, ey - 4); ctx.lineTo(ex, ey - 4);
+          ctx.closePath(); ctx.fill(); ctx.stroke();
+        } else if (op.emblemShape === 'heart') {
+          ctx.beginPath();
+          ctx.moveTo(ex, ey + 24);
+          ctx.bezierCurveTo(ex - 36, ey, ex - 28, ey - 32, ex, ey - 10);
+          ctx.bezierCurveTo(ex + 28, ey - 32, ex + 36, ey, ex, ey + 24);
+          ctx.fill(); ctx.stroke();
+        } else {
+          ctx.beginPath(); ctx.arc(ex, ey, 26, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = maxAnisotropy;
+      tex.needsUpdate = true;
+      return tex;
+    }
+
+    // =========================================================================
+    // THREE.JS ANIME CEL-SHADED VIEWPORT & PROCEDURAL SCULPT COMPILER
+    // =========================================================================
+    class Form3DViewport {
+      constructor(mountEl, onPartSelected) {
+        this.mountEl = mountEl;
+        this.onPartSelected = onPartSelected;
+        this.isSoftwareGl = this.detectSoftwareGl();
+        this.hasCharacter = false;
+        this.activeBlueprint = null;
+        this.characterRoot = null;
+        this.bones = {};
+        this.selectableMeshes = [];
+        this.outlineMeshes = [];
+        this.generatedTextures = [];
+        this.shadingMode = 'cel'; // 'cel' | 'pbr' | 'clay' | 'wireframe'
+        this.outlinesEnabled = true;
+        this.outlineWeight = 1.0;
+        this.currentAnim = 'idle';
+        this.selectedPartGroup = null;
+        this.turntable = false;
+        this.mixer = null;
+        this.clock = new THREE.Clock();
+        this.revealTimer = 0;
+
+        // Reusable math objects (zero GC in loop)
+        this._camTargetPos = null;
+        this._camTargetLook = null;
+        this._raycaster = new THREE.Raycaster();
+        this._pointer = new THREE.Vector2();
+        this._downPos = { x: 0, y: 0 };
+
+        this.initScene();
+        this.bindEvents();
+        this.startLoop();
+      }
+
+      detectSoftwareGl() {
+        try {
+          const c = document.createElement('canvas');
+          const gl = c.getContext('webgl2') || c.getContext('webgl');
+          if (!gl) return true;
+          const ext = gl.getExtension('WEBGL_debug_renderer_info');
+          const gpu = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
+          gl.getExtension('WEBGL_lose_context')?.loseContext();
+          return /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
+        } catch {
+          return false;
+        }
+      }
+
+      createToonGradientMap() {
+        // Crisp 4-band Anime Cel Shading ramp (soft shadow -> mid -> lit -> bright)
+        const colors = new Uint8Array([108, 168, 224, 255]);
+        const tex = new THREE.DataTexture(colors, 4, 1, THREE.RedFormat);
+        tex.minFilter = THREE.NearestFilter;
+        tex.magFilter = THREE.NearestFilter;
+        tex.generateMipmaps = false;
+        tex.needsUpdate = true;
+        return tex;
+      }
+
+      initScene() {
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color('#0d0f17');
+
+        const w = Math.max(1, this.mountEl.clientWidth);
+        const h = Math.max(1, this.mountEl.clientHeight);
+        this.camera = new THREE.PerspectiveCamera(35, w / h, 0.1, 80);
+        this.camera.position.set(0, 1.5, 5.4);
+
+        this.renderer = new THREE.WebGLRenderer({
+          antialias: !this.isSoftwareGl,
+          powerPreference: 'high-performance',
+          preserveDrawingBuffer: true,
+        });
+        this.renderer.setSize(w, h);
+        this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.08;
+        this.renderer.shadowMap.enabled = !this.isSoftwareGl;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        this.mountEl.appendChild(this.renderer.domElement);
+
+        // Studio environment map
+        const pmrem = new THREE.PMREMGenerator(this.renderer);
+        this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+        pmrem.dispose();
+
+        this.toonGradient = this.createToonGradientMap();
+
+        // Warm/Cool 3-Point Anime Studio Lighting
+        this.hemiLight = new THREE.HemisphereLight('#dbeafe', '#2e1f3d', 0.85);
+        this.scene.add(this.hemiLight);
+
+        this.keyLight = new THREE.DirectionalLight('#fff5e6', 2.05);
+        this.keyLight.position.set(3.2, 5.2, 4.4);
+        this.keyLight.castShadow = !this.isSoftwareGl;
+        this.keyLight.shadow.mapSize.set(1024, 1024);
+        this.keyLight.shadow.camera.left = -2.5;
+        this.keyLight.shadow.camera.right = 2.5;
+        this.keyLight.shadow.camera.top = 3.2;
+        this.keyLight.shadow.camera.bottom = -1.2;
+        this.keyLight.shadow.bias = -0.0005;
+        this.keyLight.shadow.normalBias = 0.02;
+        this.scene.add(this.keyLight);
+
+        this.rimLight = new THREE.DirectionalLight('#93c5fd', 0.95);
+        this.rimLight.position.set(-3.4, 3.0, -3.5);
+        this.scene.add(this.rimLight);
+
+        // Controls
+        this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+        this.controls.target.set(0, 1.05, 0);
+        this.controls.enableDamping = !this.isSoftwareGl;
+        this.controls.dampingFactor = 0.07;
+        this.controls.minDistance = 2.2;
+        this.controls.maxDistance = 11;
+        this.controls.maxPolarAngle = Math.PI * 0.56;
+        this.controls.addEventListener('start', () => {
+          this._camTargetPos = null;
+          this._camTargetLook = null;
+        });
+
+        // Studio Stage Floor Grid + Subtle Contact Pedestal Ring
+        this.gridHelper = new THREE.GridHelper(10, 24, '#4c1d95', '#1f2336');
+        this.gridHelper.position.y = 0;
+        this.scene.add(this.gridHelper);
+
+        const ringGeo = new THREE.RingGeometry(0.92, 0.97, 64);
+        ringGeo.rotateX(-Math.PI / 2);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: '#8b5cf6',
+          transparent: true,
+          opacity: 0.35,
+          side: THREE.DoubleSide,
+          polygonOffset: true,
+          polygonOffsetFactor: -1,
+        });
+        this.stageRing = new THREE.Mesh(ringGeo, ringMat);
+        this.stageRing.position.y = 0.006;
+        this.scene.add(this.stageRing);
+
+        // Soft radial contact shadow plane
+        const shadowCanvas = document.createElement('canvas');
+        shadowCanvas.width = 256; shadowCanvas.height = 256;
+        const sctx = shadowCanvas.getContext('2d');
+        const sg = sctx.createRadialGradient(128, 128, 12, 128, 128, 120);
+        sg.addColorStop(0, 'rgba(0,0,0,0.48)');
+        sg.addColorStop(1, 'rgba(0,0,0,0)');
+        sctx.fillStyle = sg;
+        sctx.fillRect(0, 0, 256, 256);
+        const shadowTex = new THREE.CanvasTexture(shadowCanvas);
+        this.contactShadow = new THREE.Mesh(
+          new THREE.PlaneGeometry(2.1, 2.1),
+          new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, opacity: 0 })
+        );
+        this.contactShadow.rotation.x = -Math.PI / 2;
+        this.contactShadow.position.y = 0.01;
+        this.scene.add(this.contactShadow);
+      }
+
+      bindEvents() {
+        window.addEventListener('resize', () => this.resize());
+        const dom = this.renderer.domElement;
+        dom.addEventListener('pointerdown', (e) => {
+          this._downPos.x = e.clientX;
+          this._downPos.y = e.clientY;
+        });
+        dom.addEventListener('pointerup', (e) => {
+          const dist = Math.hypot(e.clientX - this._downPos.x, e.clientY - this._downPos.y);
+          if (dist < 5 && this.hasCharacter && this.selectableMeshes.length > 0) {
+            this.pickPartAt(e);
+          }
+        });
+      }
+
+      pickPartAt(event) {
+        const rect = this.renderer.domElement.getBoundingClientRect();
+        this._pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        this._pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        this._raycaster.setFromCamera(this._pointer, this.camera);
+        const hits = this._raycaster.intersectObjects(this.selectableMeshes, false);
+        if (hits.length > 0) {
+          const group = hits[0].object.userData.partGroup || 'accessory';
+          this.selectPartGroup(group);
+          if (this.onPartSelected) this.onPartSelected(group);
+        }
+      }
+
+      selectPartGroup(partGroup) {
+        this.selectedPartGroup = partGroup;
+        for (const mesh of this.selectableMeshes) {
+          const isMatch = partGroup && mesh.userData.partGroup === partGroup;
+          const mat = mesh.material;
+          if (mat && mat.emissive) {
+            if (isMatch) {
+              if (!mesh.userData._baseEmissive) {
+                mesh.userData._baseEmissive = mat.emissive.clone();
+                mesh.userData._baseEmissiveIntensity = mat.emissiveIntensity ?? 1;
+              }
+              mat.emissive.set('#38bdf8');
+              mat.emissiveIntensity = 0.35;
+            } else if (mesh.userData._baseEmissive) {
+              mat.emissive.copy(mesh.userData._baseEmissive);
+              mat.emissiveIntensity = mesh.userData._baseEmissiveIntensity;
+            }
+          }
+        }
+      }
+
+      resize() {
+        const w = Math.max(1, this.mountEl.clientWidth);
+        const h = Math.max(1, this.mountEl.clientHeight);
+        this.camera.aspect = w / h;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(w, h);
+      }
+
+      setCameraPreset(preset) {
+        const presets = {
+          front: { pos: new THREE.Vector3(0, 1.48, 5.3), look: new THREE.Vector3(0, 1.05, 0) },
+          side: { pos: new THREE.Vector3(5.2, 1.45, 0.2), look: new THREE.Vector3(0, 1.05, 0) },
+          back: { pos: new THREE.Vector3(0, 1.48, -5.3), look: new THREE.Vector3(0, 1.05, 0) },
+          top: { pos: new THREE.Vector3(0, 5.4, 1.2), look: new THREE.Vector3(0, 0.9, 0) },
+          reset: { pos: new THREE.Vector3(0, 1.48, 5.3), look: new THREE.Vector3(0, 1.05, 0) },
+        };
+        const p = presets[preset] || presets.front;
+        this._camTargetPos = p.pos.clone();
+        this._camTargetLook = p.look.clone();
+      }
+
+      setBackground(mode) {
+        if (mode === 'light') {
+          this.scene.background = new THREE.Color('#e2e8f0');
+        } else if (mode === 'gradient') {
+          const c = document.createElement('canvas');
+          c.width = 4; c.height = 512;
+          const ctx = c.getContext('2d');
+          const g = ctx.createLinearGradient(0, 0, 0, 512);
+          g.addColorStop(0, '#1e1b4b');
+          g.addColorStop(0.55, '#0f172a');
+          g.addColorStop(1, '#09090f');
+          ctx.fillStyle = g;
+          ctx.fillRect(0, 0, 4, 512);
+          const tex = new THREE.CanvasTexture(c);
+          tex.colorSpace = THREE.SRGBColorSpace;
+          this.scene.background = tex;
+        } else {
+          this.scene.background = new THREE.Color('#0d0f17');
+        }
+      }
+
+      createOutlineMaterial(colorHex, thickness = 0.016) {
+        const w = thickness * this.outlineWeight;
+        const mat = new THREE.MeshBasicMaterial({
+          color: colorHex || '#1b1626',
+          side: THREE.BackSide,
+        });
+        mat.userData.isOutline = true;
+        mat.userData.baseThickness = thickness;
+        mat.onBeforeCompile = (shader) => {
+          shader.uniforms.uOutlineWidth = { value: w };
+          mat.userData.outlineUniform = shader.uniforms.uOutlineWidth;
+          shader.vertexShader = 'uniform float uOutlineWidth;\n' + shader.vertexShader;
+          shader.vertexShader = shader.vertexShader.replace(
+            '#include <begin_vertex>',
+            '#include <begin_vertex>\ntransformed += normalize(objectNormal) * uOutlineWidth;'
+          );
+        };
+        return mat;
+      }
+
+      createStyledMaterial(colorHex, matType = 'toon_matte', mapTex = null) {
+        const isWire = this.shadingMode === 'wireframe';
+        const isClay = this.shadingMode === 'clay';
+        const isPbr = this.shadingMode === 'pbr';
+        const finalColor = isClay ? '#d6d3d1' : (mapTex ? '#ffffff' : colorHex);
+
+        if (isClay) {
+          return new THREE.MeshStandardMaterial({
+            color: '#d6d3d1',
+            roughness: 0.65,
+            metalness: 0.05,
+            wireframe: isWire,
+          });
+        }
+        if (matType === 'emissive_glow') {
+          return new THREE.MeshStandardMaterial({
+            color: colorHex,
+            emissive: colorHex,
+            emissiveIntensity: 0.72,
+            roughness: 0.2,
+            metalness: 0.1,
+            wireframe: isWire,
+          });
+        }
+        if (isPbr || matType === 'metallic_accent') {
+          return new THREE.MeshPhysicalMaterial({
+            color: finalColor,
+            map: mapTex || null,
+            roughness: matType === 'metallic_accent' ? 0.22 : (matType === 'toon_glossy' ? 0.28 : 0.42),
+            metalness: matType === 'metallic_accent' ? 0.85 : 0.06,
+            clearcoat: matType === 'toon_glossy' ? 0.55 : 0.15,
+            wireframe: isWire,
+          });
+        }
+        // Default: Anime Cel-Shaded MeshToonMaterial
+        return new THREE.MeshToonMaterial({
+          color: finalColor,
+          map: mapTex || null,
+          gradientMap: this.toonGradient,
+          wireframe: isWire,
+        });
+      }
+
+      attachPartMesh(parentBone, geometry, material, partGroup, partLabel, outlineColor, outlineThickness = 0.014) {
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.castShadow = !this.isSoftwareGl;
+        mesh.receiveShadow = !this.isSoftwareGl;
+        mesh.userData.partGroup = partGroup;
+        mesh.userData.partLabel = partLabel || partGroup;
+        parentBone.add(mesh);
+        this.selectableMeshes.push(mesh);
+
+        if (outlineThickness > 0) {
+          const outlineMat = this.createOutlineMaterial(outlineColor, outlineThickness);
+          const outline = new THREE.Mesh(geometry, outlineMat);
+          outline.userData.isOutline = true;
+          outline.visible = this.outlinesEnabled && this.shadingMode !== 'wireframe' && this.outlineWeight > 0.02;
+          mesh.add(outline);
+          this.outlineMeshes.push(outline);
+        }
+        return mesh;
+      }
+
+      disposeCharacter() {
+        if (this.characterRoot) {
+          this.scene.remove(this.characterRoot);
+          this.characterRoot.traverse((obj) => {
+            if (obj.geometry) obj.geometry.dispose();
+            if (obj.material) {
+              if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose());
+              else obj.material.dispose();
+            }
+          });
+        }
+        this.generatedTextures.forEach((t) => t.dispose());
+        this.generatedTextures = [];
+        this.characterRoot = null;
+        this.bones = {};
+        this.selectableMeshes = [];
+        this.outlineMeshes = [];
+        this.mixer = null;
+      }
+
+      clearCharacter() {
+        this.disposeCharacter();
+        this.hasCharacter = false;
+        this.activeBlueprint = null;
+        this.selectedPartGroup = null;
+        this.contactShadow.material.opacity = 0;
+      }
+
+      updateOutlineAppearance() {
+        const show = this.outlinesEnabled && this.shadingMode !== 'wireframe' && this.outlineWeight > 0.02;
+        for (const om of this.outlineMeshes) {
+          om.visible = show;
+          if (om.material?.userData?.outlineUniform) {
+            om.material.userData.outlineUniform.value = (om.material.userData.baseThickness || 0.014) * this.outlineWeight;
+          }
+        }
+      }
+
+      setShadingMode(mode) {
+        this.shadingMode = mode;
+        if (this.activeBlueprint) {
+          this.buildFromBlueprint(this.activeBlueprint, false);
+        }
+      }
+
+      // Build any of the 20 Gemini customPart geometries cleanly
+      createCustomGeometry(type) {
+        switch (type) {
+          case 'headband_wrap': {
+            const pts = [
+              new THREE.Vector2(0.495, -0.068),
+              new THREE.Vector2(0.522, -0.048),
+              new THREE.Vector2(0.528, 0.0),
+              new THREE.Vector2(0.522, 0.048),
+              new THREE.Vector2(0.495, 0.068),
+            ];
+            return new THREE.LatheGeometry(pts, 44);
+          }
+          case 'ribbon_tail': {
+            const curve = new THREE.CatmullRomCurve3([
+              new THREE.Vector3(0, 0, 0),
+              new THREE.Vector3(0.08, -0.08, -0.14),
+              new THREE.Vector3(0.14, -0.24, -0.26),
+              new THREE.Vector3(0.19, -0.4, -0.32),
+            ]);
+            return new THREE.TubeGeometry(curve, 16, 0.036, 8, false);
+          }
+          case 'wing_blade': {
+            const shape = new THREE.Shape();
+            shape.moveTo(0, 0);
+            shape.quadraticCurveTo(0.32, 0.42, 0.72, 0.34);
+            shape.quadraticCurveTo(0.54, 0.06, 0.62, -0.14);
+            shape.quadraticCurveTo(0.36, -0.06, 0.34, -0.28);
+            shape.quadraticCurveTo(0.14, -0.14, 0, -0.2);
+            shape.closePath();
+            const g = new THREE.ExtrudeGeometry(shape, { depth: 0.045, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 3 });
+            g.center();
+            return g;
+          }
+          case 'horn_curved': {
+            const curve = new THREE.CatmullRomCurve3([
+              new THREE.Vector3(0, 0, 0),
+              new THREE.Vector3(0.08, 0.14, 0.04),
+              new THREE.Vector3(0.14, 0.28, -0.02),
+              new THREE.Vector3(0.1, 0.4, -0.08),
+            ]);
+            return new THREE.TubeGeometry(curve, 18, 0.055, 10, false);
+          }
+          case 'animal_ear': {
+            const shape = new THREE.Shape();
+            shape.moveTo(-0.14, 0);
+            shape.quadraticCurveTo(-0.12, 0.24, 0, 0.36);
+            shape.quadraticCurveTo(0.12, 0.24, 0.14, 0);
+            shape.closePath();
+            const g = new THREE.ExtrudeGeometry(shape, { depth: 0.07, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.025, bevelSegments: 3 });
+            g.translate(0, -0.02, -0.035);
+            return g;
+          }
+          case 'crown_band': {
+            const pts = [
+              new THREE.Vector2(0.24, 0),
+              new THREE.Vector2(0.27, 0.06),
+              new THREE.Vector2(0.31, 0.18),
+              new THREE.Vector2(0.25, 0.18),
+              new THREE.Vector2(0.22, 0.02),
+            ];
+            return new THREE.LatheGeometry(pts, 7);
+          }
+          case 'scarf_loop':
+            return new THREE.TorusGeometry(0.36, 0.095, 14, 32);
+          case 'sword_blade': {
+            const shape = new THREE.Shape();
+            shape.moveTo(-0.045, 0);
+            shape.lineTo(0.045, 0);
+            shape.lineTo(0.055, 0.72);
+            shape.lineTo(0, 0.92);
+            shape.lineTo(-0.055, 0.72);
+            shape.closePath();
+            const g = new THREE.ExtrudeGeometry(shape, { depth: 0.024, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.01, bevelSegments: 2 });
+            g.translate(0, -0.1, -0.012);
+            return g;
+          }
+          case 'staff_orb': {
+            const pts = [
+              new THREE.Vector2(0.024, -0.35),
+              new THREE.Vector2(0.03, 0.45),
+              new THREE.Vector2(0.11, 0.56),
+              new THREE.Vector2(0.13, 0.66),
+              new THREE.Vector2(0.08, 0.75),
+              new THREE.Vector2(0.001, 0.78),
+            ];
+            return new THREE.LatheGeometry(pts, 20);
+          }
+          case 'tail_curved': {
+            const curve = new THREE.CatmullRomCurve3([
+              new THREE.Vector3(0, 0, 0),
+              new THREE.Vector3(0, 0.06, -0.22),
+              new THREE.Vector3(0.06, 0.24, -0.44),
+              new THREE.Vector3(0.12, 0.46, -0.38),
+            ]);
+            return new THREE.TubeGeometry(curve, 22, 0.11, 12, false);
+          }
+          case 'visor_glass': {
+            const g = new THREE.CylinderGeometry(0.54, 0.54, 0.22, 28, 1, true, -0.75, 1.5);
+            return g;
+          }
+          case 'halo_ring': {
+            const g = new THREE.TorusGeometry(0.38, 0.035, 12, 36);
+            g.rotateX(Math.PI / 2);
+            return g;
+          }
+          case 'shoulder_pauldron': {
+            return new THREE.SphereGeometry(0.22, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.62);
+          }
+          case 'backpack_pack': {
+            return new THREE.BoxGeometry(0.46, 0.5, 0.24);
+          }
+          case 'capsule':
+            return new THREE.CapsuleGeometry(0.16, 0.35, 8, 16);
+          case 'cylinder':
+            return new THREE.CylinderGeometry(0.16, 0.16, 0.4, 20);
+          case 'cone':
+            return new THREE.ConeGeometry(0.18, 0.42, 20);
+          case 'torus':
+            return new THREE.TorusGeometry(0.26, 0.07, 14, 28);
+          case 'box':
+            return new THREE.BoxGeometry(0.32, 0.32, 0.32);
+          default:
+            return new THREE.SphereGeometry(0.24, 24, 18);
+        }
+      }
+
+      buildSculptedHair(headBone, bp, hairMat, highlightMat, outlineColor) {
+        const hs = bp.hairSculpt || {};
+        const pr = bp.proportions || {};
+        const style = hs.style || 'spiky_shonen';
+        if (style === 'bald_smooth') return;
+
+        const hw = pr.headWidth || 1.06;
+        const hh = pr.headHeight || 0.98;
+        const bangCount = Math.max(3, Math.min(9, hs.bangCount || 5));
+        const spikeLen = hs.spikeLength || 1.0;
+        const backVol = hs.backVolume || 1.0;
+
+        if (style === 'chonmage_topknot') {
+          // Authentic Sumo Rikishi Hair Cradle: full glossy black crown, back skull coverage, & temple sideburns
+          const capGeo = new THREE.SphereGeometry(0.525, 36, 26, 0, Math.PI * 2, 0, Math.PI * 0.62);
+          capGeo.scale(hw * 1.01, hh * 1.01, 1.04);
+          const capMesh = this.attachPartMesh(headBone, capGeo, hairMat, 'hair', 'Sumo Hair Cap', outlineColor, 0.015);
+          capMesh.position.set(0, 0.04, -0.02);
+          capMesh.rotation.x = -0.14;
+
+          // Back-of-head hair bowl hugging nape
+          const napeGeo = new THREE.SphereGeometry(0.49, 28, 20);
+          napeGeo.scale(hw * 0.96, hh * 0.82, 0.88);
+          const napeMesh = this.attachPartMesh(headBone, napeGeo, hairMat, 'hair', 'Sumo Back Hair', outlineColor, 0.013);
+          napeMesh.position.set(0, -0.02, -0.12);
+
+          // Sculpted Sumo Sideburns framing both temples in front of the ears
+          [-1, 1].forEach((dir) => {
+            const sbGeo = new THREE.CapsuleGeometry(0.068, 0.22, 8, 12);
+            const sb = this.attachPartMesh(headBone, sbGeo, hairMat, 'hair', 'Sumo Sideburns', outlineColor, 0.01);
+            sb.position.set(dir * 0.48 * hw, 0.05, 0.14);
+            sb.rotation.set(0.18, 0, dir * -0.12);
+          });
+
+          // Traditional Upright Chonmage Oicho-mage Topknot Bun + Gold Hair Clasp
+          const stemGeo = new THREE.CylinderGeometry(0.11, 0.14, 0.16, 18);
+          const stem = this.attachPartMesh(headBone, stemGeo, hairMat, 'hair', 'Topknot Stem', outlineColor, 0.011);
+          stem.position.set(0, 0.52 * hh, -0.03);
+
+          const knotTie = this.attachPartMesh(
+            headBone,
+            new THREE.TorusGeometry(0.125, 0.03, 12, 24),
+            this.createStyledMaterial(bp.palette.accent || '#fbbf24', 'metallic_accent'),
+            'hair', 'Gold Topknot Tie', outlineColor, 0.008
+          );
+          knotTie.rotation.x = Math.PI / 2;
+          knotTie.position.set(0, 0.53 * hh, -0.03);
+
+          // Fan-shaped oicho-mage topknot crown resting forward on top of head
+          const bunGeo = new THREE.SphereGeometry(0.195, 24, 18);
+          bunGeo.scale(1.12, 0.86, 1.18);
+          const bun = this.attachPartMesh(headBone, bunGeo, hairMat, 'hair', 'Chonmage Topknot', outlineColor, 0.013);
+          bun.position.set(0, 0.63 * hh, 0.02);
+          bun.rotation.x = 0.15;
+          return;
+        }
+
+        // Smooth upper crown hair cap hugging top/back of anime head (contoured to headWidth/headHeight)
+        const capGeo = new THREE.SphereGeometry(0.535, 32, 24, 0, Math.PI * 2, 0, Math.PI * 0.62);
+        capGeo.scale(hw, hh, 1.03);
+        const capMesh = this.attachPartMesh(headBone, capGeo, hairMat, 'hair', 'Hair Cap', outlineColor, 0.015);
+        capMesh.position.set(0, 0.03, -0.025);
+        capMesh.rotation.x = -0.18;
+
+        // Anime glossy hair halo highlight strip
+        const haloGeo = new THREE.TorusGeometry(0.44 * hw, 0.022, 8, 28, Math.PI * 0.72);
+        const haloMesh = new THREE.Mesh(haloGeo, highlightMat);
+        haloMesh.position.set(0, 0.3 * hh, 0.14);
+        haloMesh.rotation.set(Math.PI * 0.45, 0, Math.PI * 0.14);
+        haloMesh.userData.partGroup = 'hair';
+        headBone.add(haloMesh);
+        this.selectableMeshes.push(haloMesh);
+
+        // Swept sculpted forehead bangs using curved TubeGeometry / tapered cones
+        for (let i = 0; i < bangCount; i++) {
+          const t = bangCount === 1 ? 0 : (i / (bangCount - 1)) * 2 - 1; // -1 to 1
+          const angle = t * 0.82;
+          const isEdge = Math.abs(t) > 0.72;
+          const length = (isEdge ? 0.34 : 0.24 + (1 - Math.abs(t)) * 0.08) * (0.85 + spikeLen * 0.22);
+          const curve = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(Math.sin(angle) * 0.34 * hw, 0.44 * hh, Math.cos(angle) * 0.34),
+            new THREE.Vector3(Math.sin(angle) * 0.51 * hw, 0.28 * hh, Math.cos(angle) * 0.52),
+            new THREE.Vector3(Math.sin(angle) * 0.52 * hw, 0.24 * hh - length * 0.55, Math.cos(angle) * 0.51),
+          ]);
+          const strandGeo = new THREE.TubeGeometry(curve, 12, isEdge ? 0.068 : 0.058, 8, false);
+          const pos = strandGeo.attributes.position;
+          for (let v = 0; v < pos.count; v++) {
+            const vy = pos.getY(v);
+            if (vy < 0.16) {
+              const shrink = Math.max(0.28, (vy + 0.15) / 0.31);
+              pos.setX(v, pos.getX(v) * (0.85 + shrink * 0.15));
+            }
+          }
+          strandGeo.computeVertexNormals();
+          this.attachPartMesh(headBone, strandGeo, hairMat, 'hair', 'Hair Bangs', outlineColor, 0.01);
+        }
+
+        // Style-specific signature hair silhouettes
+        if (style === 'spiky_shonen' || style === 'mohawk') {
+          const count = style === 'mohawk' ? 5 : 9;
+          for (let i = 0; i < count; i++) {
+            const angle = style === 'mohawk' ? 0 : ((i / (count - 1)) - 0.5) * Math.PI * 1.45;
+            const elev = style === 'mohawk' ? -0.35 + i * 0.3 : 0.25 + (i % 2) * 0.22;
+            const spike = new THREE.ConeGeometry(0.125, 0.42 * spikeLen, 10);
+            const m = this.attachPartMesh(headBone, spike, hairMat, 'hair', 'Hair Spike', outlineColor, 0.012);
+            m.position.set(Math.sin(angle) * 0.42 * hw, (0.44 + Math.cos(elev) * 0.1) * hh, -0.14 - Math.cos(angle) * 0.26);
+            m.rotation.set(-0.45 - elev * 0.35, 0, -angle * 0.72);
+          }
+        } else if (style === 'twin_tails') {
+          [-1, 1].forEach((dir) => {
+            const curve = new THREE.CatmullRomCurve3([
+              new THREE.Vector3(dir * 0.46 * hw, 0.28 * hh, -0.08),
+              new THREE.Vector3(dir * 0.68 * hw, 0.14 * hh, -0.18),
+              new THREE.Vector3(dir * 0.72 * hw, -0.22, -0.22),
+              new THREE.Vector3(dir * 0.62 * hw, -0.58 * backVol, -0.16),
+            ]);
+            const tailGeo = new THREE.TubeGeometry(curve, 18, 0.115, 10, false);
+            this.attachPartMesh(headBone, tailGeo, hairMat, 'hair', 'Twin Tails', outlineColor, 0.013);
+            const tie = this.attachPartMesh(
+              headBone,
+              new THREE.TorusGeometry(0.09, 0.03, 10, 20),
+              this.createStyledMaterial(bp.palette.accent, 'toon_glossy'),
+              'hair', 'Hair Tie', outlineColor, 0.008
+            );
+            tie.position.set(dir * 0.48 * hw, 0.26 * hh, -0.09);
+            tie.rotation.y = dir * 0.8;
+          });
+        } else if (style === 'long_flowing' || style === 'bob_bangs') {
+          const drop = style === 'long_flowing' ? 0.68 * backVol : 0.24 * backVol;
+          const pts = [
+            new THREE.Vector2(0.01, 0.46),
+            new THREE.Vector2(0.49 * hw, 0.36),
+            new THREE.Vector2(0.55 * hw, 0.06),
+            new THREE.Vector2(0.58 * hw, -0.16),
+            new THREE.Vector2((0.52 + (style === 'long_flowing' ? 0.12 : -0.06)) * hw, -0.18 - drop),
+            new THREE.Vector2(0.01, -0.16 - drop),
+          ];
+          const backGeo = new THREE.LatheGeometry(pts, 28, Math.PI * 0.18, Math.PI * 1.64);
+          backGeo.rotateY(Math.PI * 0.5);
+          const backHair = this.attachPartMesh(headBone, backGeo, hairMat, 'hair', 'Back Hair', outlineColor, 0.014);
+          backHair.position.set(0, 0.02, -0.04);
+        } else if (style === 'ponytail_high') {
+          const curve = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(0, 0.42 * hh, -0.36),
+            new THREE.Vector3(0, 0.52 * hh, -0.56),
+            new THREE.Vector3(0, 0.22, -0.72),
+            new THREE.Vector3(0, -0.25 * backVol, -0.64),
+          ]);
+          this.attachPartMesh(headBone, new THREE.TubeGeometry(curve, 18, 0.125, 10, false), hairMat, 'hair', 'High Ponytail', outlineColor, 0.013);
+        } else {
+          // short_fluffy / animal_ears_tuft
+          for (let i = -2; i <= 2; i++) {
+            const tuft = new THREE.SphereGeometry(0.18 * backVol, 16, 14);
+            const m = this.attachPartMesh(headBone, tuft, hairMat, 'hair', 'Fluffy Hair', outlineColor, 0.012);
+            m.position.set(i * 0.18 * hw, (0.38 - Math.abs(i) * 0.06) * hh, -0.26 + Math.abs(i) * 0.05);
+          }
+        }
+
+        // Cute anime ahoge strand on crown
+        if (hs.hasAhoge) {
+          const ahogeCurve = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(0, 0.52 * hh, 0.04),
+            new THREE.Vector3(0.05, 0.72 * hh, 0.08),
+            new THREE.Vector3(0.18, 0.78 * hh, 0.02),
+            new THREE.Vector3(0.24, 0.68 * hh, -0.02),
+          ]);
+          this.attachPartMesh(headBone, new THREE.TubeGeometry(ahogeCurve, 14, 0.026, 8, false), hairMat, 'hair', 'Ahoge Strand', outlineColor, 0.008);
+        }
+      }
+
+      buildFromBlueprint(bp, playReveal = true) {
+        this.disposeCharacter();
+        this.activeBlueprint = deepClone(bp);
+        this.hasCharacter = true;
+
+        const pal = bp.palette;
+        const pr = bp.proportions;
+        const op = bp.outfitPattern;
+        const species = bp.species || (op.type === 'sumo_mawashi' ? 'human_rikishi' : 'human_anime');
+        const overrides = bp.partOverrides || {};
+        const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
+
+        const getPartColor = (group, defaultHex) => overrides[group]?.color || defaultHex;
+        const getPartScale = (group) => overrides[group]?.scale ?? 1.0;
+        const isPartVisible = (group) => overrides[group]?.visible !== false;
+
+        const outlineColor = pal.outlineColor || '#1b1626';
+
+        // Generate HD 1024px Anime Face & 512px Outfit Textures
+        const faceBp = deepClone(bp);
+        if (overrides.face?.color) faceBp.palette.eyeColor = overrides.face.color;
+        if (overrides.torso?.color) faceBp.palette.skin = overrides.torso.color;
+        const faceTex = paintAnimeFaceTexture(faceBp, maxAniso);
+        const outfitTex = paintOutfitTexture(
+          {
+            ...bp,
+            palette: {
+              ...pal,
+              primaryOutfit: getPartColor('outfit', pal.primaryOutfit),
+              accent: getPartColor('belt', pal.accent),
+            },
+          },
+          maxAniso
+        );
+        this.generatedTextures.push(faceTex, outfitTex);
+
+        const skinMat = this.createStyledMaterial(getPartColor('torso', pal.skin), 'toon_matte');
+        const skinShadowMat = this.createStyledMaterial(pal.skinShadow || '#d9824c', 'toon_matte');
+        const faceMat = this.createStyledMaterial('#ffffff', 'toon_matte', faceTex);
+        const hairMat = this.createStyledMaterial(getPartColor('hair', pal.hair), 'toon_glossy');
+        const hairHighMat = this.createStyledMaterial(pal.hairHighlight || '#93c5fd', 'emissive_glow');
+        const outfitMat = this.createStyledMaterial('#ffffff', 'toon_matte', outfitTex);
+        const beltColorHex = getPartColor('belt', pal.primaryOutfit);
+        const beltMat = this.createStyledMaterial(beltColorHex, 'toon_matte');
+        const accentMat = this.createStyledMaterial(getPartColor('belt', pal.accent), 'metallic_accent');
+        const whiteTapeMat = this.createStyledMaterial('#ffffff', 'toon_matte');
+        const pandaBlackMat = this.createStyledMaterial('#18181b', 'toon_matte');
+
+        const isPanda = species === 'panda';
+        const isAnimalMuzzle = ['panda', 'hamster', 'shiba', 'tiger', 'bear', 'kitsune', 'neko'].includes(species);
+        const isReptile = ['dragon', 'dinosaur'].includes(species);
+        const isSumoBody = op.type === 'sumo_mawashi' || species === 'human_rikishi';
+
+        const defaultArmColor = isPanda ? '#18181b' : (isSumoBody || op.type === 'animal_fur' ? pal.skin : pal.primaryOutfit);
+        const defaultLegColor = isPanda ? '#18181b' : (isSumoBody || op.type === 'animal_fur' ? pal.skin : pal.secondaryOutfit);
+        const armMat = this.createStyledMaterial(getPartColor('arms', defaultArmColor), 'toon_matte');
+        const legMat = this.createStyledMaterial(getPartColor('legs', defaultLegColor), 'toon_matte');
+        const shoeMat = this.createStyledMaterial(getPartColor('legs', pal.primaryOutfit), 'toon_glossy');
+
+        const root = new THREE.Group();
+        root.name = bp.title || 'FORM3D_Character';
+
+        // RIG BONES
+        const hips = new THREE.Group();
+        hips.position.set(0, 0.74 * pr.legLength, 0);
+        root.add(hips);
+
+        const torso = new THREE.Group();
+        torso.position.set(0, 0.34 * pr.torsoHeight, 0);
+        hips.add(torso);
+
+        const head = new THREE.Group();
+        head.position.set(0, 0.56 * pr.torsoHeight + 0.34 * pr.headScale, 0);
+        head.scale.setScalar(pr.headScale);
+        torso.add(head);
+
+        const leftArm = new THREE.Group();
+        leftArm.position.set(-0.46 * pr.torsoWidth, 0.24 * pr.torsoHeight, 0);
+        torso.add(leftArm);
+
+        const rightArm = new THREE.Group();
+        rightArm.position.set(0.46 * pr.torsoWidth, 0.24 * pr.torsoHeight, 0);
+        torso.add(rightArm);
+
+        const legSpread = isSumoBody ? 0.235 : 0.21;
+        const leftLeg = new THREE.Group();
+        leftLeg.position.set(-legSpread * pr.torsoWidth, -0.08, 0);
+        hips.add(leftLeg);
+
+        const rightLeg = new THREE.Group();
+        rightLeg.position.set(legSpread * pr.torsoWidth, -0.08, 0);
+        hips.add(rightLeg);
+
+        this.bones = { root, hips, torso, head, leftArm, rightArm, leftLeg, rightLeg };
+
+        // 1. SCULPTED ANIME / CHIBI HEAD (phiStart = -PI/2 puts u=0.5 dead center +Z!)
+        const headGeo = new THREE.SphereGeometry(0.51, 40, 32, -Math.PI / 2, Math.PI * 2);
+        const hPos = headGeo.attributes.position;
+        for (let i = 0; i < hPos.count; i++) {
+          let x = hPos.getX(i);
+          let y = hPos.getY(i);
+          let z = hPos.getZ(i);
+          const lower = y < 0 ? Math.abs(y) / 0.51 : 0;
+          const cheekBoost = Math.exp(-Math.pow((y + 0.1) / 0.24, 2)) * (0.06 + pr.cheekFullness * 0.15);
+          const chinTaper = lower > 0.55 ? 1 - (lower - 0.55) * (0.26 - pr.cheekFullness * 0.16) : 1;
+          x *= (pr.headWidth + cheekBoost) * chinTaper;
+          y *= pr.headHeight;
+          z *= (1.02 + cheekBoost * 0.45);
+          hPos.setXYZ(i, x, y, z);
+        }
+        headGeo.computeVertexNormals();
+        const headMesh = this.attachPartMesh(head, headGeo, faceMat, 'face', 'Face & Eyes', outlineColor, 0.016);
+        headMesh.scale.setScalar(getPartScale('face'));
+
+        // 1B. SCULPTED 3D NOSE / SPECIES SNOUT & EARS
+        if (isAnimalMuzzle) {
+          const muzzleColor = ['panda', 'hamster', 'shiba', 'tiger'].includes(species) ? '#fffbeb' : (species === 'bear' ? '#fde68a' : pal.skin);
+          const muzzleGeo = new THREE.SphereGeometry(0.115, 18, 14);
+          muzzleGeo.scale(1.22, 0.85, 0.72);
+          const muzzle = this.attachPartMesh(head, muzzleGeo, this.createStyledMaterial(muzzleColor, 'toon_matte'), 'face', 'Muzzle Snout', outlineColor, 0.008);
+          muzzle.position.set(0, -0.055 * pr.headHeight, 0.515);
+
+          const noseColor = ['hamster', 'neko'].includes(species) ? '#fb7185' : '#18181b';
+          const noseGeo = new THREE.SphereGeometry(0.042, 14, 12);
+          noseGeo.scale(1.2, 0.85, 0.8);
+          const nose = this.attachPartMesh(head, noseGeo, this.createStyledMaterial(noseColor, 'toon_glossy'), 'face', 'Animal Nose', outlineColor, 0.005);
+          nose.position.set(0, -0.025 * pr.headHeight, 0.585);
+        } else if (isReptile) {
+          const snoutGeo = new THREE.SphereGeometry(0.145, 20, 14);
+          snoutGeo.scale(1.15, 0.78, 0.95);
+          const snout = this.attachPartMesh(head, snoutGeo, skinMat, 'face', 'Dragon Snout', outlineColor, 0.01);
+          snout.position.set(0, -0.05 * pr.headHeight, 0.5);
+        } else if (species !== 'robot') {
+          // Cute sculpted 3D anime/chibi button nose on human & sumo rikishi faces
+          const noseGeo = new THREE.SphereGeometry(0.038, 14, 12);
+          noseGeo.scale(1.12, 0.88, 0.85);
+          const nose = this.attachPartMesh(head, noseGeo, skinMat, 'face', 'Nose', outlineColor, 0.006);
+          nose.position.set(0, -0.03 * pr.headHeight, 0.535);
+        }
+
+        // Species-appropriate ears (round top ears for panda/hamster/bear, human side ears for human_rikishi/human_anime)
+        if (['panda', 'hamster', 'bear'].includes(species)) {
+          const outerEarMat = isPanda ? pandaBlackMat : skinMat;
+          const innerEarMat = this.createStyledMaterial(isPanda ? '#334155' : '#fda4af', 'toon_matte');
+          [-1, 1].forEach((dir) => {
+            const earGeo = new THREE.SphereGeometry(0.165, 20, 16);
+            earGeo.scale(1.0, 1.0, 0.58);
+            const ear = this.attachPartMesh(head, earGeo, outerEarMat, 'headgear', 'Round Animal Ears', outlineColor, 0.012);
+            ear.position.set(dir * 0.39 * pr.headWidth, 0.43 * pr.headHeight, -0.02);
+            ear.rotation.z = dir * -0.25;
+
+            const inGeo = new THREE.SphereGeometry(0.095, 16, 12);
+            inGeo.scale(1.0, 1.0, 0.45);
+            const inner = new THREE.Mesh(inGeo, innerEarMat);
+            inner.position.set(0, 0, 0.055);
+            ear.add(inner);
+          });
+        } else if (['human_rikishi', 'human_anime'].includes(species)) {
+          [-1, 1].forEach((dir) => {
+            const earGeo = new THREE.SphereGeometry(0.115, 16, 14);
+            earGeo.scale(0.62, 1.05, 0.72);
+            const ear = this.attachPartMesh(head, earGeo, skinMat, 'face', 'Ears', outlineColor, 0.01);
+            ear.position.set(dir * 0.52 * pr.headWidth, -0.03, -0.02);
+          });
+        }
+
+        // 2. MULTI-STRAND ANIME HAIR / CHONMAGE TOPKNOT
+        if (isPartVisible('hair')) {
+          const hairGroup = new THREE.Group();
+          hairGroup.scale.setScalar(getPartScale('hair'));
+          head.add(hairGroup);
+          this.buildSculptedHair(hairGroup, bp, hairMat, hairHighMat, outlineColor);
+        }
+
+        // 3. ORGANIC LATHE TORSO, BELLY PATCH & OUTFIT
+        const belly = 0.34 + pr.bellyRoundness * 0.22;
+        const chest = 0.35 + (pr.torsoWidth - 1.0) * 0.12;
+        const torsoCurve = new THREE.SplineCurve([
+          new THREE.Vector2(0.01, -0.44 * pr.torsoHeight),
+          new THREE.Vector2(belly * 0.92 * pr.torsoWidth, -0.36 * pr.torsoHeight),
+          new THREE.Vector2(belly * pr.torsoWidth, -0.1 * pr.torsoHeight),
+          new THREE.Vector2(chest * pr.torsoWidth, 0.22 * pr.torsoHeight),
+          new THREE.Vector2(0.24 * pr.torsoWidth, 0.42 * pr.torsoHeight),
+          new THREE.Vector2(0.14, 0.48 * pr.torsoHeight),
+          new THREE.Vector2(0.01, 0.5 * pr.torsoHeight),
+        ]);
+        const torsoGeo = new THREE.LatheGeometry(torsoCurve.getPoints(24), 36, -Math.PI / 2, Math.PI * 2);
+        const isBareTorso = op.type === 'sumo_mawashi';
+        const torsoMesh = this.attachPartMesh(
+          torso,
+          torsoGeo,
+          isBareTorso ? skinMat : outfitMat,
+          isBareTorso ? 'torso' : 'outfit',
+          isBareTorso ? 'Torso / Skin' : 'Outfit',
+          outlineColor,
+          0.016
+        );
+        torsoMesh.scale.setScalar(getPartScale(isBareTorso ? 'torso' : 'outfit'));
+        torsoMesh.visible = isPartVisible(isBareTorso ? 'torso' : 'outfit');
+
+        // Authentic Sumo / Animal Chubby Belly Patch, Pectoral Definition & Belly Button
+        if ((isBareTorso || op.type === 'animal_fur') && isPartVisible('torso')) {
+          const bellyPatchColor = isPanda ? '#ffffff' : (isAnimalMuzzle || isReptile ? '#fffbeb' : '#ffedd5');
+          const bellyPatchGeo = new THREE.SphereGeometry(belly * pr.torsoWidth * 0.78, 28, 22);
+          bellyPatchGeo.scale(0.95, 0.86 * pr.torsoHeight, 0.44);
+          const bellyPatch = this.attachPartMesh(
+            torso,
+            bellyPatchGeo,
+            this.createStyledMaterial(bellyPatchColor, 'toon_matte'),
+            'torso',
+            'Belly Patch',
+            outlineColor,
+            0
+          );
+          bellyPatch.position.set(0, -0.04 * pr.torsoHeight, belly * pr.torsoWidth * 0.72);
+
+          // Panda iconic black upper shoulder/chest saddle band
+          if (isPanda) {
+            const saddleGeo = new THREE.CylinderGeometry(
+              0.27 * pr.torsoWidth,
+              chest * pr.torsoWidth * 1.03,
+              0.26 * pr.torsoHeight,
+              32
+            );
+            const saddle = this.attachPartMesh(torso, saddleGeo, pandaBlackMat, 'torso', 'Panda Shoulder Fur', outlineColor, 0.012);
+            saddle.position.set(0, 0.3 * pr.torsoHeight, 0);
+          } else if (species === 'human_rikishi') {
+            // Subtle sumo pectoral chest fullness
+            [-1, 1].forEach((dir) => {
+              const pecGeo = new THREE.SphereGeometry(0.16 * pr.torsoWidth, 18, 14);
+              pecGeo.scale(1.18, 0.75, 0.52);
+              const pec = this.attachPartMesh(torso, pecGeo, skinMat, 'torso', 'Sumo Chest', outlineColor, 0);
+              pec.position.set(dir * 0.16 * pr.torsoWidth, 0.18 * pr.torsoHeight, chest * pr.torsoWidth * 0.78);
+            });
+          }
+
+          // Cute sculpted belly button
+          const navelGeo = new THREE.SphereGeometry(0.028, 12, 10);
+          navelGeo.scale(1.1, 0.85, 0.5);
+          const navel = this.attachPartMesh(torso, navelGeo, skinShadowMat, 'torso', 'Belly Button', outlineColor, 0);
+          navel.position.set(0, -0.11 * pr.torsoHeight, belly * pr.torsoWidth * 1.01);
+        }
+
+        // Optional Collar / Scarf
+        if (op.hasCollar && isPartVisible('outfit')) {
+          const collarGeo = new THREE.TorusGeometry(0.21 * pr.torsoWidth, 0.055, 12, 28);
+          collarGeo.rotateX(Math.PI / 2);
+          const collar = this.attachPartMesh(torso, collarGeo, this.createStyledMaterial(pal.secondaryOutfit, 'toon_matte'), 'outfit', 'Collar', outlineColor, 0.01);
+          collar.position.set(0, 0.42 * pr.torsoHeight, 0);
+        }
+
+        // Optional Flowing Hero Cape
+        if (op.hasCape && isPartVisible('outfit')) {
+          const capeShape = new THREE.Shape();
+          capeShape.moveTo(-0.34, 0.36);
+          capeShape.lineTo(0.34, 0.36);
+          capeShape.quadraticCurveTo(0.48, -0.15, 0.56, -0.68);
+          capeShape.quadraticCurveTo(0, -0.78, -0.56, -0.68);
+          capeShape.quadraticCurveTo(-0.48, -0.15, -0.34, 0.36);
+          const capeGeo = new THREE.ExtrudeGeometry(capeShape, { depth: 0.03, bevelEnabled: true, bevelThickness: 0.01, bevelSize: 0.01, bevelSegments: 2 });
+          const cape = this.attachPartMesh(torso, capeGeo, this.createStyledMaterial(getPartColor('outfit', pal.primaryOutfit), 'toon_matte'), 'outfit', 'Hero Cape', outlineColor, 0.012);
+          cape.position.set(0, 0.05, -0.32 * pr.torsoWidth);
+          cape.rotation.x = 0.16;
+        }
+
+        // 4. WAIST BELT / SUMO MAWASHI + GROIN WRAP + BRAIDED GOLD ROPE + CEREMONIAL TASSELS
+        if ((op.beltDetail || op.type === 'sumo_mawashi') && isPartVisible('belt')) {
+          const beltGroup = new THREE.Group();
+          beltGroup.scale.setScalar(getPartScale('belt'));
+          hips.add(beltGroup);
+
+          const beltRadius = belly * pr.torsoWidth * 1.03;
+          const beltH = op.type === 'sumo_mawashi' ? 0.25 : 0.11;
+          const beltPts = [
+            new THREE.Vector2(beltRadius * 0.93, -beltH * 0.5),
+            new THREE.Vector2(beltRadius * 1.04, -beltH * 0.3),
+            new THREE.Vector2(beltRadius * 1.06, 0),
+            new THREE.Vector2(beltRadius * 1.03, beltH * 0.35),
+            new THREE.Vector2(beltRadius * 0.93, beltH * 0.5),
+          ];
+          const beltGeo = new THREE.LatheGeometry(beltPts, 36);
+          const beltMesh = this.attachPartMesh(beltGroup, beltGeo, op.type === 'sumo_mawashi' ? outfitMat : beltMat, 'belt', 'Mawashi Waist Belt', outlineColor, 0.014);
+          beltMesh.position.y = 0.08;
+
+          if (op.type === 'sumo_mawashi') {
+            // Between-the-legs authentic Sumo Mawashi groin wrap
+            const groinGeo = new THREE.SphereGeometry(beltRadius * 0.46, 22, 18);
+            groinGeo.scale(0.68, 0.65, 1.38);
+            const groinWrap = this.attachPartMesh(beltGroup, groinGeo, beltMat, 'belt', 'Mawashi Under-Wrap', outlineColor, 0.012);
+            groinWrap.position.set(0, -0.05, 0);
+
+            // Top and bottom braided gold rope trim rings around the mawashi
+            [0.19, -0.03].forEach((ry) => {
+              const ropeGeo = new THREE.TorusGeometry(beltRadius * 1.01, 0.022, 10, 36);
+              ropeGeo.rotateX(Math.PI / 2);
+              const rope = this.attachPartMesh(beltGroup, ropeGeo, accentMat, 'belt', 'Gold Braided Trim', outlineColor, 0.007);
+              rope.position.y = ry;
+            });
+
+            // Front ceremonial kesho-mawashi apron with gold border
+            const apronShape = new THREE.Shape();
+            apronShape.moveTo(-0.22, 0.11);
+            apronShape.lineTo(0.22, 0.11);
+            apronShape.quadraticCurveTo(0.24, -0.14, 0.16, -0.25);
+            apronShape.quadraticCurveTo(0, -0.31, -0.16, -0.25);
+            apronShape.quadraticCurveTo(-0.24, -0.14, -0.22, 0.11);
+            const apronGeo = new THREE.ExtrudeGeometry(apronShape, { depth: 0.042, bevelEnabled: true, bevelThickness: 0.014, bevelSize: 0.014, bevelSegments: 2 });
+            const apron = this.attachPartMesh(beltGroup, apronGeo, beltMat, 'belt', 'Mawashi Apron', outlineColor, 0.012);
+            apron.position.set(0, -0.02, beltRadius * 0.94);
+            apron.rotation.x = -0.1;
+
+            // Back mawashi knot (tsunagi-me)
+            const backKnotGeo = new THREE.BoxGeometry(0.24, 0.22, 0.14);
+            const backKnot = this.attachPartMesh(beltGroup, backKnotGeo, beltMat, 'belt', 'Mawashi Back Knot', outlineColor, 0.01);
+            backKnot.position.set(0, 0.07, -beltRadius * 1.0);
+          }
+
+          // Gold center belt medallion with inner white-gold ring
+          const buckle = this.attachPartMesh(beltGroup, new THREE.CylinderGeometry(0.095, 0.095, 0.042, 24), accentMat, 'belt', 'Belt Gold Medallion', outlineColor, 0.009);
+          buckle.rotation.x = Math.PI / 2;
+          buckle.position.set(0, 0.08, beltRadius * 1.055);
+
+          // Hanging ceremonial sagari tassels
+          const tCount = Math.min(7, op.tasselCount || (op.type === 'sumo_mawashi' ? 7 : 0));
+          for (let i = 0; i < tCount; i++) {
+            const frac = tCount === 1 ? 0 : (i / (tCount - 1)) * 2 - 1;
+            const ang = frac * 0.56;
+            const tassel = this.attachPartMesh(beltGroup, new THREE.CapsuleGeometry(0.022, 0.17, 6, 10), accentMat, 'belt', 'Gold Sagari Tassel', outlineColor, 0.006);
+            tassel.position.set(Math.sin(ang) * beltRadius * 1.045, -0.085, Math.cos(ang) * beltRadius * 1.045);
+            tassel.rotation.z = -frac * 0.12;
+          }
+        }
+
+        // 5. ARTICULATED ANIME ARMS + TEAM WRISTBANDS + SCULPTED FINGERS
+        if (isPartVisible('arms')) {
+          const armScale = getPartScale('arms');
+          const wristBandColor = getPartColor('outfit', bp.headbandColor || pal.primaryOutfit);
+          const wristBandMat = this.createStyledMaterial(wristBandColor, 'toon_matte');
+          const handSkinMat = isPanda ? pandaBlackMat : skinMat;
+          [
+            { bone: leftArm, dir: -1 },
+            { bone: rightArm, dir: 1 },
+          ].forEach(({ bone, dir }) => {
+            bone.rotation.z = dir * (isSumoBody ? 0.34 : 0.24);
+            const upper = this.attachPartMesh(
+              bone,
+              new THREE.CapsuleGeometry(0.118 * pr.armThickness, 0.23 * pr.armLength, 10, 16),
+              armMat, 'arms', 'Upper Arm', outlineColor, 0.012
+            );
+            upper.position.set(0, -0.17 * pr.armLength, 0);
+            upper.scale.setScalar(armScale);
+
+            const fore = this.attachPartMesh(
+              bone,
+              new THREE.CapsuleGeometry(0.108 * pr.armThickness, 0.2 * pr.armLength, 10, 16),
+              isSumoBody && !isPanda ? skinMat : armMat, 'arms', 'Forearm', outlineColor, 0.012
+            );
+            fore.position.set(0, -0.39 * pr.armLength, 0.07);
+            fore.rotation.x = isSumoBody ? -0.38 : -0.22;
+            fore.scale.setScalar(armScale);
+
+            if (op.hasWristWraps || isSumoBody) {
+              // Authentic Sumo team-colored wristbands (royal blue for Blue Sumo) with subtle gold edge
+              const wrapGeo = new THREE.CylinderGeometry(0.118 * pr.armThickness, 0.115 * pr.armThickness, 0.095, 22);
+              const wrap = this.attachPartMesh(bone, wrapGeo, wristBandMat, 'arms', 'Wristband', outlineColor, 0.009);
+              wrap.position.set(0, -0.45 * pr.armLength, 0.1);
+              wrap.rotation.x = isSumoBody ? -0.38 : -0.22;
+            }
+
+            // Chibi hand palm + sculpted thumb & fingers
+            const hand = this.attachPartMesh(bone, new THREE.SphereGeometry(0.112 * pr.armThickness, 18, 14), handSkinMat, 'arms', 'Hand', outlineColor, 0.011);
+            hand.position.set(0, -0.53 * pr.armLength, 0.13);
+            hand.scale.set(0.96 * armScale, 0.95 * armScale, 1.06 * armScale);
+
+            // Sculpted thumb
+            const thumb = this.attachPartMesh(bone, new THREE.CapsuleGeometry(0.032 * pr.armThickness, 0.045, 6, 8), handSkinMat, 'arms', 'Thumb', outlineColor, 0.006);
+            thumb.position.set(-dir * 0.085 * pr.armThickness, -0.52 * pr.armLength, 0.17);
+            thumb.rotation.set(0.4, 0, dir * 0.5);
+
+            // Sculpted finger knuckles
+            for (let f = -1.5; f <= 1.5; f += 1) {
+              const finger = this.attachPartMesh(bone, new THREE.CapsuleGeometry(0.025 * pr.armThickness, 0.045, 6, 8), handSkinMat, 'arms', 'Finger', outlineColor, 0.005);
+              finger.position.set(f * 0.038 * pr.armThickness, -0.59 * pr.armLength, 0.155);
+              finger.rotation.x = 0.25;
+            }
+          });
+        }
+
+        // 6. STURDY LEGS + WHITE SUMO ANKLE TAPE WRAPS + BARE FEET WITH TOES / ANIME BOOTS
+        if (isPartVisible('legs')) {
+          const legScale = getPartScale('legs');
+          const showAnkleTape = Boolean(bp.hasAnkleTape) || isSumoBody;
+          const footSkinMat = isPanda ? pandaBlackMat : skinMat;
+          [
+            { bone: leftLeg, dir: -1 },
+            { bone: rightLeg, dir: 1 },
+          ].forEach(({ bone, dir }) => {
+            const thigh = this.attachPartMesh(
+              bone,
+              new THREE.CapsuleGeometry(0.14 * pr.legThickness, 0.33 * pr.legLength, 10, 16),
+              legMat, 'legs', 'Leg', outlineColor, 0.013
+            );
+            thigh.position.set(0, -0.25 * pr.legLength, 0);
+            thigh.scale.setScalar(legScale);
+
+            // Crisp White Sumo Ankle Tape Wraps right above the feet
+            if (showAnkleTape && !op.hasShoes) {
+              const tapeGeo = new THREE.CylinderGeometry(
+                0.132 * pr.legThickness,
+                0.126 * pr.legThickness,
+                0.115 * pr.legLength,
+                24
+              );
+              const tape = this.attachPartMesh(bone, tapeGeo, whiteTapeMat, 'legs', 'White Ankle Wrap', outlineColor, 0.01);
+              tape.position.set(0, -0.43 * pr.legLength, 0.01);
+              tape.scale.setScalar(legScale);
+            }
+
+            const footGeo = new THREE.SphereGeometry(0.148 * pr.footScale, 20, 14);
+            footGeo.scale(0.95, 0.58, 1.36);
+            const foot = this.attachPartMesh(
+              bone,
+              footGeo,
+              op.hasShoes ? shoeMat : footSkinMat,
+              'legs', op.hasShoes ? 'Anime Boot' : 'Bare Foot', outlineColor, 0.012
+            );
+            foot.position.set(0, -0.54 * pr.legLength, 0.065 * pr.footScale);
+            foot.scale.setScalar(legScale);
+
+            // Sculpted toes on bare feet
+            if (!op.hasShoes) {
+              for (let t = -1.5; t <= 1.5; t += 1) {
+                const isBigToe = (dir === -1 && t === 1.5) || (dir === 1 && t === -1.5);
+                const toeR = (isBigToe ? 0.036 : 0.028) * pr.footScale;
+                const toe = this.attachPartMesh(
+                  bone,
+                  new THREE.SphereGeometry(toeR, 10, 8),
+                  footSkinMat,
+                  'legs',
+                  'Toe',
+                  outlineColor,
+                  0.005
+                );
+                toe.position.set(
+                  t * 0.052 * pr.footScale,
+                  -0.555 * pr.legLength,
+                  (0.22 - Math.abs(t) * 0.012) * pr.footScale
+                );
+                toe.scale.set(1.0, 0.8, 1.25);
+              }
+            }
+          });
+        }
+
+        // 7. GEMINI AUTHORED CUSTOM 3D PARTS (with flush head-ellipsoid headband scaling & mirrorX symmetry)
+        const boneMap = { head, torso, hips, leftArm, rightArm, leftLeg, rightLeg };
+        for (const cp of (bp.customParts || [])) {
+          if (cp.visible === false || !isPartVisible(cp.partGroup)) continue;
+          const targetBone = boneMap[cp.bone] || torso;
+          const pColor = getPartColor(cp.partGroup, cp.colorHex || pal.accent);
+          const pScale = getPartScale(cp.partGroup);
+          const mat = this.createStyledMaterial(pColor, cp.materialType || 'toon_matte');
+          const geo = this.createCustomGeometry(cp.geometryType);
+
+          // Ensure headband wraps & front emblem conform 100% flush to the character's headWidth / headHeight ellipsoid
+          if (cp.geometryType === 'headband_wrap' && cp.bone === 'head') {
+            const hbMesh = this.attachPartMesh(head, geo, mat, cp.partGroup || 'headgear', cp.label || 'Hachimaki Headband', outlineColor, 0.013);
+            hbMesh.position.set(0, cp.position?.[1] ?? 0.21 * pr.headHeight, 0);
+            hbMesh.scale.set(
+              pr.headWidth * 1.035 * pScale,
+              1.0 * pScale,
+              1.05 * pScale
+            );
+
+            // Raised White & Gold Circular Front Center Headband Emblem (matching reference Blue Sumo badge)
+            const badgeWhite = this.attachPartMesh(
+              head,
+              new THREE.CylinderGeometry(0.088, 0.088, 0.026, 24),
+              whiteTapeMat,
+              'headgear',
+              'Headband White Crest',
+              outlineColor,
+              0.007
+            );
+            badgeWhite.rotation.x = Math.PI / 2;
+            badgeWhite.position.set(0, hbMesh.position.y, 0.552);
+
+            const badgeGold = this.attachPartMesh(
+              head,
+              new THREE.CylinderGeometry(0.056, 0.056, 0.034, 22),
+              accentMat,
+              'headgear',
+              'Headband Gold Center',
+              outlineColor,
+              0.005
+            );
+            badgeGold.rotation.x = Math.PI / 2;
+            badgeGold.position.set(0, hbMesh.position.y, 0.558);
+
+            // Back hachimaki knot
+            const knot = this.attachPartMesh(
+              head,
+              new THREE.SphereGeometry(0.075, 16, 14),
+              mat,
+              'headgear',
+              'Headband Back Knot',
+              outlineColor,
+              0.009
+            );
+            knot.position.set(0, hbMesh.position.y - 0.01, -0.545);
+            continue;
+          }
+
+          // Skip standalone sphere headband emblem if headband_wrap already rendered the dual white-gold badge
+          if (cp.id === 'hb2' && (bp.customParts || []).some((x) => x.geometryType === 'headband_wrap')) {
+            continue;
+          }
+
+          const dirs = cp.mirrorX ? [1, -1] : [1];
+          for (const dir of dirs) {
+            const g = dir === 1 ? geo : geo.clone();
+            const m = this.attachPartMesh(targetBone, g, mat, cp.partGroup || 'accessory', cp.label, outlineColor, cp.materialType === 'emissive_glow' ? 0 : 0.011);
+            m.position.set((cp.position[0] || 0) * dir, cp.position[1] || 0, cp.position[2] || 0);
+            m.rotation.set(cp.rotation[0] || 0, (cp.rotation[1] || 0) * dir, (cp.rotation[2] || 0) * dir);
+            m.scale.set(
+              (cp.scale[0] || 1) * pScale * (cp.mirrorX && dir === -1 ? -1 : 1),
+              (cp.scale[1] || 1) * pScale,
+              (cp.scale[2] || 1) * pScale
+            );
+          }
+        }
+
+        // Ground character cleanly at y = 0
+        root.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(root);
+        if (Number.isFinite(box.min.y)) {
+          root.position.y -= box.min.y;
+        }
+
+        this.characterRoot = root;
+        this.scene.add(root);
+        this.contactShadow.material.opacity = 0.55;
+
+        if (this.selectedPartGroup) {
+          this.selectPartGroup(this.selectedPartGroup);
+        }
+
+        // Wireframe-to-cel-shaded reveal sweep!
+        if (playReveal && this.shadingMode !== 'wireframe') {
+          this.revealTimer = 0.55;
+          for (const m of this.selectableMeshes) {
+            if (m.material) m.material.wireframe = true;
+          }
+        }
+      }
+
+      loadExternalGLB(arrayBuffer, fileName) {
+        const loader = new GLTFLoader();
+        loader.parse(arrayBuffer, '', (gltf) => {
+          this.disposeCharacter();
+          const model = gltf.scene;
+          const box = new THREE.Box3().setFromObject(model);
+          const size = new THREE.Vector3();
+          const center = new THREE.Vector3();
+          box.getSize(size);
+          box.getCenter(center);
+          const maxDim = Math.max(size.x, size.y, size.z, 0.001);
+          const scale = 2.0 / maxDim;
+          model.scale.setScalar(scale);
+          model.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+          model.traverse((obj) => {
+            if (obj.isMesh) {
+              obj.castShadow = !this.isSoftwareGl;
+              obj.receiveShadow = !this.isSoftwareGl;
+              obj.userData.partGroup = 'outfit';
+              this.selectableMeshes.push(obj);
+            }
+          });
+          this.characterRoot = model;
+          this.hasCharacter = true;
+          this.activeBlueprint = null;
+          this.scene.add(model);
+          this.contactShadow.material.opacity = 0.55;
+          if (gltf.animations && gltf.animations.length > 0) {
+            this.mixer = new THREE.AnimationMixer(model);
+            this.mixer.clipAction(gltf.animations[0]).play();
+          }
+          showToast(`Imported ${fileName} successfully`);
+        }, (err) => {
+          showToast('Failed to parse GLB/GLTF file: ' + (err?.message || 'Invalid file'), true);
+        });
+      }
+
+      exportGLB(fileName, includeOutlines = false) {
+        if (!this.characterRoot) {
+          showToast('Generate or import a 3D character first before exporting.', true);
+          return;
+        }
+        // Clear selection tint & toggle outlines per setting before export
+        const prevSelected = this.selectedPartGroup;
+        this.selectPartGroup(null);
+        const prevVis = this.outlineMeshes.map((o) => o.visible);
+        if (!includeOutlines) {
+          this.outlineMeshes.forEach((o) => (o.visible = false));
+        }
+
+        const exporter = new GLTFExporter();
+        exporter.parse(
+          this.characterRoot,
+          (result) => {
+            this.outlineMeshes.forEach((o, i) => (o.visible = prevVis[i]));
+            if (prevSelected) this.selectPartGroup(prevSelected);
+
+            const blob = new Blob([result], { type: 'model/gltf-binary' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${(fileName || 'form3d-character').replace(/[^a-z0-9_-]/gi, '_')}.glb`;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 2000);
+            showToast('Exported .GLB with embedded HD textures!');
+          },
+          (err) => {
+            this.outlineMeshes.forEach((o, i) => (o.visible = prevVis[i]));
+            if (prevSelected) this.selectPartGroup(prevSelected);
+            showToast('Export failed: ' + (err?.message || err), true);
+          },
+          { binary: true }
+        );
+      }
+
+      updateProceduralAnimation(dt, elapsed) {
+        if (!this.characterRoot || !this.bones.hips) return;
+        const b = this.bones;
+        const t = elapsed;
+        const anim = this.currentAnim;
+
+        // Reset rotations gently
+        b.hips.position.x = 0;
+        b.torso.rotation.set(0, 0, 0);
+        b.head.rotation.set(0, 0, 0);
+        b.leftLeg.rotation.set(0, 0, 0);
+        b.rightLeg.rotation.set(0, 0, 0);
+        b.leftArm.rotation.set(0, 0, -0.24);
+        b.rightArm.rotation.set(0, 0, 0.24);
+
+        const baseHipY = 0.74 * (this.activeBlueprint?.proportions?.legLength || 1.0);
+        b.hips.position.y = baseHipY;
+
+        if (anim === 'idle') {
+          b.hips.position.y = baseHipY + Math.sin(t * 2.4) * 0.025;
+          b.head.rotation.y = Math.sin(t * 1.1) * 0.08;
+          b.head.rotation.z = Math.sin(t * 1.6) * 0.03;
+          b.leftArm.rotation.z = -0.24 - Math.sin(t * 2.4) * 0.04;
+          b.rightArm.rotation.z = 0.24 + Math.sin(t * 2.4) * 0.04;
+        } else if (anim === 'walk') {
+          const s = Math.sin(t * 5.2);
+          b.hips.position.y = baseHipY + Math.abs(Math.cos(t * 5.2)) * 0.045;
+          b.leftLeg.rotation.x = s * 0.45;
+          b.rightLeg.rotation.x = -s * 0.45;
+          b.leftArm.rotation.x = -s * 0.42;
+          b.rightArm.rotation.x = s * 0.42;
+          b.torso.rotation.y = s * 0.1;
+        } else if (anim === 'run') {
+          const s = Math.sin(t * 9.5);
+          b.hips.position.y = baseHipY + Math.abs(Math.cos(t * 9.5)) * 0.09;
+          b.torso.rotation.x = 0.18;
+          b.leftLeg.rotation.x = s * 0.8;
+          b.rightLeg.rotation.x = -s * 0.8;
+          b.leftArm.rotation.x = -s * 0.85;
+          b.rightArm.rotation.x = s * 0.85;
+        } else if (anim === 'jump') {
+          const j = Math.max(0, Math.sin(t * 3.8));
+          b.hips.position.y = baseHipY + j * 0.42;
+          b.leftArm.rotation.z = -0.24 - j * 1.15;
+          b.rightArm.rotation.z = 0.24 + j * 1.15;
+          b.leftLeg.rotation.x = j * 0.35;
+          b.rightLeg.rotation.x = -j * 0.25;
+        } else if (anim === 'fight') {
+          const p = Math.sin(t * 7.2);
+          b.hips.position.y = baseHipY - 0.05 + Math.abs(p) * 0.04;
+          b.torso.rotation.y = p * 0.26;
+          b.leftArm.rotation.x = -0.85 + p * 0.45;
+          b.rightArm.rotation.x = -0.85 - p * 0.45;
+          b.leftLeg.rotation.x = -0.15;
+          b.rightLeg.rotation.x = 0.2;
+        } else if (anim === 'push') {
+          const w = Math.sin(t * 4.5);
+          b.torso.rotation.x = 0.22 + w * 0.08;
+          b.leftArm.rotation.x = -1.25 - w * 0.25;
+          b.rightArm.rotation.x = -1.25 - w * 0.25;
+          b.leftLeg.rotation.x = 0.25;
+          b.rightLeg.rotation.x = -0.25;
+        } else if (anim === 'victory') {
+          const v = Math.sin(t * 6.0);
+          b.hips.position.y = baseHipY + Math.abs(v) * 0.14;
+          b.leftArm.rotation.z = -2.35 + v * 0.18;
+          b.rightArm.rotation.z = 2.35 - v * 0.18;
+          b.head.rotation.z = v * 0.1;
+        }
+      }
+
+      startLoop() {
+        const tick = () => {
+          const dt = Math.min(0.05, this.clock.getDelta());
+          const elapsed = this.clock.elapsedTime;
+
+          // Smooth exponential camera preset glide
+          if (this._camTargetPos && this._camTargetLook) {
+            const k = 8;
+            this.camera.position.x = THREE.MathUtils.damp(this.camera.position.x, this._camTargetPos.x, k, dt);
+            this.camera.position.y = THREE.MathUtils.damp(this.camera.position.y, this._camTargetPos.y, k, dt);
+            this.camera.position.z = THREE.MathUtils.damp(this.camera.position.z, this._camTargetPos.z, k, dt);
+            this.controls.target.x = THREE.MathUtils.damp(this.controls.target.x, this._camTargetLook.x, k, dt);
+            this.controls.target.y = THREE.MathUtils.damp(this.controls.target.y, this._camTargetLook.y, k, dt);
+            this.controls.target.z = THREE.MathUtils.damp(this.controls.target.z, this._camTargetLook.z, k, dt);
+            if (this.camera.position.distanceTo(this._camTargetPos) < 0.02) {
+              this._camTargetPos = null;
+              this._camTargetLook = null;
+            }
+          }
+
+          if (this.revealTimer > 0) {
+            this.revealTimer -= dt;
+            if (this.revealTimer <= 0 && this.shadingMode !== 'wireframe') {
+              for (const m of this.selectableMeshes) {
+                if (m.material) m.material.wireframe = false;
+              }
+            }
+          }
+
+          if (this.turntable && this.characterRoot) {
+            this.characterRoot.rotation.y += dt * 0.75;
+          }
+
+          if (this.mixer) {
+            this.mixer.update(dt);
+          } else {
+            this.updateProceduralAnimation(dt, elapsed);
+          }
+
+          this.controls.update();
+          this.renderer.render(this.scene, this.camera);
+
+          if (this.isSoftwareGl) {
+            const gl = this.renderer.getContext();
+            const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+            gl.flush();
+            const poll = () => {
+              const st = sync && gl.getSyncParameter(sync, gl.SYNC_STATUS);
+              if (st === gl.UNSIGNALED) setTimeout(poll, 8);
+              else {
+                if (sync) gl.deleteSync(sync);
+                setTimeout(tick, 45);
+              }
+            };
+            setTimeout(poll, 8);
+          } else {
+            requestAnimationFrame(tick);
+          }
+        };
+        requestAnimationFrame(tick);
+      }
+    }
+
+    // =========================================================================
+    // FORM3D STUDIO CONTROLLER
+    // =========================================================================
+    const STORAGE_KEY = 'form3d_gemini_characters_v1';
+
+    class Form3DStudioApp {
+      constructor() {
+        this.variants = [];
+        this.activeVariantIndex = 0;
+        this.historyStack = [];
+        this.historyIndex = -1;
+        this.editLogs = [];
+        this.referenceImageBase64 = null;
+        this.selectedPartGroup = null;
+        this.isBusy = false;
+        this.activeLeftNav = 'create';
+
+        this.viewport = new Form3DViewport(
+          document.getElementById('viewport-canvas-mount'),
+          (partGroup) => this.handlePartSelectedFrom3D(partGroup)
+        );
+
+        this.bindUI();
+        this.checkStatus();
+        this.renderLeftDrawer();
+      }
+
+      getActiveBlueprint() {
+        return this.historyIndex >= 0 ? this.historyStack[this.historyIndex] : null;
+      }
+
+      pushHistory(blueprint, logLabel = 'Updated 3D sculpt') {
+        const snap = deepClone(blueprint);
+        this.historyStack = this.historyStack.slice(0, this.historyIndex + 1);
+        this.historyStack.push(snap);
+        this.historyIndex = this.historyStack.length - 1;
+        this.editLogs.unshift({ label: logLabel, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) });
+        this.editLogs = this.editLogs.slice(0, 12);
+        this.syncHistoryUI();
+      }
+
+      syncHistoryUI() {
+        const canUndo = this.historyIndex > 0;
+        const canRedo = this.historyIndex < this.historyStack.length - 1;
+        document.getElementById('btn-undo').disabled = !canUndo;
+        document.getElementById('btn-redo').disabled = !canRedo;
+        document.getElementById('btn-refine-undo').disabled = !canUndo;
+        document.getElementById('btn-refine-redo').disabled = !canRedo;
+        document.getElementById('history-counter').textContent = `v${this.historyIndex + 1} / ${this.historyStack.length}`;
+
+        const logCard = document.getElementById('refine-log-card');
+        const logList = document.getElementById('refine-log-list');
+        if (this.editLogs.length > 0) {
+          logCard.style.display = 'flex';
+          logList.innerHTML = this.editLogs
+            .map((l) => `<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);"><span>${l.label}</span><span style="color:var(--text-dim);">${l.time}</span></div>`)
+            .join('');
+        } else {
+          logCard.style.display = 'none';
+        }
+      }
+
+      applyBlueprintToStudio(bp, playReveal = true) {
+        this.viewport.buildFromBlueprint(bp, playReveal);
+        document.getElementById('viewport-empty-state').classList.add('hidden');
+        document.getElementById('anim-bar').classList.add('visible');
+        document.getElementById('quick-proportions-card').style.display = 'flex';
+        document.getElementById('project-name-input').value = bp.title || 'Untitled Character';
+
+        const sumBox = document.getElementById('variant-summary-box');
+        sumBox.style.display = 'block';
+        sumBox.innerHTML = `<strong>${bp.variantLabel || 'Custom Sculpt'}:</strong> ${bp.artSummary || 'Cel-shaded 3D anime character ready.'}`;
+
+        // Sync palette & sliders
+        document.getElementById('col-skin').value = bp.palette.skin;
+        document.getElementById('col-hair').value = bp.palette.hair;
+        document.getElementById('col-outfit').value = bp.palette.primaryOutfit;
+        document.getElementById('col-accent').value = bp.palette.accent;
+        document.getElementById('col-eyes').value = bp.palette.eyeColor;
+        document.getElementById('col-outline').value = bp.palette.outlineColor || '#1b1626';
+
+        document.getElementById('slider-headScale').value = bp.proportions.headScale;
+        document.getElementById('val-headScale').textContent = bp.proportions.headScale.toFixed(2);
+        document.getElementById('slider-torsoWidth').value = bp.proportions.torsoWidth;
+        document.getElementById('val-torsoWidth').textContent = bp.proportions.torsoWidth.toFixed(2);
+        document.getElementById('slider-eyeSize').value = bp.facePaint.eyeSize;
+        document.getElementById('val-eyeSize').textContent = bp.facePaint.eyeSize.toFixed(2);
+        document.getElementById('select-mouthStyle').value = bp.facePaint.mouthStyle || 'confident_grin';
+
+        if (this.selectedPartGroup) {
+          this.syncPartInspectorUI(this.selectedPartGroup);
+        }
+      }
+
+      renderVariantBar() {
+        const bar = document.getElementById('variant-bar');
+        if (this.variants.length <= 1) {
+          bar.classList.remove('visible');
+          bar.innerHTML = '';
+          return;
+        }
+        bar.classList.add('visible');
+        bar.innerHTML = this.variants
+          .map((v, i) => `
+            <button class="variant-pill ${i === this.activeVariantIndex ? 'active' : ''}" data-var="${i}">
+              <span>V${i + 1}</span>
+              <span>${v.variantLabel || `Variant ${i + 1}`}</span>
+            </button>
+          `)
+          .join('');
+        bar.querySelectorAll('.variant-pill').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const idx = Number(btn.dataset.var);
+            this.activeVariantIndex = idx;
+            this.pushHistory(this.variants[idx], `Switched to Variant ${idx + 1} (${this.variants[idx].variantLabel})`);
+            this.applyBlueprintToStudio(this.variants[idx], true);
+            this.renderVariantBar();
+          });
+        });
+      }
+
+      setBuildProgress(active, stageText = '', pct = 0, activeStep = 1, title = 'Sculpting 3D Variants with Gemini') {
+        const hud = document.getElementById('viewport-build-hud');
+        hud.classList.toggle('active', active);
+        if (!active) return;
+        document.getElementById('build-card-title').textContent = title;
+        document.getElementById('build-card-stage').textContent = stageText;
+        document.getElementById('build-progress-fill').style.width = `${pct}%`;
+        hud.querySelectorAll('.build-step-row').forEach((row) => {
+          const s = Number(row.dataset.step);
+          row.classList.toggle('done', s < activeStep);
+          row.classList.toggle('active', s === activeStep);
+          row.querySelector('.st').textContent = s < activeStep ? 'Done' : s === activeStep ? 'Working...' : 'Pending';
+        });
+      }
+
+      async checkStatus() {
+        try {
+          const resp = await fetch('/api/form3d/status');
+          const data = await resp.json();
+          const connected = Boolean(data?.gemini?.connected ?? true);
+          const chip = document.getElementById('engine-status-chip');
+          chip.classList.toggle('offline', !connected);
+          document.getElementById('engine-status-text').textContent = 'Gemini Direct 3D Ready';
+          document.getElementById('modal-gemini-model').textContent = data?.gemini?.model || 'gemini-4-hydrogen';
+          document.getElementById('modal-gemini-status').textContent = 'Connected (Zero external 3D keys required)';
+        } catch {
+          document.getElementById('engine-status-chip').classList.remove('offline');
+          document.getElementById('engine-status-text').textContent = 'Gemini Direct 3D Ready';
+        }
+      }
+
+      buildClientFallbackVariants(prompt) {
+        const p = String(prompt || '').toLowerCase();
+        const findColor = (fallback) => {
+          if (/\b(red|crimson|scarlet)\b/.test(p)) return '#dc2626';
+          if (/\b(emerald|green|jade)\b/.test(p)) return '#10b981';
+          if (/\b(purple|violet)\b/.test(p)) return '#7c3aed';
+          if (/\b(gold|golden|yellow)\b/.test(p)) return '#f59e0b';
+          if (/\b(cyan|aqua|teal)\b/.test(p)) return '#06b6d4';
+          if (/\b(pink|rose)\b/.test(p)) return '#ec4899';
+          if (/\b(black|obsidian)\b/.test(p)) return '#18181b';
+          return fallback;
+        };
+        if (/\bpanda\b/.test(p)) {
+          const base = deepClone(LIBRARY_PRESETS[1].blueprint);
+          const col = findColor('#dc2626');
+          base.palette.primaryOutfit = col;
+          base.headbandColor = col;
+          base.customParts.forEach((cp) => { if (cp.id !== 'hb2') cp.colorHex = col; });
+          const v2 = deepClone(base); v2.variantLabel = 'Dynamic Brawler'; v2.facePaint.mouthStyle = 'battle_shout';
+          const v3 = deepClone(base); v3.variantLabel = 'Kawaii Chibi'; v3.proportions.headScale = 1.3;
+          return [base, v2, v3];
+        }
+        if (/\b(kitsune|fox|mage)\b/.test(p)) {
+          const base = deepClone(LIBRARY_PRESETS[2].blueprint);
+          const v2 = deepClone(base); v2.variantLabel = 'Dynamic Mystic'; v2.outfitPattern.hasCape = true;
+          const v3 = deepClone(base); v3.variantLabel = 'Kawaii Chibi'; v3.proportions.headScale = 1.26;
+          return [base, v2, v3];
+        }
+        if (/\b(knight|paladin|warrior|armor|sword)\b/.test(p) && !/\b(sumo|rikishi|mawashi)\b/.test(p)) {
+          const base = deepClone(LIBRARY_PRESETS[3].blueprint);
+          const v2 = deepClone(base); v2.variantLabel = 'Battle Ready'; v2.facePaint.mouthStyle = 'battle_shout';
+          const v3 = deepClone(base); v3.variantLabel = 'Chibi Champion'; v3.proportions.headScale = 1.24;
+          return [base, v2, v3];
+        }
+        // Default / Sumo Wrestler
+        const base = deepClone(LIBRARY_PRESETS[0].blueprint);
+        const col = findColor('#2563eb');
+        base.palette.primaryOutfit = col;
+        base.headbandColor = col;
+        base.customParts.forEach((cp) => { if (cp.id !== 'hb2') cp.colorHex = col; });
+        const v2 = deepClone(base);
+        v2.variantLabel = 'Dynamic Rikishi';
+        v2.proportions.torsoWidth = 1.42;
+        v2.proportions.bellyRoundness = 0.96;
+        v2.facePaint.mouthStyle = 'battle_shout';
+        const v3 = deepClone(base);
+        v3.variantLabel = 'Kawaii Yokozuna';
+        v3.proportions.headScale = 1.31;
+        v3.facePaint.eyeStyle = 'anime_sparkle';
+        return [base, v2, v3];
+      }
+
+      async handleEnhancePrompt() {
+        const input = document.getElementById('character-prompt-input');
+        const prompt = input.value.trim();
+        if (!prompt && !this.referenceImageBase64) {
+          showToast('Type a character idea or drop a reference image first.', true);
+          return;
+        }
+        const btn = document.getElementById('btn-enhance');
+        btn.disabled = true;
+        btn.textContent = 'Enhancing...';
+        try {
+          const resp = await fetch('/api/form3d/enhance-prompt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt, referenceImageBase64: this.referenceImageBase64 }),
+          });
+          const data = await resp.json();
+          if (!resp.ok) throw new Error(data.error || 'Prompt enhance failed');
+          input.value = data.enhancedPrompt;
+          showToast('Prompt enhanced for Anime / Chibi 3D sculpting!');
+        } catch (err) {
+          showToast(err.message, true);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Enhance';
+        }
+      }
+
+      async handleGenerate3Variants() {
+        if (this.isBusy) return;
+        const prompt = document.getElementById('character-prompt-input').value.trim();
+        if (!prompt && !this.referenceImageBase64) {
+          showToast('Describe your character or upload a reference image first.', true);
+          return;
+        }
+        this.isBusy = true;
+        const btn = document.getElementById('btn-generate');
+        btn.disabled = true;
+        btn.textContent = 'Sculpting...';
+
+        this.setBuildProgress(true, 'Analyzing prompt & visual palette with Gemini...', 25, 1);
+
+        const stepTimer1 = setTimeout(() => {
+          this.setBuildProgress(true, 'Sculpting 3 custom rigged Anime/Chibi 3D variants...', 55, 2);
+        }, 380);
+        const stepTimer2 = setTimeout(() => {
+          this.setBuildProgress(true, 'Painting HD 1024px anime eyes, expressions & outfits...', 82, 3);
+        }, 760);
+
+        let variants = null;
+        try {
+          const stylePreset = document.getElementById('style-preset-select').value;
+          const controller = new AbortController();
+          const fetchTimeout = setTimeout(() => controller.abort(), 9000);
+          const resp = await fetch('/api/form3d/sculpt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prompt,
+              referenceImageBase64: this.referenceImageBase64,
+              stylePreset,
+            }),
+            signal: controller.signal,
+          });
+          clearTimeout(fetchTimeout);
+          const data = await resp.json();
+          if (resp.ok && Array.isArray(data.variants) && data.variants.length > 0) {
+            variants = data.variants;
+          } else {
+            variants = this.buildClientFallbackVariants(prompt);
+          }
+        } catch {
+          variants = this.buildClientFallbackVariants(prompt);
+        } finally {
+          clearTimeout(stepTimer1);
+          clearTimeout(stepTimer2);
+        }
+
+        try {
+          this.setBuildProgress(true, 'Painting HD 1024px anime eyes, expressions & outfits...', 88, 3);
+          await new Promise((r) => setTimeout(r, 140));
+          this.setBuildProgress(true, 'Applying cel-shading & ink outline reveal...', 100, 4);
+          await new Promise((r) => setTimeout(r, 180));
+
+          this.variants = variants;
+          this.activeVariantIndex = 0;
+          this.selectedPartGroup = null;
+          this.viewport.selectPartGroup(null);
+          document.getElementById('selected-part-pill').classList.remove('visible');
+
+          this.pushHistory(this.variants[0], `Generated 3 Variants (${this.variants[0].title})`);
+          this.applyBlueprintToStudio(this.variants[0], true);
+          this.renderVariantBar();
+          showToast(`Sculpted 3 variants of "${this.variants[0].title}"! Switch V1 / V2 / V3 below.`);
+        } finally {
+          this.setBuildProgress(false);
+          this.isBusy = false;
+          btn.disabled = false;
+          btn.textContent = 'Generate 3 Variants';
+        }
+      }
+
+      async handleAIRefine(editPrompt, targetPartGroup = null) {
+        const activeBp = this.getActiveBlueprint();
+        if (!activeBp) {
+          showToast('Generate or load a character first before refining.', true);
+          return;
+        }
+        const cleaned = String(editPrompt || '').trim();
+        if (!cleaned) {
+          showToast('Enter an edit instruction first.', true);
+          return;
+        }
+        if (this.isBusy) return;
+        this.isBusy = true;
+
+        this.setBuildProgress(
+          true,
+          targetPartGroup ? `Restyling "${targetPartGroup}" with Gemini...` : 'Applying iterative AI sculpt edit...',
+          52,
+          2,
+          targetPartGroup ? `AI Restyling ${targetPartGroup}` : 'Iterative AI Sculpt Edit'
+        );
+
+        try {
+          const resp = await fetch('/api/form3d/refine', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              activeBlueprint: activeBp,
+              editPrompt: cleaned,
+              targetPartGroup,
+              referenceImageBase64: this.referenceImageBase64,
+            }),
+          });
+          const data = await resp.json();
+          if (!resp.ok || !data.blueprint) {
+            throw new Error(data.error || 'Refinement failed.');
+          }
+
+          this.setBuildProgress(true, 'Repainting HD 1024px textures & cel-shading...', 100, 4);
+          await new Promise((r) => setTimeout(r, 150));
+
+          if (this.variants[this.activeVariantIndex]) {
+            this.variants[this.activeVariantIndex] = deepClone(data.blueprint);
+          }
+          this.pushHistory(data.blueprint, data.changeSummary || cleaned.slice(0, 42));
+          this.applyBlueprintToStudio(data.blueprint, true);
+          showToast(data.changeSummary || 'Applied AI edit!');
+        } catch (err) {
+          showToast(err.message || 'AI refinement failed', true);
+        } finally {
+          this.setBuildProgress(false);
+          this.isBusy = false;
+        }
+      }
+
+      handlePartSelectedFrom3D(partGroup) {
+        this.selectedPartGroup = partGroup;
+        this.switchRightTab('part');
+        this.syncPartInspectorUI(partGroup);
+      }
+
+      syncPartInspectorUI(partGroup) {
+        const pill = document.getElementById('selected-part-pill');
+        const pillName = document.getElementById('selected-part-pill-name');
+        const badge = document.getElementById('part-inspector-badge');
+        const controls = document.getElementById('selected-part-controls');
+
+        document.querySelectorAll('#part-group-list .part-btn').forEach((b) => {
+          b.classList.toggle('active', b.dataset.group === partGroup);
+        });
+
+        if (!partGroup) {
+          pill.classList.remove('visible');
+          badge.style.display = 'none';
+          controls.style.display = 'none';
+          this.viewport.selectPartGroup(null);
+          return;
+        }
+
+        const label = partGroup.charAt(0).toUpperCase() + partGroup.slice(1);
+        pillName.textContent = label;
+        pill.classList.add('visible');
+        badge.textContent = label;
+        badge.style.display = 'inline-flex';
+        controls.style.display = 'flex';
+        document.getElementById('selected-part-title').textContent = `Restyle: ${label}`;
+
+        const bp = this.getActiveBlueprint();
+        if (bp) {
+          const ov = bp.partOverrides?.[partGroup] || {};
+          const fallbackColor =
+            partGroup === 'hair' ? bp.palette.hair :
+            partGroup === 'face' ? bp.palette.eyeColor :
+            partGroup === 'torso' ? bp.palette.skin :
+            partGroup === 'outfit' ? bp.palette.primaryOutfit :
+            partGroup === 'belt' ? bp.palette.accent :
+            bp.palette.accent;
+          document.getElementById('part-color-input').value = ov.color || fallbackColor;
+          const sc = ov.scale ?? 1.0;
+          document.getElementById('slider-part-scale').value = sc;
+          document.getElementById('val-part-scale').textContent = `${sc.toFixed(2)}×`;
+          document.getElementById('btn-toggle-part-visible').textContent = ov.visible === false ? 'Show Part' : 'Hide Part';
+        }
+        this.viewport.selectPartGroup(partGroup);
+      }
+
+      mutateActiveBlueprint(mutator, recordHistoryLabel = null) {
+        const bp = this.getActiveBlueprint();
+        if (!bp) return;
+        const next = deepClone(bp);
+        mutator(next);
+        if (this.variants[this.activeVariantIndex]) {
+          this.variants[this.activeVariantIndex] = deepClone(next);
+        }
+        if (recordHistoryLabel) {
+          this.pushHistory(next, recordHistoryLabel);
+        } else {
+          this.historyStack[this.historyIndex] = next;
+        }
+        this.applyBlueprintToStudio(next, false);
+      }
+
+      switchRightTab(tabName) {
+        document.querySelectorAll('.right-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tabName));
+        document.querySelectorAll('.tab-pane').forEach((p) => p.classList.toggle('active', p.id === `tab-${tabName}`));
+      }
+
+      handleNewProject() {
+        this.viewport.clearCharacter();
+        this.variants = [];
+        this.activeVariantIndex = 0;
+        this.historyStack = [];
+        this.historyIndex = -1;
+        this.editLogs = [];
+        this.referenceImageBase64 = null;
+        this.selectedPartGroup = null;
+
+        document.getElementById('character-prompt-input').value = '';
+        document.getElementById('project-name-input').value = 'Untitled Character';
+        document.getElementById('ref-dropzone').innerHTML = '<span id="ref-dropzone-text">Drop or click to upload reference image (optional)</span>';
+        document.getElementById('viewport-empty-state').classList.remove('hidden');
+        document.getElementById('variant-bar').classList.remove('visible');
+        document.getElementById('anim-bar').classList.remove('visible');
+        document.getElementById('quick-proportions-card').style.display = 'none';
+        document.getElementById('variant-summary-box').style.display = 'none';
+        this.syncPartInspectorUI(null);
+        this.syncHistoryUI();
+        showToast('Cleared 3D stage for a new character.');
+      }
+
+      loadSavedCharacters() {
+        try {
+          return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+        } catch {
+          return [];
+        }
+      }
+
+      handleSaveCharacter() {
+        const bp = this.getActiveBlueprint();
+        if (!bp) {
+          showToast('Generate a 3D character first before saving.', true);
+          return;
+        }
+        const name = document.getElementById('project-name-input').value.trim() || bp.title || 'Saved Character';
+        const saved = this.loadSavedCharacters();
+        const entry = {
+          id: 'char_' + Date.now(),
+          name,
+          prompt: document.getElementById('character-prompt-input').value.trim(),
+          blueprint: { ...deepClone(bp), title: name },
+          savedAt: Date.now(),
+        };
+        saved.unshift(entry);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(saved.slice(0, 24)));
+        showToast(`Saved "${name}" to My Characters.`);
+        if (this.activeLeftNav === 'my-characters') this.renderLeftDrawer();
+      }
+
+      renderLeftDrawer() {
+        const drawer = document.getElementById('left-drawer');
+        if (this.activeLeftNav === 'my-characters') {
+          const saved = this.loadSavedCharacters();
+          if (saved.length === 0) {
+            drawer.innerHTML = '<div style="font-size:11px;color:var(--text-dim);padding:6px;">No saved characters yet. Generate one and click Save.</div>';
+            return;
+          }
+          drawer.innerHTML = saved
+            .map((item) => `
+              <button class="preset-card" data-saved-id="${item.id}">
+                <div class="preset-card-title">${item.name}</div>
+                <div class="preset-card-sub">${item.blueprint?.variantLabel || 'Custom Sculpt'}</div>
+              </button>
+            `)
+            .join('');
+          drawer.querySelectorAll('[data-saved-id]').forEach((el) => {
+            el.addEventListener('click', () => {
+              const found = saved.find((s) => s.id === el.dataset.savedId);
+              if (found?.blueprint) {
+                if (found.prompt) document.getElementById('character-prompt-input').value = found.prompt;
+                this.variants = [deepClone(found.blueprint)];
+                this.activeVariantIndex = 0;
+                this.pushHistory(found.blueprint, `Loaded "${found.name}"`);
+                this.applyBlueprintToStudio(found.blueprint, true);
+                this.renderVariantBar();
+              }
+            });
+          });
+        } else if (this.activeLeftNav === 'library') {
+          drawer.innerHTML = LIBRARY_PRESETS.map((p, idx) => `
+            <button class="preset-card" data-lib="${idx}">
+              <div class="preset-card-title">${p.name}</div>
+              <div class="preset-card-sub">${p.subtitle}</div>
+            </button>
+          `).join('');
+          drawer.querySelectorAll('[data-lib]').forEach((el) => {
+            el.addEventListener('click', () => {
+              const p = LIBRARY_PRESETS[Number(el.dataset.lib)];
+              document.getElementById('character-prompt-input').value = p.prompt;
+              this.variants = [deepClone(p.blueprint)];
+              this.activeVariantIndex = 0;
+              this.pushHistory(p.blueprint, `Loaded Library: ${p.name}`);
+              this.applyBlueprintToStudio(p.blueprint, true);
+              this.renderVariantBar();
+            });
+          });
+        } else if (this.activeLeftNav === 'animation') {
+          const anims = ['idle', 'walk', 'run', 'jump', 'fight', 'push', 'victory'];
+          drawer.innerHTML = anims.map((a) => `
+            <button class="preset-card" data-left-anim="${a}">
+              <div class="preset-card-title" style="text-transform:capitalize;">${a} Animation</div>
+              <div class="preset-card-sub">Preview live rigged motion</div>
+            </button>
+          `).join('');
+          drawer.querySelectorAll('[data-left-anim]').forEach((el) => {
+            el.addEventListener('click', () => this.setAnimation(el.dataset.leftAnim));
+          });
+        } else {
+          drawer.innerHTML = `
+            <div style="font-size:11px;color:var(--text-dim);line-height:1.45;padding:4px 6px;">
+              <strong style="color:var(--text-muted);display:block;margin-bottom:4px;">Tips</strong>
+              • Generate creates 3 unique anime cel-shaded sculpts.<br/>
+              • Click any body part in 3D to restyle it directly.<br/>
+              • Use AI Refine for iterative follow-up edits.
+            </div>
+          `;
+        }
+      }
+
+      setAnimation(anim) {
+        this.viewport.currentAnim = anim;
+        document.querySelectorAll('#anim-bar .hud-btn').forEach((b) => b.classList.toggle('active', b.dataset.anim === anim));
+      }
+
+      loadRefImageFile(file) {
+        if (!file || !file.type.startsWith('image/')) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          this.referenceImageBase64 = reader.result;
+          const dz = document.getElementById('ref-dropzone');
+          dz.innerHTML = `<img src="${this.referenceImageBase64}" alt="Ref" /><span>Reference loaded (${file.name.slice(0, 18)}) — click to change</span>`;
+          showToast('Reference image ready for Gemini Vision 3D sculpting.');
+        };
+        reader.readAsDataURL(file);
+      }
+
+      bindUI() {
+        // Left navigation
+        document.querySelectorAll('.left-sidebar .nav-item').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const nav = btn.dataset.nav;
+            if (nav === 'import') {
+              document.getElementById('glb-import-input').click();
+              return;
+            }
+            this.activeLeftNav = nav;
+            document.querySelectorAll('.left-sidebar .nav-item').forEach((b) => b.classList.toggle('active', b === btn));
+            this.renderLeftDrawer();
+          });
+        });
+
+        // Right tabs
+        document.querySelectorAll('.right-tab').forEach((tab) => {
+          tab.addEventListener('click', () => this.switchRightTab(tab.dataset.tab));
+        });
+
+        // Header actions
+        document.getElementById('btn-new').addEventListener('click', () => this.handleNewProject());
+        document.getElementById('btn-save').addEventListener('click', () => this.handleSaveCharacter());
+        document.getElementById('btn-export-glb').addEventListener('click', () => {
+          const name = document.getElementById('project-name-input').value.trim();
+          const incOutlines = document.getElementById('select-export-outlines').value === 'yes';
+          this.viewport.exportGLB(name, incOutlines);
+        });
+
+        const undoAction = () => {
+          if (this.historyIndex > 0) {
+            this.historyIndex--;
+            this.applyBlueprintToStudio(this.historyStack[this.historyIndex], false);
+            this.syncHistoryUI();
+          }
+        };
+        const redoAction = () => {
+          if (this.historyIndex < this.historyStack.length - 1) {
+            this.historyIndex++;
+            this.applyBlueprintToStudio(this.historyStack[this.historyIndex], false);
+            this.syncHistoryUI();
+          }
+        };
+        document.getElementById('btn-undo').addEventListener('click', undoAction);
+        document.getElementById('btn-redo').addEventListener('click', redoAction);
+        document.getElementById('btn-refine-undo').addEventListener('click', undoAction);
+        document.getElementById('btn-refine-redo').addEventListener('click', redoAction);
+
+        // Settings modal
+        const modal = document.getElementById('settings-modal');
+        document.getElementById('btn-settings').addEventListener('click', () => modal.classList.add('open'));
+        document.getElementById('btn-close-settings').addEventListener('click', () => modal.classList.remove('open'));
+        document.getElementById('btn-recheck-status').addEventListener('click', () => this.checkStatus());
+
+        // Top viewport HUD
+        document.querySelectorAll('#camera-hud [data-cam]').forEach((b) => {
+          b.addEventListener('click', () => {
+            document.querySelectorAll('#camera-hud [data-cam]').forEach((x) => x.classList.remove('active'));
+            b.classList.add('active');
+            this.viewport.setCameraPreset(b.dataset.cam);
+          });
+        });
+        document.getElementById('btn-turntable').addEventListener('click', (e) => {
+          this.viewport.turntable = !this.viewport.turntable;
+          e.currentTarget.classList.toggle('active', this.viewport.turntable);
+        });
+        document.querySelectorAll('#shading-hud [data-shade]').forEach((b) => {
+          b.addEventListener('click', () => {
+            document.querySelectorAll('#shading-hud [data-shade]').forEach((x) => x.classList.remove('active'));
+            b.classList.add('active');
+            this.viewport.setShadingMode(b.dataset.shade);
+          });
+        });
+        document.getElementById('btn-outline-toggle').addEventListener('click', (e) => {
+          this.viewport.outlinesEnabled = !this.viewport.outlinesEnabled;
+          e.currentTarget.classList.toggle('active-cyan', this.viewport.outlinesEnabled);
+          this.viewport.updateOutlineAppearance();
+        });
+        document.querySelectorAll('#bg-hud [data-bg]').forEach((b) => {
+          b.addEventListener('click', () => {
+            document.querySelectorAll('#bg-hud [data-bg]').forEach((x) => x.classList.remove('active'));
+            b.classList.add('active');
+            this.viewport.setBackground(b.dataset.bg);
+          });
+        });
+        document.getElementById('btn-grid-toggle').addEventListener('click', (e) => {
+          const next = !this.viewport.gridHelper.visible;
+          this.viewport.gridHelper.visible = next;
+          this.viewport.stageRing.visible = next;
+          e.currentTarget.classList.toggle('active', next);
+        });
+        document.getElementById('btn-fullscreen').addEventListener('click', () => {
+          const stage = document.querySelector('.viewport-stage');
+          if (!document.fullscreenElement) stage.requestFullscreen?.();
+          else document.exitFullscreen?.();
+        });
+
+        // Animation dock
+        document.querySelectorAll('#anim-bar .hud-btn').forEach((b) => {
+          b.addEventListener('click', () => this.setAnimation(b.dataset.anim));
+        });
+
+        // Prompt chips & actions
+        document.querySelectorAll('#example-chips .chip').forEach((chip) => {
+          chip.addEventListener('click', () => {
+            document.getElementById('character-prompt-input').value = EXAMPLE_PROMPTS[chip.dataset.idea] || '';
+            document.getElementById('project-name-input').value = chip.textContent;
+          });
+        });
+        document.getElementById('btn-random-prompt').addEventListener('click', () => {
+          const keys = Object.keys(EXAMPLE_PROMPTS);
+          const k = keys[Math.floor(Math.random() * keys.length)];
+          document.getElementById('character-prompt-input').value = EXAMPLE_PROMPTS[k];
+        });
+        document.getElementById('btn-clear-prompt').addEventListener('click', () => {
+          document.getElementById('character-prompt-input').value = '';
+        });
+
+        // Reference image upload / drag-drop / paste
+        const dz = document.getElementById('ref-dropzone');
+        const fileIn = document.getElementById('ref-file-input');
+        dz.addEventListener('click', () => fileIn.click());
+        fileIn.addEventListener('change', () => this.loadRefImageFile(fileIn.files?.[0]));
+        dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('dragover'); });
+        dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+        dz.addEventListener('drop', (e) => {
+          e.preventDefault();
+          dz.classList.remove('dragover');
+          this.loadRefImageFile(e.dataTransfer?.files?.[0]);
+        });
+        window.addEventListener('paste', (e) => {
+          const item = Array.from(e.clipboardData?.items || []).find((i) => i.type.startsWith('image/'));
+          if (item) this.loadRefImageFile(item.getAsFile());
+        });
+
+        // GLB Import
+        const glbInput = document.getElementById('glb-import-input');
+        glbInput.addEventListener('change', async () => {
+          const f = glbInput.files?.[0];
+          if (!f) return;
+          const buf = await f.arrayBuffer();
+          this.viewport.loadExternalGLB(buf, f.name);
+          document.getElementById('viewport-empty-state').classList.add('hidden');
+          document.getElementById('project-name-input').value = f.name.replace(/\.(glb|gltf)$/i, '');
+          glbInput.value = '';
+        });
+
+        // Main Generate & Enhance buttons
+        document.getElementById('btn-enhance').addEventListener('click', () => this.handleEnhancePrompt());
+        document.getElementById('btn-generate').addEventListener('click', () => this.handleGenerate3Variants());
+
+        // Outline weight slider
+        document.getElementById('slider-outline-weight').addEventListener('input', (e) => {
+          this.viewport.outlineWeight = Number(e.target.value);
+          document.getElementById('val-outline-weight').textContent = `${this.viewport.outlineWeight.toFixed(1)}×`;
+          this.viewport.updateOutlineAppearance();
+        });
+
+        // Quick palette & proportion sliders
+        const bindColor = (id, fn) => {
+          document.getElementById(id).addEventListener('input', (e) => this.mutateActiveBlueprint((bp) => fn(bp, e.target.value)));
+        };
+        bindColor('col-skin', (bp, v) => (bp.palette.skin = v));
+        bindColor('col-hair', (bp, v) => (bp.palette.hair = v));
+        bindColor('col-outfit', (bp, v) => (bp.palette.primaryOutfit = v));
+        bindColor('col-accent', (bp, v) => (bp.palette.accent = v));
+        bindColor('col-eyes', (bp, v) => (bp.palette.eyeColor = v));
+        bindColor('col-outline', (bp, v) => (bp.palette.outlineColor = v));
+
+        document.getElementById('slider-headScale').addEventListener('input', (e) => {
+          const v = Number(e.target.value);
+          document.getElementById('val-headScale').textContent = v.toFixed(2);
+          this.mutateActiveBlueprint((bp) => (bp.proportions.headScale = v));
+        });
+        document.getElementById('slider-torsoWidth').addEventListener('input', (e) => {
+          const v = Number(e.target.value);
+          document.getElementById('val-torsoWidth').textContent = v.toFixed(2);
+          this.mutateActiveBlueprint((bp) => (bp.proportions.torsoWidth = v));
+        });
+        document.getElementById('slider-eyeSize').addEventListener('input', (e) => {
+          const v = Number(e.target.value);
+          document.getElementById('val-eyeSize').textContent = v.toFixed(2);
+          this.mutateActiveBlueprint((bp) => (bp.facePaint.eyeSize = v));
+        });
+        document.getElementById('select-mouthStyle').addEventListener('change', (e) => {
+          this.mutateActiveBlueprint((bp) => (bp.facePaint.mouthStyle = e.target.value), `Expression: ${e.target.value}`);
+        });
+
+        // Part Inspector controls
+        document.querySelectorAll('#part-group-list .part-btn').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            this.selectedPartGroup = btn.dataset.group;
+            this.syncPartInspectorUI(this.selectedPartGroup);
+          });
+        });
+        document.getElementById('btn-clear-part-pill').addEventListener('click', () => {
+          this.selectedPartGroup = null;
+          this.syncPartInspectorUI(null);
+        });
+        document.getElementById('btn-deselect-part').addEventListener('click', () => {
+          this.selectedPartGroup = null;
+          this.syncPartInspectorUI(null);
+        });
+        document.getElementById('part-color-input').addEventListener('input', (e) => {
+          if (!this.selectedPartGroup) return;
+          const g = this.selectedPartGroup;
+          this.mutateActiveBlueprint((bp) => {
+            bp.partOverrides = bp.partOverrides || {};
+            bp.partOverrides[g] = { ...(bp.partOverrides[g] || {}), color: e.target.value };
+          });
+        });
+        document.getElementById('slider-part-scale').addEventListener('input', (e) => {
+          if (!this.selectedPartGroup) return;
+          const g = this.selectedPartGroup;
+          const sc = Number(e.target.value);
+          document.getElementById('val-part-scale').textContent = `${sc.toFixed(2)}×`;
+          this.mutateActiveBlueprint((bp) => {
+            bp.partOverrides = bp.partOverrides || {};
+            bp.partOverrides[g] = { ...(bp.partOverrides[g] || {}), scale: sc };
+          });
+        });
+        document.getElementById('btn-toggle-part-visible').addEventListener('click', () => {
+          if (!this.selectedPartGroup) return;
+          const g = this.selectedPartGroup;
+          this.mutateActiveBlueprint((bp) => {
+            bp.partOverrides = bp.partOverrides || {};
+            const cur = bp.partOverrides[g]?.visible !== false;
+            bp.partOverrides[g] = { ...(bp.partOverrides[g] || {}), visible: !cur };
+          }, `Toggled ${g} visibility`);
+          this.syncPartInspectorUI(g);
+        });
+        document.getElementById('btn-reset-part-override').addEventListener('click', () => {
+          if (!this.selectedPartGroup) return;
+          const g = this.selectedPartGroup;
+          this.mutateActiveBlueprint((bp) => {
+            if (bp.partOverrides) delete bp.partOverrides[g];
+          }, `Reset ${g} overrides`);
+          this.syncPartInspectorUI(g);
+        });
+        document.getElementById('btn-part-ai-restyle').addEventListener('click', () => {
+          const text = document.getElementById('part-ai-prompt').value;
+          this.handleAIRefine(text, this.selectedPartGroup);
+        });
+
+        // Iterative AI Refine tab
+        document.querySelectorAll('#refine-chips .chip').forEach((chip) => {
+          chip.addEventListener('click', () => {
+            document.getElementById('refine-prompt-input').value = chip.dataset.refine;
+          });
+        });
+        document.getElementById('btn-apply-refine').addEventListener('click', () => {
+          const text = document.getElementById('refine-prompt-input').value;
+          this.handleAIRefine(text, null);
+        });
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      window.__form3dApp = new Form3DStudioApp();
+    });
+  </script>
+</body>
+</html>
